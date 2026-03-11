@@ -1,0 +1,13 @@
+{
+  "name": "easy-flow-agent",
+  "version": "1.0.0",
+  "description": "OpenClaw improvements for Easy Flow AI Agent Service",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm run -r test",
+    "build": "npm run -r build"
+  }
+}
