@@ -51,7 +51,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.AI_REVIEWER_TOKEN }}
+          github_token: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
           track_progress: true
           prompt: |
             REPO: ${{ github.repository }}
@@ -125,21 +125,32 @@ jobs:
       - name: Submit review verdict
         if: steps.check_files.outputs.skip != 'true' && success()
         env:
-          GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN }}
+          GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
+          # Issue コメントから検索
           VERDICT=$(gh api repos/$REPO/issues/$PR_NUMBER/comments \
             --paginate \
-            --jq '[.[] | select(.user.type=="Bot" or .user.login | test("bot|ai|claude"; "i"))] | last | .body' | \
-            grep '^### \(判定\|レビュー結果\):' | head -1 | \
+            --jq '[.[] | select(.user.type=="Bot" or (.user.login | test("bot|ai|claude|github-actions"; "i")))] | last | .body // ""' | \
+            grep -E '^### (判定|レビュー結果):' | head -1 | \
             sed 's/.*: //' | cut -c1-50)
+
+          # Issue コメントで見つからなければ PR レビューから検索
+          if [ -z "$VERDICT" ]; then
+            VERDICT=$(gh api repos/$REPO/pulls/$PR_NUMBER/reviews \
+              --paginate \
+              --jq '[.[] | select(.user.type=="Bot" or (.user.login | test("bot|ai|claude|github-actions"; "i")))] | last | .body // ""' | \
+              grep -E '^### (判定|レビュー結果):' | head -1 | \
+              sed 's/.*: //' | cut -c1-50)
+          fi
+
           echo "Verdict line: $VERDICT"
           if echo "$VERDICT" | grep -qiE 'CHANGES_REQUESTED|Changes Requested|要修正'; then
             echo "Submitting CHANGES_REQUESTED review"
             gh pr review $PR_NUMBER --repo $REPO --request-changes \
               --body "🤖 AIレビュー判定: CHANGES_REQUESTED — 詳細はレビューコメントを確認してください。"
-          elif echo "$VERDICT" | grep -qi 'APPROVED\|APPROVE'; then
+          elif echo "$VERDICT" | grep -qiE 'APPROVED|APPROVE|Approved'; then
             echo "Submitting APPROVED review"
             gh pr review $PR_NUMBER --repo $REPO --approve \
               --body "🤖 AIレビュー判定: APPROVED ✅"
