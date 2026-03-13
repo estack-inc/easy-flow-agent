@@ -235,8 +235,11 @@ export class PineconeContextEngine implements ContextEngine {
 5. Markdown に整形して systemPromptAddition として返す
 
 フォールバック条件:
-- Pinecone 接続失敗 → fallbackAdapter.assemble() を呼ぶ
-- クエリ結果 0 件 → 空の systemPromptAddition
+- Pinecone 接続失敗 かつ fallbackAdapter 設定済み → fallbackAdapter.assemble() を呼ぶ
+- Pinecone 接続失敗 かつ fallbackAdapter 未設定   → 空の systemPromptAddition を返す
+- クエリ結果 0 件                                 → 空の systemPromptAddition を返す
+
+注: fallbackAdapter は optional のため、未設定でも TypeError は発生しない
 ```
 
 #### ingest() の処理フロー
@@ -361,14 +364,15 @@ npx easy-flow migrate-memory \
 
 ## エラーハンドリング
 
-| エラー種別 | 対応 |
-|-----------|------|
-| Pinecone API タイムアウト（assemble） | 3 秒後にフォールバック |
-| レート制限（429） | Exponential backoff（100ms → 200ms → 400ms、最大 3 回リトライ） |
-| リトライ全失敗時（assemble） | フォールバックアダプター経由で継続 |
-| 埋め込み生成失敗（ingest） | スキップ（ingest のみ）+ ログ（例外を伝播させない） |
-| upsert 失敗（compact） | compact() を中断・セッションファイル削除は実行しない・次回再試行 |
-| インデックス未存在 | 自動作成（ensureIndex） |
+| エラー種別 | 対象メソッド | 対応 |
+|-----------|------------|------|
+| Pinecone API タイムアウト | assemble | 3 秒後にフォールバックアダプターへ委譲（未設定時は空を返す） |
+| レート制限（429） | assemble / ingest / compact | Exponential backoff（100ms → 200ms → 400ms、最大 3 回リトライ） |
+| 429 全リトライ失敗（assemble） | assemble | フォールバックアダプター経由で継続（未設定時は空を返す） |
+| 429 全リトライ失敗（compact upsert） | compact | compact() を中断・セッションファイル削除は実行しない・次回再試行 |
+| 埋め込み生成失敗 | ingest | スキップ（ingest のみ）+ ログ（例外を伝播させない） |
+| upsert 失敗 | compact | compact() を中断・セッションファイル削除は実行しない・次回再試行 |
+| インデックス未存在 | 全メソッド | 自動作成（ensureIndex） |
 
 ---
 
