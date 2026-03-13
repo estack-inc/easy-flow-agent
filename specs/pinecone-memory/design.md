@@ -1,6 +1,6 @@
 # Pinecone Memory 統合 — 設計書
 
-最終更新: 2026-03-13
+最終更新: 2026-03-14
 
 ---
 
@@ -98,6 +98,7 @@ export class PineconeClient implements IPineconeClient {
   async ensureIndex(): Promise<void>;
 
   // チャンクをアップサート（埋め込み生成 → Pinecone 保存）
+  // SDK v7 形式: index.upsert({ records, namespace })
   async upsert(chunks: MemoryChunk[]): Promise<void>;
 
   // セマンティック検索
