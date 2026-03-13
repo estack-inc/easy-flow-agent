@@ -263,7 +263,11 @@ export class PineconeContextEngine implements ContextEngine {
    → 7 日の根拠: 最近の会話は明示的に渡し、古い会話はベクトル検索で取得する境界線
    → コンストラクタ引数 compactAfterDays で変更可能
 
-2. 各ターンを Pinecone に upsert（未保存のもの）
+2. 対象ターンを Pinecone に全件 upsert する
+   → 「未保存チェック」は行わない
+   → 根拠: ingest() が毎ターン呼ばれる設計のため、compact() 時点では
+     ほぼ全ターンが保存済みのはず。upsert は冪等（同一 ID は上書き）
+     なので未保存チェックを省略しても安全かつシンプル
 
 3. セッションファイルから古いターンを削除
 
@@ -277,7 +281,11 @@ export class PineconeContextEngine implements ContextEngine {
 
 2. agentId の存在確認（ネームスペースにデータがあるか）
 
-3. 初回セッション → MEMORY.md があれば移行処理を呼ぶ（任意）
+3. 自動移行はしない
+   → MEMORY.md の Pinecone 移行は移行 CLI（Module 3）に委ねる
+   → bootstrap() 内でユーザーへの確認プロンプトや環境変数フラグは持たない
+   → 理由: bootstrap はセッション開始時の高速パスであり、移行処理を混在させると
+     セッション開始が遅くなる。初回起動時の移行は CLI で明示的に実行する運用とする
 
 4. { bootstrapped: true } を返す
 ```
