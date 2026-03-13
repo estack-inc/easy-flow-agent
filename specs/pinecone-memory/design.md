@@ -370,7 +370,8 @@ npx easy-flow migrate-memory \
 | レート制限（429） | assemble / ingest / compact | Exponential backoff（100ms → 200ms → 400ms、最大 3 回リトライ） |
 | 429 全リトライ失敗（assemble） | assemble | フォールバックアダプター経由で継続（未設定時は空を返す） |
 | 429 全リトライ失敗（compact upsert） | compact | compact() を中断・セッションファイル削除は実行しない・次回再試行 |
-| 埋め込み生成失敗 | ingest | スキップ（ingest のみ）+ ログ（例外を伝播させない） |
+| 埋め込み生成失敗 | ingest | スキップ + ログ（例外を伝播させない） |
+| 429 全リトライ失敗 | ingest | スキップ + ログ（ingest の catch-all により例外を伝播させない） |
 | upsert 失敗 | compact | compact() を中断・セッションファイル削除は実行しない・次回再試行 |
 | インデックス未存在 | 全メソッド | 自動作成（ensureIndex） |
 
