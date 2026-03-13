@@ -1,0 +1,148 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+    branches: [main]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  claude-review:
+    if: |
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check if target files changed
+        id: check_files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CHANGED=$(gh pr diff ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} --name-only | \
+            grep -cE '^packages/.*\.(ts|js|json)$|^specs/.*\.md$|^\.github/workflows/.*\.(yml|yaml)$|^CLAUDE\.md$' || echo "0")
+          if [ "$CHANGED" -eq 0 ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "No target files changed"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "Target files changed: $CHANGED"
+          fi
+
+      - name: Checkout repository
+        if: steps.check_files.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude Code Review
+        if: steps.check_files.outputs.skip != 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.AI_REVIEWER_TOKEN }}
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            あなたは Easy Flow Agent プロジェクトのシニアコードレビュアーです。
+
+            ## レビュー手順
+
+            1. **CLAUDE.md と specs/*.md を読んでプロジェクト仕様を理解する**
+            2. 変更されたファイルの全体を読み込み、変更の目的と影響範囲を理解する
+            3. インポートされているクラス・インターフェース、親クラス・実装インターフェースを確認する
+            4. 関連するテストファイルを探索する
+
+            ## 必須チェック項目
+
+            ### 要件充足・影響範囲
+            - PR description に記載された要件が全て実装されているか
+            - 変更が他の機能に影響を与えていないか（Grep で関連箇所を検索）
+            - メソッド名・シグネチャ変更時: 全呼び出し元が更新されているか
+            - インターフェース変更時: 全実装クラスが更新されているか
+            - 新機能追加時: 対応するテストが存在するか
+
+            ### コード品質（CLAUDE.md 参照）
+            - 型安全性（TypeScript strict モード準拠）
+            - ESM モジュール規約（import パスに `.js` 拡張子）
+            - JSON 永続化互換性（`Set` 不使用等）
+            - テスト（Vitest、十分なカバレッジ）
+            - アーキテクチャ（モノレポ構成、パッケージ間依存の妥当性）
+
+            ### セキュリティ
+            - console.log/debugger が残っていないか
+            - 機密情報（API キー等）がハードコードされていないか
+            - 入力値のバリデーション
+
+            ## 指摘の重要度分類（厳守）
+
+            指摘は以下の3段階で分類すること:
+
+            - 🔴 **重大**: バグ、セキュリティ脆弱性、データ損失リスク、要件未充足
+            - 🟡 **要修正**: コード品質上の問題、パフォーマンス懸念、テスト不足、型安全性違反
+            - 🔵 **情報提供**: 推奨事項、スタイル提案、リファクタリング案（対応任意）
+
+            ## レビュー判定ルール（厳守）
+
+            レビュー完了時、以下のルールに従って判定すること:
+
+            **🔴 または 🟡 の指摘が1件でもある場合:**
+            → `CHANGES_REQUESTED` で提出する
+            ```
+            レビュー結果セクションに `### レビュー結果: ❌ Changes Requested` と記載する
+            ```
+
+            **🔵 のみ、または指摘なしの場合:**
+            → `APPROVE` で提出する（🔵の指摘はコメントとして残してよい）
+            ```
+            レビュー結果セクションに `### レビュー結果: ✅ Approved` と記載する
+            ```
+
+            **重要: `gh pr review` コマンドは実行しないこと。** レビュー判定の提出は後続ステップが自動で行う。
+
+            ## レビュー方針
+            - 確信がない指摘は避け、確実な問題のみ指摘する
+            - 修正漏れの検出を最優先で行う
+            - インラインコメントで具体的な箇所を指摘する
+
+          claude_args: |
+            --model ${{ vars.AI_REVIEW_MODEL || 'sonnet' }}
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(grep:*),Bash(find:*),Bash(rg:*),Bash(cat:*),Bash(wc:*),Read"
+
+      - name: Submit review verdict
+        if: steps.check_files.outputs.skip != 'true' && success()
+        env:
+          GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          VERDICT=$(gh api repos/$REPO/issues/$PR_NUMBER/comments \
+            --paginate \
+            --jq '[.[] | select(.user.type=="Bot" or .user.login | test("bot|ai|claude"; "i"))] | last | .body' | \
+            grep '^### \(判定\|レビュー結果\):' | head -1 | \
+            sed 's/.*: //' | cut -c1-50)
+          echo "Verdict line: $VERDICT"
+          if echo "$VERDICT" | grep -qiE 'CHANGES_REQUESTED|Changes Requested|要修正'; then
+            echo "Submitting CHANGES_REQUESTED review"
+            gh pr review $PR_NUMBER --repo $REPO --request-changes \
+              --body "🤖 AIレビュー判定: CHANGES_REQUESTED — 詳細はレビューコメントを確認してください。"
+          elif echo "$VERDICT" | grep -qi 'APPROVED\|APPROVE'; then
+            echo "Submitting APPROVED review"
+            gh pr review $PR_NUMBER --repo $REPO --approve \
+              --body "🤖 AIレビュー判定: APPROVED ✅"
+          else
+            echo "Could not determine verdict from: $VERDICT"
+            echo "Skipping review submission"
+          fi
