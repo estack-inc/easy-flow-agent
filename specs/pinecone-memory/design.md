@@ -125,8 +125,16 @@ export class PineconeClient implements IPineconeClient {
  * - 使用モデル: multilingual-e5-large（1024 次元、Starter プラン対応確認済み）
  * - API: pinecone.inference.embed({ model, inputs, parameters })
  * - OpenAI / Hugging Face / ローカルモデルは使用しない
+ *
+ * バッチサイズ制限:
+ * - Pinecone Inference API の上限: 96 件/リクエスト
+ * - texts.length > BATCH_SIZE の場合、自動的に分割して順次処理する
+ * - 移行 CLI など大量チャンクを処理する場合も安全に動作する
  */
 export class EmbeddingService {
+  private static readonly BATCH_SIZE = 96;
+
+  // texts が 96 件を超える場合は自動バッチ分割して処理する
   async embed(texts: string[], inputType: 'passage' | 'query'): Promise<number[][]>;
 }
 ```
@@ -331,6 +339,11 @@ npx easy-flow migrate-memory \
   agent:mell-estack       ← estack-mell 検証環境
   agent:{clientId}        ← クライアント別
 ```
+
+**⚠️ Starter プランのインデックス数制限: 5 個まで**
+- 本番: `easy-flow-memory` 1 つで全エージェントを管理（ネームスペースで分離）
+- テスト用インデックスを作成する場合は使用後すぐに削除する
+- 5 個を超える場合は Pinecone の有料プランへの移行を検討する
 
 ---
 
