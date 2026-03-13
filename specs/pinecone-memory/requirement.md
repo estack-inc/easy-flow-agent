@@ -1,9 +1,9 @@
 # Pinecone Memory 統合 — 要件定義書
 
-最終更新: 2026-03-13
+最終更新: 2026-03-14
 担当: よりちかさん（基盤層） + メル（連携層・テスト）
-リポジトリ: estack-inc/easy-flow-agent
-Epic: Token Optimizer #64
+リポジトリ: estack-inc/easy-flow-agent / Issue #3
+関連 Epic: Token Optimizer（openclaw workspace #64）
 
 ---
 
@@ -43,7 +43,7 @@ Pinecone ベクトル DB に記憶を保存し、各ターンでクエリした*
 
 2. OpenClaw 連携層（`PineconeContextEngine`）
    - `ContextEngine` インターフェース実装
-   - `ingest()` : ターン後の記憶保存
+   - `ingest()` : ターン後の記憶保存（user / assistant 両方）
    - `assemble()` : 関連チャンク取得・注入
    - `compact()` : 古いセッション記憶の Pinecone 移行
    - `bootstrap()` : セッション初期化時の記憶ロード
@@ -68,7 +68,7 @@ Pinecone ベクトル DB に記憶を保存し、各ターンでクエリした*
 
 | ID | 基準 |
 |----|------|
-| AC-1 | ターン後に会話メッセージが Pinecone に保存される |
+| AC-1 | ターン後に user / assistant 両方のメッセージが Pinecone に保存される |
 | AC-2 | `assemble()` で関連チャンクのみ（最大 20 件）が注入される |
 | AC-3 | 注入トークン数が 10,000 以下に収まる |
 | AC-4 | エージェント別にネームスペースが分離されている |
@@ -84,7 +84,8 @@ Pinecone ベクトル DB に記憶を保存し、各ターンでクエリした*
 | Pinecone 障害時の継続性 | フォールバックで動作継続 |
 | テストカバレッジ | 90% 以上 |
 | インデックス名 | `easy-flow-memory` |
-| 埋め込みモデル | `multilingual-e5-large`（日本語対応） |
+| 埋め込みモデル | `multilingual-e5-large`（Pinecone Inference API 経由、動作確認済み） |
+| 埋め込み生成 API | Pinecone Inference API（`pinecone.inference.embed()`）。OpenAI / Hugging Face は不使用 |
 | ネームスペース | `agent:{agentId}` |
 
 ---
@@ -119,9 +120,10 @@ Pinecone ベクトル DB に記憶を保存し、各ターンでクエリした*
 | 用途 | 選定 | 理由 |
 |------|------|------|
 | ベクトル DB | Pinecone Serverless | Starter プラン無料・日本語対応 |
-| 埋め込みモデル | multilingual-e5-large | 日本語精度・1024 次元 |
-| チャンク分割 | 500 トークン / オーバーラップ 50 | 文脈保持 |
-| SDK | @pinecone-database/pinecone | 公式 |
+| 埋め込みモデル | multilingual-e5-large | 日本語精度・1024 次元・Starter プラン動作確認済み |
+| 埋め込み生成 | Pinecone Inference API | 追加 API キー不要・SDK 統合・ローカルモデル不要 |
+| チャンク分割 | 1000 文字 / オーバーラップ 100 文字 | 日本語 1 文字 ≒ 0.5 トークンで 500 トークン相当 |
+| SDK | @pinecone-database/pinecone v7.x | 公式・upsert は `{ records, namespace }` 形式 |
 
 ---
 
@@ -131,5 +133,5 @@ Pinecone ベクトル DB に記憶を保存し、各ターンでクエリした*
 |------|------|
 | Workflow Controller (#63) | ✅ 完了 |
 | UnifiedAgentState 型定義 (#55) | ✅ 完了 |
-| Pinecone アカウント | ✅ API キー取得済み |
+| Pinecone アカウント | ✅ API キー取得済み・動作確認済み |
 | OpenClaw plugin-sdk ContextEngine 型 | ✅ 利用可能 |

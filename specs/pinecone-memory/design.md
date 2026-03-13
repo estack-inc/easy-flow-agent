@@ -13,7 +13,7 @@ OpenClaw Runtime
 │     └── delegate: PineconeContextEngine  ← 新規（LegacyContextEngine を置き換え）
 │           ├── PineconeClient             ← Module 1（よりちかさん実装）
 │           │     ├── IndexManager
-│           │     ├── EmbeddingService
+│           │     ├── EmbeddingService     ← Pinecone Inference API 経由
 │           │     └── VectorStore
 │           └── FallbackAdapter            ← フォールバック（ファイル読み込み）
 │
@@ -32,7 +32,7 @@ packages/pinecone-client/
 │   ├── index.ts              # public API
 │   ├── client.ts             # PineconeClient（メインクラス）
 │   ├── index-manager.ts      # インデックス管理
-│   ├── embedding.ts          # 埋め込み生成
+│   ├── embedding.ts          # 埋め込み生成（Pinecone Inference API）
 │   ├── chunker.ts            # テキストチャンク分割
 │   ├── types.ts              # 型定義
 │   └── *.test.ts             # Vitest テスト
@@ -58,6 +58,7 @@ export interface ChunkMetadata {
   chunkIndex: number;
   createdAt: number;        // Unix timestamp (ms)
   turnId?: string;          // セッションターン識別子
+  role?: 'user' | 'assistant'; // メッセージロール
 }
 
 // クエリ結果
@@ -71,6 +72,7 @@ export interface IPineconeClient {
   upsert(chunks: MemoryChunk[]): Promise<void>;
   query(params: QueryParams): Promise<QueryResult[]>;
   delete(ids: string[]): Promise<void>;
+  deleteBySource(agentId: string, sourceFile: string): Promise<void>;
   deleteNamespace(agentId: string): Promise<void>;
   ensureIndex(): Promise<void>;
 }
@@ -91,7 +93,6 @@ export class PineconeClient implements IPineconeClient {
   constructor(config: {
     apiKey: string;
     indexName: string;       // デフォルト: "easy-flow-memory"
-    embeddingModel: string;  // デフォルト: "multilingual-e5-large"
   });
 
   // インデックスが存在しなければ作成
@@ -99,6 +100,7 @@ export class PineconeClient implements IPineconeClient {
 
   // チャンクをアップサート（埋め込み生成 → Pinecone 保存）
   // SDK v7 形式: index.upsert({ records, namespace })
+  // 同一 ID は上書き（冪等設計）
   async upsert(chunks: MemoryChunk[]): Promise<void>;
 
   // セマンティック検索
@@ -107,24 +109,68 @@ export class PineconeClient implements IPineconeClient {
   // ID 指定削除
   async delete(ids: string[]): Promise<void>;
 
+  // ソースファイル単位で削除（再取り込み前の古いチャンク削除に使用）
+  async deleteBySource(agentId: string, sourceFile: string): Promise<void>;
+
   // ネームスペース全削除（エージェント削除時）
   async deleteNamespace(agentId: string): Promise<void>;
+}
+```
+
+### EmbeddingService 実装仕様
+
+```typescript
+/**
+ * 埋め込み生成は Pinecone Inference API を使用する。
+ * - 使用モデル: multilingual-e5-large（1024 次元、Starter プラン対応確認済み）
+ * - API: pinecone.inference.embed({ model, inputs, parameters })
+ * - OpenAI / Hugging Face / ローカルモデルは使用しない
+ */
+export class EmbeddingService {
+  async embed(texts: string[], inputType: 'passage' | 'query'): Promise<number[][]>;
 }
 ```
 
 ### Chunker 実装仕様
 
 ```typescript
+/**
+ * テキスト分割方針:
+ * - 単位: 文字数ベース（1000 文字 / オーバーラップ 100 文字）
+ * - 根拠: 日本語 1 文字 ≒ 0.5 トークンのため、1000 文字 ≒ 500 トークン相当
+ * - tiktoken 等の外部依存は持たない（シンプル・軽量を優先）
+ */
 export class TextChunker {
-  // テキストを 500 トークン単位・50 トークンオーバーラップで分割
+  constructor(config?: {
+    chunkSize?: number;       // デフォルト: 1000（文字数）
+    overlapSize?: number;     // デフォルト: 100（文字数）
+  });
+
   chunk(params: {
     text: string;
     agentId: string;
     sourceFile: string;
     sourceType: ChunkMetadata['sourceType'];
     turnId?: string;
+    role?: 'user' | 'assistant';
   }): MemoryChunk[];
 }
+```
+
+### チャンク ID と冪等性
+
+```
+ID 形式: "{agentId}:{sourceFile}:{chunkIndex}"
+
+冪等設計（意図的）:
+- 同一ファイルを再チャンクした場合、同じ ID で上書きされる
+- 再取り込み前に deleteBySource() で古いチャンクを全削除してから upsert する
+- これにより古いチャンクが残留しない
+
+再取り込みフロー:
+1. deleteBySource(agentId, sourceFile)  // 既存チャンク削除
+2. chunk(text, ...)                      // 再チャンク
+3. upsert(chunks)                        // 新規保存
 ```
 
 ---
@@ -158,7 +204,9 @@ export class PineconeContextEngine implements ContextEngine {
   constructor(params: {
     pineconeClient: IPineconeClient;
     agentId: string;
-    tokenBudget?: number;      // デフォルト: 8000 トークン
+    tokenBudget?: number;         // デフォルト: 8000 トークン
+    ingestRoles?: ('user' | 'assistant')[];  // デフォルト: ['user', 'assistant']
+    compactAfterDays?: number;    // デフォルト: 7（設定可能）
     fallbackAdapter?: ContextEngine;
   });
 }
@@ -188,7 +236,9 @@ export class PineconeContextEngine implements ContextEngine {
 ```
 1. AgentMessage を受け取る
 
-2. role が 'assistant' の場合のみ保存（userメッセージは任意）
+2. ingestRoles に含まれる role のみ保存
+   デフォルト: user / assistant 両方保存
+   → ユーザーの質問文脈も検索対象にする
 
 3. TextChunker でチャンク化
 
@@ -200,7 +250,10 @@ export class PineconeContextEngine implements ContextEngine {
 #### compact() の処理フロー
 
 ```
-1. 対象セッションの古いターン（7日以前）を特定
+1. 対象セッションの古いターンを特定
+   → 保存から compactAfterDays 日以上経過したもの（デフォルト: 7 日）
+   → 7 日の根拠: 最近の会話は明示的に渡し、古い会話はベクトル検索で取得する境界線
+   → コンストラクタ引数 compactAfterDays で変更可能
 
 2. 各ターンを Pinecone に upsert（未保存のもの）
 
@@ -286,7 +339,8 @@ npx easy-flow migrate-memory \
 | エラー種別 | 対応 |
 |-----------|------|
 | Pinecone API タイムアウト | 3 秒後にフォールバック |
-| レート制限（429） | 100ms wait → 1 回リトライ |
+| レート制限（429） | Exponential backoff（100ms → 200ms → 400ms、最大 3 回リトライ） |
+| リトライ全失敗時 | フォールバックアダプター経由で継続 |
 | 埋め込み生成失敗 | スキップ（ingest のみ）+ ログ |
 | インデックス未存在 | 自動作成（ensureIndex） |
 
@@ -299,10 +353,10 @@ npx easy-flow migrate-memory \
 | タスク | 工数 | 完了条件 |
 |--------|------|---------|
 | packages/pinecone-client 初期化・型定義 | 2h | tsconfig/package.json 設定完了 |
-| TextChunker 実装 + テスト | 3h | チャンク分割・オーバーラップ正常動作 |
-| EmbeddingService 実装（multilingual-e5-large） | 4h | テキスト → 1024 次元ベクトル生成 |
+| TextChunker 実装 + テスト（文字数ベース） | 3h | チャンク分割・オーバーラップ正常動作 |
+| EmbeddingService 実装（Pinecone Inference API） | 4h | テキスト → 1024 次元ベクトル生成 |
 | PineconeClient.upsert / query 実装 | 4h | Pinecone への保存・検索が動作 |
-| IndexManager（ensureIndex, deleteNamespace） | 2h | 自動作成・削除が動作 |
+| IndexManager（ensureIndex, deleteBySource, deleteNamespace） | 2h | 自動作成・削除・ソース別削除が動作 |
 
 ### メル（Module 2 + 3: 22h）
 
@@ -310,7 +364,7 @@ npx easy-flow migrate-memory \
 |--------|------|---------|
 | packages/pinecone-context-engine 初期化 | 1h | 型定義・ディレクトリ構成 |
 | assemble() 実装 + 単体テスト | 4h | クエリ→注入フロー動作 |
-| ingest() / compact() 実装 + 単体テスト | 4h | 保存・圧縮フロー動作 |
+| ingest() / compact() 実装 + 単体テスト | 4h | user/assistant 両方保存・圧縮フロー動作 |
 | bootstrap() + フォールバック実装 | 3h | 障害時継続確認 |
 | WorkflowContextEngine 統合 | 2h | 差し替えで既存テスト全通過 |
 | 移行 CLI 実装 | 4h | MEMORY.md の Pinecone 移行成功 |
