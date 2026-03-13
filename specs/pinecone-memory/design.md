@@ -268,8 +268,12 @@ export class PineconeContextEngine implements ContextEngine {
    → 根拠: ingest() が毎ターン呼ばれる設計のため、compact() 時点では
      ほぼ全ターンが保存済みのはず。upsert は冪等（同一 ID は上書き）
      なので未保存チェックを省略しても安全かつシンプル
+   → upsert 失敗時（1 件でも失敗）: compact() を即中断（ステップ 3 は実行しない）
+     ログに compact 失敗を記録し、次回セッションで再試行する
 
-3. セッションファイルから古いターンを削除
+3. upsert 完全成功時のみ: セッションファイルから古いターンを削除
+   → upsert 失敗時にステップ 3 を実行すると、Pinecone 未保存のターンが
+     セッションファイルからも削除され、記憶が永久に失われるため
 
 4. delegate の compact() は呼ばない（Pinecone が代替）
 ```
@@ -359,10 +363,11 @@ npx easy-flow migrate-memory \
 
 | エラー種別 | 対応 |
 |-----------|------|
-| Pinecone API タイムアウト | 3 秒後にフォールバック |
+| Pinecone API タイムアウト（assemble） | 3 秒後にフォールバック |
 | レート制限（429） | Exponential backoff（100ms → 200ms → 400ms、最大 3 回リトライ） |
-| リトライ全失敗時 | フォールバックアダプター経由で継続 |
-| 埋め込み生成失敗 | スキップ（ingest のみ）+ ログ |
+| リトライ全失敗時（assemble） | フォールバックアダプター経由で継続 |
+| 埋め込み生成失敗（ingest） | スキップ（ingest のみ）+ ログ（例外を伝播させない） |
+| upsert 失敗（compact） | compact() を中断・セッションファイル削除は実行しない・次回再試行 |
 | インデックス未存在 | 自動作成（ensureIndex） |
 
 ---
