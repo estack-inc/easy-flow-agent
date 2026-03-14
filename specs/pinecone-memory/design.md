@@ -287,8 +287,10 @@ turnId は決定論的 hash で生成する（冪等設計）。
      セッションファイルからも削除され、記憶が永久に失われるため
 
 注意: compact() は ingestRoles フィルターを適用しない。
-compact 対象のターンは ingest() 時点でフィルタリング済みのため、
-compact() はセッションファイルの全ターンを対象に upsert する。
+readOldTurns() はセッションファイルの全ロールのメッセージを読み込むため、
+ingestRoles でフィルタリングされたロール以外のメッセージも compact() の対象になる。
+デフォルトの ingestRoles が ["user", "assistant"] である限り実用上は問題ないが、
+カスタムロールを追加した場合は compact() の挙動に留意が必要。
 
 4. delegate の compact() は呼ばない（Pinecone が代替）
 ```
