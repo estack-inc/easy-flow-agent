@@ -342,7 +342,7 @@ export class PineconeContextEngine implements ContextEngine {
             entry.timestamp < cutoffTimestamp &&
             entry.message &&
             typeof entry.message.role === "string" &&
-            (entry.message.content !== undefined)
+            entry.message.content !== undefined
           ) {
             oldMessages.push(entry.message);
           }

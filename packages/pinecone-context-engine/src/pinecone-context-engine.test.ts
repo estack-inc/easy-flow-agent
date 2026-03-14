@@ -634,6 +634,63 @@ describe("PineconeContextEngine", () => {
       expect(result.compacted).toBe(false);
     });
 
+    it("skips entries where message.role is not a string", async () => {
+      const client = createMockClient();
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "test-agent",
+        compactAfterDays: 7,
+      });
+
+      const sessionFile = path.join(tmpDir, "session.jsonl");
+      const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+      const entries = [
+        { timestamp: eightDaysAgo, message: { role: 123, content: "bad role" } },
+        { timestamp: eightDaysAgo, message: { role: "user", content: "valid" } },
+      ];
+      fs.writeFileSync(
+        sessionFile,
+        entries.map((e) => JSON.stringify(e)).join("\n"),
+        "utf-8",
+      );
+
+      const result = await engine.compact({ sessionId: "s1", sessionFile });
+
+      expect(result.compacted).toBe(true);
+      expect(client.upsert).toHaveBeenCalledOnce();
+      const chunks = client.upsert.mock.calls[0][0] as MemoryChunk[];
+      expect(chunks.every((c) => c.text !== "bad role")).toBe(true);
+    });
+
+    it("skips entries where message.content is undefined", async () => {
+      const client = createMockClient();
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "test-agent",
+        compactAfterDays: 7,
+      });
+
+      const sessionFile = path.join(tmpDir, "session.jsonl");
+      const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+      const entries = [
+        { timestamp: eightDaysAgo, message: { role: "user" } },
+        { timestamp: eightDaysAgo, message: { role: "user", content: "valid" } },
+      ];
+      fs.writeFileSync(
+        sessionFile,
+        entries.map((e) => JSON.stringify(e)).join("\n"),
+        "utf-8",
+      );
+
+      const result = await engine.compact({ sessionId: "s1", sessionFile });
+
+      expect(result.compacted).toBe(true);
+      expect(client.upsert).toHaveBeenCalledOnce();
+      const chunks = client.upsert.mock.calls[0][0] as MemoryChunk[];
+      expect(chunks.length).toBeGreaterThan(0);
+      expect(chunks.every((c) => c.text === "valid")).toBe(true);
+    });
+
     it("uses custom compactAfterDays", async () => {
       const client = createMockClient();
       const engine = new PineconeContextEngine({
