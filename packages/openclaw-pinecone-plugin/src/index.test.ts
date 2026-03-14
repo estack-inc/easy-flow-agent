@@ -1,5 +1,22 @@
 import { describe, it, expect, vi } from "vitest";
+
+vi.mock("@easy-flow/pinecone-client", () => ({
+  PineconeClient: vi.fn().mockImplementation((config) => ({
+    _config: config,
+  })),
+}));
+
+vi.mock("@easy-flow/pinecone-context-engine", () => ({
+  PineconeContextEngine: vi.fn().mockImplementation((params) => ({
+    _params: params,
+    assemble: vi.fn(),
+    ingest: vi.fn(),
+  })),
+}));
+
 import register from "./index.js";
+import { PineconeClient } from "@easy-flow/pinecone-client";
+import { PineconeContextEngine } from "@easy-flow/pinecone-context-engine";
 
 function createMockApi(pluginConfig: Record<string, unknown> = {}) {
   return {
@@ -95,5 +112,29 @@ describe("pinecone-memory plugin", () => {
     expect(api.logger.info).toHaveBeenCalledWith(
       expect.stringContaining("compactAfterDays: 14")
     );
+  });
+
+  it("factory creates PineconeContextEngine with correct params", () => {
+    const api = createMockApi({
+      apiKey: "test-key",
+      agentId: "mell",
+      indexName: "custom-index",
+      compactAfterDays: 14,
+    });
+    register(api as any);
+
+    const factory = api.registerContextEngine.mock.calls[0][1];
+    const engine = factory();
+
+    expect(PineconeClient).toHaveBeenCalledWith({
+      apiKey: "test-key",
+      indexName: "custom-index",
+    });
+    expect(PineconeContextEngine).toHaveBeenCalledWith({
+      pineconeClient: expect.objectContaining({ _config: { apiKey: "test-key", indexName: "custom-index" } }),
+      agentId: "mell",
+      compactAfterDays: 14,
+    });
+    expect(engine).toBeDefined();
   });
 });
