@@ -4,6 +4,12 @@
   "private": true,
   "description": "Workflow Controller plugin — step-based execution control with context optimization",
   "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@easy-flow/pinecone-context-engine": "*"
+  },
   "peerDependencies": {
     "openclaw": ">=2026.3.7"
   },

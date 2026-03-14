@@ -8,6 +8,10 @@ import type {
   IngestBatchResult,
   BootstrapResult,
 } from "openclaw/plugin-sdk";
+import {
+  PineconeContextEngine,
+  type IPineconeClient,
+} from "@easy-flow/pinecone-context-engine";
 
 type ContextEngineRuntimeContext = Record<string, unknown>;
 import { loadWorkflow, renderContextMarkdown } from "./store.js";
@@ -36,8 +40,25 @@ export class WorkflowContextEngine implements ContextEngine {
     delegate: ContextEngine;
     agentDir?: string;
     activeWorkflowId?: string;
+    pinecone?: {
+      client: IPineconeClient;
+      agentId: string;
+      tokenBudget?: number;
+      ingestRoles?: ("user" | "assistant")[];
+      compactAfterDays?: number;
+      fallbackAdapter?: ContextEngine;
+    };
   }) {
-    this.delegate = params.delegate;
+    this.delegate = params.pinecone
+      ? new PineconeContextEngine({
+          pineconeClient: params.pinecone.client,
+          agentId: params.pinecone.agentId,
+          tokenBudget: params.pinecone.tokenBudget,
+          ingestRoles: params.pinecone.ingestRoles,
+          compactAfterDays: params.pinecone.compactAfterDays,
+          fallbackAdapter: params.pinecone.fallbackAdapter ?? params.delegate,
+        })
+      : params.delegate;
     this.agentDir = params.agentDir;
     this.activeWorkflowId = params.activeWorkflowId;
   }

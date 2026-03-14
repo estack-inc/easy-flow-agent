@@ -53,7 +53,8 @@ export interface MemoryChunk {
 
 export interface ChunkMetadata {
   agentId: string;          // ネームスペース識別子
-  sourceFile: string;       // 元ファイルパス or "session:{sessionId}"
+  sourceFile: string;       // 元ファイルパス or "session:{sessionId}:{contentHash}"
+                            // contentHash = sha256(sessionId:role:text) の先頭 16 文字
   sourceType: 'memory_file' | 'session_turn' | 'workflow_state';
   chunkIndex: number;
   createdAt: number;        // Unix timestamp (ms)

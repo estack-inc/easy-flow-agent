@@ -9,6 +9,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "test:integration": "PINECONE_INTEGRATION=true vitest run",
     "build": "tsc"
   },
   "dependencies": {

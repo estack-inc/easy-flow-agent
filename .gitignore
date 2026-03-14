@@ -13,6 +13,9 @@ dist/
 build/
 *.js.map
 *.d.ts.map
+# tsc output in src/ (bundler-style projects use source .ts directly)
+packages/*/src/*.js
+packages/*/src/*.d.ts
 
 # Environment variables
 .env
