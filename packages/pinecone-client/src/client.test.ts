@@ -20,8 +20,8 @@ vi.mock("@pinecone-database/pinecone", () => {
     listIndexes: vi.fn().mockResolvedValue({ indexes: [{ name: "easy-flow-memory" }] }),
     createIndex: vi.fn().mockResolvedValue(undefined),
     inference: {
-      embed: vi.fn().mockImplementation((_model: string, texts: string[]) =>
-        Promise.resolve(texts.map(() => ({ values: Array(1024).fill(0.1) }))),
+      embed: vi.fn().mockImplementation((params: { inputs: string[] }) =>
+        Promise.resolve({ data: params.inputs.map(() => ({ values: Array(1024).fill(0.1) })) }),
       ),
     },
   }));
@@ -96,18 +96,18 @@ describe("PineconeClient", () => {
       const chunks = [createChunk()];
       await client.upsert(chunks);
 
-      expect(mockPineconeInstance.inference.embed).toHaveBeenCalledWith(
-        "multilingual-e5-large",
-        ["Test memory content"],
-        { inputType: "passage" },
-      );
+      expect(mockPineconeInstance.inference.embed).toHaveBeenCalledWith({
+        model: "multilingual-e5-large",
+        inputs: ["Test memory content"],
+        parameters: { input_type: "passage", truncate: "END" },
+      });
 
       const mockIndex = mockPineconeInstance.index();
       expect(mockIndex.namespace).toHaveBeenCalledWith("agent:mell");
 
       const mockNs = mockIndex.namespace();
-      expect(mockNs.upsert).toHaveBeenCalledWith(
-        expect.arrayContaining([
+      expect(mockNs.upsert).toHaveBeenCalledWith({
+        records: expect.arrayContaining([
           expect.objectContaining({
             id: "mell:MEMORY.md:0",
             values: expect.any(Array),
@@ -118,7 +118,7 @@ describe("PineconeClient", () => {
             }),
           }),
         ]),
-      );
+      });
     });
 
     it("throws if chunks have mixed agentIds", async () => {
@@ -139,7 +139,7 @@ describe("PineconeClient", () => {
 
       const mockNs = mockPineconeInstance.index().namespace();
       const upsertCall = mockNs.upsert.mock.calls[0][0];
-      expect(upsertCall).toHaveLength(2);
+      expect(upsertCall.records).toHaveLength(2);
     });
 
     it("splits into multiple batches when chunks exceed 100", async () => {
@@ -155,8 +155,8 @@ describe("PineconeClient", () => {
 
       const mockNs = mockPineconeInstance.index().namespace();
       expect(mockNs.upsert).toHaveBeenCalledTimes(2);
-      expect(mockNs.upsert.mock.calls[0][0]).toHaveLength(100);
-      expect(mockNs.upsert.mock.calls[1][0]).toHaveLength(50);
+      expect(mockNs.upsert.mock.calls[0][0].records).toHaveLength(100);
+      expect(mockNs.upsert.mock.calls[1][0].records).toHaveLength(50);
     });
   });
 
@@ -197,11 +197,11 @@ describe("PineconeClient", () => {
         agentId: "mell",
       });
 
-      expect(mockPineconeInstance.inference.embed).toHaveBeenCalledWith(
-        "multilingual-e5-large",
-        ["search query"],
-        { inputType: "query" },
-      );
+      expect(mockPineconeInstance.inference.embed).toHaveBeenCalledWith({
+        model: "multilingual-e5-large",
+        inputs: ["search query"],
+        parameters: { input_type: "query", truncate: "END" },
+      });
 
       expect(results).toHaveLength(1);
       expect(results[0].score).toBe(0.95);

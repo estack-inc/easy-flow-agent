@@ -23,11 +23,13 @@ export class EmbeddingService {
 
     for (let i = 0; i < texts.length; i += EmbeddingService.BATCH_SIZE) {
       const batch = texts.slice(i, i + EmbeddingService.BATCH_SIZE);
-      const response = await this.pinecone.inference.embed(MODEL, batch, {
-        inputType,
+      const response = await this.pinecone.inference.embed({
+        model: MODEL,
+        inputs: batch,
+        parameters: { input_type: inputType, truncate: "END" },
       });
 
-      for (const item of response) {
+      for (const item of response.data) {
         results.push(item.values as number[]);
       }
     }
