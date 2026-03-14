@@ -235,18 +235,24 @@ export class PineconeContextEngine implements ContextEngine {
       }
 
       // Upsert all old turns to Pinecone (idempotent)
-      const allChunks = oldMessages.flatMap((msg, idx) => {
+      // Use content hash (same as ingest()) to avoid duplicate entries
+      const allChunks = oldMessages.flatMap((msg) => {
         const text =
           typeof msg.content === "string"
             ? msg.content
             : JSON.stringify(msg.content);
 
+        const contentHash = createHash("sha256")
+          .update(`${sessionId}:${msg.role}:${text}`)
+          .digest("hex")
+          .slice(0, 16);
+
         return this.chunker.chunk({
           text,
           agentId: this.agentId,
-          sourceFile: `session:${sessionId}:compact:${idx}`,
+          sourceFile: `session:${sessionId}:${contentHash}`,
           sourceType: "session_turn",
-          turnId: `${sessionId}:compact:${idx}`,
+          turnId: `${sessionId}:${contentHash}`,
           role: msg.role as "user" | "assistant",
         });
       });

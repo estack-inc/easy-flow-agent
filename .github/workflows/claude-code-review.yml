@@ -32,7 +32,7 @@ jobs:
           echo "Waiting for CI check on $SHA ..."
           for i in $(seq 1 60); do
             STATUS=$(gh api repos/$REPO/commits/$SHA/check-runs \
-              --jq '.check_runs[] | select(.name == "test (22)") | .status + ":" + (.conclusion // "pending")' \
+              --jq '.check_runs[] | select(.name | startswith("test")) | .status + ":" + (.conclusion // "pending")' \
               | head -1)
             echo "  Attempt $i: $STATUS"
             if [ -z "$STATUS" ]; then
