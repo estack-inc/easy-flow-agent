@@ -28,6 +28,7 @@ export class IndexManager {
             region: "us-east-1",
           },
         },
+        waitUntilReady: true,
       });
     }
   }

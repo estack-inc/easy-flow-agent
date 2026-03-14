@@ -24,11 +24,16 @@ export class PineconeClient implements IPineconeClient {
   async upsert(chunks: MemoryChunk[]): Promise<void> {
     if (chunks.length === 0) return;
 
+    const agentId = chunks[0].metadata.agentId;
+    const mixed = chunks.some((c) => c.metadata.agentId !== agentId);
+    if (mixed) {
+      throw new Error("All chunks must have the same agentId");
+    }
+
     const texts = chunks.map((c) => c.text);
     const embeddings = await this.embeddingService.embed(texts, "passage");
 
     const index = this.indexManager.getIndex();
-    const agentId = chunks[0].metadata.agentId;
     const ns = index.namespace(`agent:${agentId}`);
 
     const records = chunks.map((chunk, i) => ({
@@ -81,9 +86,11 @@ export class PineconeClient implements IPineconeClient {
   async delete(ids: string[]): Promise<void> {
     if (ids.length === 0) return;
 
-    // Extract agentId from first ID (format: "{agentId}:{sourceFile}:{chunkIndex}")
-    const firstId = ids[0];
-    const agentId = firstId.split(":")[0];
+    const agentId = ids[0].split(":")[0];
+    const mixed = ids.some((id) => id.split(":")[0] !== agentId);
+    if (mixed) {
+      throw new Error("All ids must belong to the same agentId");
+    }
 
     const index = this.indexManager.getIndex();
     const ns = index.namespace(`agent:${agentId}`);

@@ -1,10 +1,9 @@
 import type { Pinecone } from "@pinecone-database/pinecone";
 
 const MODEL = "multilingual-e5-large";
-const BATCH_SIZE = 96;
 
 export class EmbeddingService {
-  static readonly BATCH_SIZE = BATCH_SIZE;
+  static readonly BATCH_SIZE = 96;
 
   private readonly pinecone: Pinecone;
 
@@ -22,8 +21,8 @@ export class EmbeddingService {
 
     const results: number[][] = [];
 
-    for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-      const batch = texts.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < texts.length; i += EmbeddingService.BATCH_SIZE) {
+      const batch = texts.slice(i, i + EmbeddingService.BATCH_SIZE);
       const response = await this.pinecone.inference.embed(MODEL, batch, {
         inputType,
       });

@@ -121,6 +121,14 @@ describe("PineconeClient", () => {
       );
     });
 
+    it("throws if chunks have mixed agentIds", async () => {
+      const chunks = [
+        createChunk({ metadata: { ...createChunk().metadata, agentId: "mell" } }),
+        createChunk({ metadata: { ...createChunk().metadata, agentId: "other" } }),
+      ];
+      await expect(client.upsert(chunks)).rejects.toThrow("All chunks must have the same agentId");
+    });
+
     it("upserts multiple chunks", async () => {
       const chunks = [
         createChunk({ id: "mell:MEMORY.md:0", text: "chunk 0" }),
@@ -231,6 +239,10 @@ describe("PineconeClient", () => {
       await client.delete([]);
       const mockNs = mockPineconeInstance.index().namespace();
       expect(mockNs.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it("throws if ids have mixed agentIds", async () => {
+      await expect(client.delete(["mell:a.md:0", "other:b.md:0"])).rejects.toThrow("All ids must belong to the same agentId");
     });
 
     it("deletes by ids in correct namespace", async () => {
