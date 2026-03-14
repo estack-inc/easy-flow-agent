@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "npm run -r test",
-    "build": "npm run -r build"
+    "test": "npm test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
   }
 }

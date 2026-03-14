@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { WorkflowContextEngine } from "./context-engine.js";
 import { createNoopDelegate } from "./noop-delegate.js";
 import { createWorkflow } from "./store.js";
+import type { IPineconeClient } from "@easy-flow/pinecone-context-engine";
 
 describe("WorkflowContextEngine", () => {
   let tmpDir: string;
@@ -157,6 +158,61 @@ describe("WorkflowContextEngine", () => {
       const engine = createEngine();
       expect(engine.info.id).toBe("workflow");
       expect(engine.info.name).toBe("Workflow Context Engine");
+    });
+  });
+
+  describe("pinecone option", () => {
+    function createMockPineconeClient(): IPineconeClient & {
+      [K in keyof IPineconeClient]: Mock;
+    } {
+      return {
+        upsert: vi.fn().mockResolvedValue(undefined),
+        query: vi.fn().mockResolvedValue([]),
+        delete: vi.fn().mockResolvedValue(undefined),
+        deleteBySource: vi.fn().mockResolvedValue(undefined),
+        deleteNamespace: vi.fn().mockResolvedValue(undefined),
+        ensureIndex: vi.fn().mockResolvedValue(undefined),
+      } as IPineconeClient & { [K in keyof IPineconeClient]: Mock };
+    }
+
+    it("uses PineconeContextEngine as delegate when pinecone option is provided", async () => {
+      const client = createMockPineconeClient();
+      const engine = new WorkflowContextEngine({
+        delegate: createNoopDelegate(),
+        agentDir: tmpDir,
+        pinecone: {
+          client,
+          agentId: "mell",
+        },
+      });
+
+      // ingest should delegate to PineconeContextEngine which calls client.upsert
+      await engine.ingest({
+        sessionId: "s1",
+        message: { role: "user", content: "hello pinecone" },
+      });
+
+      expect(client.upsert).toHaveBeenCalledOnce();
+    });
+
+    it("passes correct agentId to PineconeContextEngine (not agentDir)", async () => {
+      const client = createMockPineconeClient();
+      const engine = new WorkflowContextEngine({
+        delegate: createNoopDelegate(),
+        agentDir: "/home/user/.openclaw/agents/mell",
+        pinecone: {
+          client,
+          agentId: "mell",
+        },
+      });
+
+      await engine.ingest({
+        sessionId: "s1",
+        message: { role: "user", content: "test" },
+      });
+
+      const chunks = client.upsert.mock.calls[0][0];
+      expect(chunks[0].metadata.agentId).toBe("mell");
     });
   });
 });
