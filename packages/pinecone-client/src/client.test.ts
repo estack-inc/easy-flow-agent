@@ -141,6 +141,23 @@ describe("PineconeClient", () => {
       const upsertCall = mockNs.upsert.mock.calls[0][0];
       expect(upsertCall).toHaveLength(2);
     });
+
+    it("splits into multiple batches when chunks exceed 100", async () => {
+      const chunks = Array.from({ length: 150 }, (_, i) =>
+        createChunk({
+          id: `mell:MEMORY.md:${i}`,
+          text: `chunk ${i}`,
+          metadata: { ...createChunk().metadata, chunkIndex: i },
+        }),
+      );
+
+      await client.upsert(chunks);
+
+      const mockNs = mockPineconeInstance.index().namespace();
+      expect(mockNs.upsert).toHaveBeenCalledTimes(2);
+      expect(mockNs.upsert.mock.calls[0][0]).toHaveLength(100);
+      expect(mockNs.upsert.mock.calls[1][0]).toHaveLength(50);
+    });
   });
 
   describe("query", () => {

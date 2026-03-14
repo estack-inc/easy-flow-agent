@@ -24,7 +24,7 @@ async function main(): Promise<void> {
       help: { type: "boolean", default: false },
     },
     allowPositionals: true,
-    strict: false,
+    strict: true,
   });
 
   if (values.help || positionals[0] === "help") {
