@@ -137,7 +137,7 @@ export class PineconeContextEngine implements ContextEngine {
       const chunks = this.chunker.chunk({
         text,
         agentId: this.agentId,
-        sourceFile: `session:${sessionId}:${turnId}`,
+        sourceFile: `session:${sessionId}:${contentHash}`,
         sourceType: "session_turn",
         turnId,
         role: message.role as "user" | "assistant",
