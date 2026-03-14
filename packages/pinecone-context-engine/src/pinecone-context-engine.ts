@@ -25,6 +25,7 @@ const DEFAULT_COMPACT_AFTER_DAYS = 7;
 
 const RETRY_BASE_MS = 100;
 const MAX_RETRIES = 3;
+const ASSEMBLE_TIMEOUT_MS = 3000;
 
 function isRateLimitError(err: unknown): boolean {
   if (err && typeof err === "object") {
@@ -40,14 +41,20 @@ function isRateLimitError(err: unknown): boolean {
   return false;
 }
 
+/**
+ * Retry with exponential backoff on 429 rate limit errors.
+ * Initial attempt + up to MAX_RETRIES retries = MAX_RETRIES + 1 total attempts.
+ * Backoff: 100ms → 200ms → 400ms.
+ */
 async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   let lastError: unknown;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+  const maxAttempts = MAX_RETRIES + 1; // initial + 3 retries = 4 attempts
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (err) {
       lastError = err;
-      if (!isRateLimitError(err) || attempt === MAX_RETRIES - 1) {
+      if (!isRateLimitError(err) || attempt === maxAttempts - 1) {
         throw err;
       }
       const delay = RETRY_BASE_MS * Math.pow(2, attempt);
@@ -70,7 +77,6 @@ export class PineconeContextEngine implements ContextEngine {
   private readonly ingestRoles: ("user" | "assistant")[];
   private readonly compactAfterDays: number;
   private readonly fallback: ContextEngine;
-  private readonly hasFallbackAdapter: boolean;
   private readonly chunker: TextChunker;
 
   constructor(params: PineconeContextEngineParams) {
@@ -79,7 +85,6 @@ export class PineconeContextEngine implements ContextEngine {
     this.tokenBudget = params.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
     this.ingestRoles = params.ingestRoles ?? DEFAULT_INGEST_ROLES;
     this.compactAfterDays = params.compactAfterDays ?? DEFAULT_COMPACT_AFTER_DAYS;
-    this.hasFallbackAdapter = params.fallbackAdapter !== undefined;
     this.fallback = params.fallbackAdapter
       ? new FallbackContextEngine(params.fallbackAdapter)
       : new EmptyFallbackContextEngine();
@@ -90,8 +95,16 @@ export class PineconeContextEngine implements ContextEngine {
     sessionId: string;
     sessionFile: string;
   }): Promise<BootstrapResult> {
-    await withRetry(() => this.client.ensureIndex());
-    return { bootstrapped: true };
+    try {
+      await withRetry(() => this.client.ensureIndex());
+      return { bootstrapped: true };
+    } catch (err) {
+      console.error("[PineconeContextEngine] bootstrap failed:", err);
+      return {
+        bootstrapped: false,
+        reason: `bootstrap failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
   }
 
   async ingest(params: {
@@ -153,14 +166,22 @@ export class PineconeContextEngine implements ContextEngine {
         };
       }
 
-      const results = await withRetry(() =>
-        this.client.query({
-          text: queryText,
-          agentId: this.agentId,
-          topK: DEFAULT_TOP_K,
-          minScore: DEFAULT_MIN_SCORE,
-        }),
-      );
+      const results = await Promise.race([
+        withRetry(() =>
+          this.client.query({
+            text: queryText,
+            agentId: this.agentId,
+            topK: DEFAULT_TOP_K,
+            minScore: DEFAULT_MIN_SCORE,
+          }),
+        ),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("assemble timeout")),
+            ASSEMBLE_TIMEOUT_MS,
+          ),
+        ),
+      ]);
 
       if (results.length === 0) {
         return {
@@ -292,8 +313,8 @@ export class PineconeContextEngine implements ContextEngine {
     cutoffTimestamp: number,
   ): Promise<AgentMessage[]> {
     try {
-      const fs = await import("node:fs");
-      const content = fs.readFileSync(sessionFile, "utf-8");
+      const { readFile } = await import("node:fs/promises");
+      const content = await readFile(sessionFile, "utf-8");
       const lines = content.split("\n").filter((l) => l.trim().length > 0);
 
       const oldMessages: AgentMessage[] = [];

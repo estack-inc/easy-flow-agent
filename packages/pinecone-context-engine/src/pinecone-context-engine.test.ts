@@ -87,6 +87,26 @@ describe("PineconeContextEngine", () => {
       expect(result.bootstrapped).toBe(true);
     });
 
+    it("returns bootstrapped: false on non-429 error (does not throw)", async () => {
+      const client = createMockClient();
+      client.ensureIndex.mockRejectedValue(new Error("connection refused"));
+
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "test-agent",
+      });
+
+      vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const result = await engine.bootstrap({
+        sessionId: "s1",
+        sessionFile: "/tmp/s1.jsonl",
+      });
+
+      expect(result.bootstrapped).toBe(false);
+      expect(result.reason).toContain("connection refused");
+    });
+
     it("retries on 429 rate limit", async () => {
       const client = createMockClient();
       const rateLimitError = Object.assign(new Error("Rate limited"), {
@@ -200,10 +220,11 @@ describe("PineconeContextEngine", () => {
       expect(consoleSpy).toHaveBeenCalled();
     });
 
-    it("retries on 429 before giving up gracefully", async () => {
+    it("retries on 429 up to 3 times (4 total attempts) before giving up gracefully", async () => {
       const client = createMockClient();
       const rateLimitError = Object.assign(new Error("429"), { status: 429 });
       client.upsert
+        .mockRejectedValueOnce(rateLimitError)
         .mockRejectedValueOnce(rateLimitError)
         .mockRejectedValueOnce(rateLimitError)
         .mockRejectedValueOnce(rateLimitError);
@@ -221,7 +242,8 @@ describe("PineconeContextEngine", () => {
       });
 
       expect(result.ingested).toBe(false);
-      expect(client.upsert).toHaveBeenCalledTimes(3);
+      // initial + 3 retries = 4 total attempts
+      expect(client.upsert).toHaveBeenCalledTimes(4);
     });
   });
 
@@ -403,6 +425,29 @@ describe("PineconeContextEngine", () => {
       expect(fallback.assemble).toHaveBeenCalled();
       expect(result.systemPromptAddition).toBe("fallback content");
     });
+
+    it("falls back after 3-second timeout", async () => {
+      const client = createMockClient();
+      // query never resolves (simulates hang)
+      client.query.mockImplementation(
+        () => new Promise(() => {}),
+      );
+
+      const fallback = createMockFallback();
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "test-agent",
+        fallbackAdapter: fallback,
+      });
+
+      vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const messages = [{ role: "user" as const, content: "test" }];
+      const result = await engine.assemble({ sessionId: "s1", messages });
+
+      expect(fallback.assemble).toHaveBeenCalled();
+      expect(result.systemPromptAddition).toBe("fallback content");
+    }, 10000);
 
     it("returns empty systemPromptAddition on failure without fallbackAdapter", async () => {
       const client = createMockClient();
