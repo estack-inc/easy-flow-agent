@@ -23,7 +23,24 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      - name: Check if target files changed
+        id: check_files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CHANGED=$(gh pr diff ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} --name-only | \
+            grep -cE '^packages/.*\.(ts|js|json)$|^specs/.*\.md$|^\.github/workflows/.*\.(yml|yaml)$|^CLAUDE\.md$' || echo "0")
+          if [ "$CHANGED" -eq 0 ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "No target files changed"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "Target files changed: $CHANGED"
+          fi
+
       - name: Wait for CI to succeed
+        if: steps.check_files.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -54,22 +71,6 @@ jobs:
           done
           echo "Timed out waiting for CI"
           exit 1
-
-      - name: Check if target files changed
-        id: check_files
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          CHANGED=$(gh pr diff ${{ github.event.pull_request.number }} \
-            --repo ${{ github.repository }} --name-only | \
-            grep -cE '^packages/.*\.(ts|js|json)$|^specs/.*\.md$|^\.github/workflows/.*\.(yml|yaml)$|^CLAUDE\.md$' || echo "0")
-          if [ "$CHANGED" -eq 0 ]; then
-            echo "skip=true" >> $GITHUB_OUTPUT
-            echo "No target files changed"
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-            echo "Target files changed: $CHANGED"
-          fi
 
       - name: Checkout repository
         if: steps.check_files.outputs.skip != 'true'
