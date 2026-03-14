@@ -1,0 +1,140 @@
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("@easy-flow/pinecone-client", () => ({
+  PineconeClient: vi.fn().mockImplementation((config) => ({
+    _config: config,
+  })),
+}));
+
+vi.mock("@easy-flow/pinecone-context-engine", () => ({
+  PineconeContextEngine: vi.fn().mockImplementation((params) => ({
+    _params: params,
+    assemble: vi.fn(),
+    ingest: vi.fn(),
+  })),
+}));
+
+import register from "./index.js";
+import { PineconeClient } from "@easy-flow/pinecone-client";
+import { PineconeContextEngine } from "@easy-flow/pinecone-context-engine";
+
+function createMockApi(pluginConfig: Record<string, unknown> = {}) {
+  return {
+    id: "pinecone-memory",
+    name: "Pinecone Memory",
+    source: "test",
+    pluginConfig,
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    },
+    registerContextEngine: vi.fn(),
+    resolvePath: (p: string) => p,
+    on: vi.fn(),
+  };
+}
+
+describe("pinecone-memory plugin", () => {
+  it("warns and does not register when API key is missing", () => {
+    const originalEnv = process.env.PINECONE_API_KEY;
+    delete process.env.PINECONE_API_KEY;
+
+    const api = createMockApi({});
+    register(api as any);
+
+    expect(api.logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("PINECONE_API_KEY not set")
+    );
+    expect(api.registerContextEngine).not.toHaveBeenCalled();
+
+    if (originalEnv === undefined) {
+      delete process.env.PINECONE_API_KEY;
+    } else {
+      process.env.PINECONE_API_KEY = originalEnv;
+    }
+  });
+
+  it("registers context engine with API key from pluginConfig", () => {
+    const api = createMockApi({ apiKey: "test-key", agentId: "mell" });
+    register(api as any);
+
+    expect(api.registerContextEngine).toHaveBeenCalledWith(
+      "pinecone-memory",
+      expect.any(Function)
+    );
+    expect(api.logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("agentId: mell")
+    );
+  });
+
+  it("registers context engine with API key from env var", () => {
+    const originalEnv = process.env.PINECONE_API_KEY;
+    process.env.PINECONE_API_KEY = "env-key";
+
+    const api = createMockApi({});
+    register(api as any);
+
+    expect(api.registerContextEngine).toHaveBeenCalledWith(
+      "pinecone-memory",
+      expect.any(Function)
+    );
+
+    if (originalEnv === undefined) {
+      delete process.env.PINECONE_API_KEY;
+    } else {
+      process.env.PINECONE_API_KEY = originalEnv;
+    }
+  });
+
+  it("uses default agentId when not specified", () => {
+    const api = createMockApi({ apiKey: "test-key" });
+    register(api as any);
+
+    expect(api.logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("agentId: default")
+    );
+  });
+
+  it("uses custom indexName and compactAfterDays", () => {
+    const api = createMockApi({
+      apiKey: "test-key",
+      agentId: "mell",
+      indexName: "custom-index",
+      compactAfterDays: 14,
+    });
+    register(api as any);
+
+    expect(api.logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("index: custom-index")
+    );
+    expect(api.logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("compactAfterDays: 14")
+    );
+  });
+
+  it("factory creates PineconeContextEngine with correct params", () => {
+    const api = createMockApi({
+      apiKey: "test-key",
+      agentId: "mell",
+      indexName: "custom-index",
+      compactAfterDays: 14,
+    });
+    register(api as any);
+
+    const factory = api.registerContextEngine.mock.calls[0][1];
+    const engine = factory();
+
+    expect(PineconeClient).toHaveBeenCalledWith({
+      apiKey: "test-key",
+      indexName: "custom-index",
+    });
+    expect(PineconeContextEngine).toHaveBeenCalledWith({
+      pineconeClient: expect.objectContaining({ _config: { apiKey: "test-key", indexName: "custom-index" } }),
+      agentId: "mell",
+      compactAfterDays: 14,
+    });
+    expect(engine).toBeDefined();
+  });
+});
