@@ -48,7 +48,7 @@ export class PineconeClient implements IPineconeClient {
     }));
 
     for (let i = 0; i < records.length; i += UPSERT_BATCH_SIZE) {
-      await ns.upsert(records.slice(i, i + UPSERT_BATCH_SIZE));
+      await ns.upsert({ records: records.slice(i, i + UPSERT_BATCH_SIZE) });
     }
   }
 

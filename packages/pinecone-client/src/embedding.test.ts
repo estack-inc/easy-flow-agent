@@ -24,28 +24,28 @@ describe("EmbeddingService", () => {
 
   it("calls pinecone.inference.embed with correct parameters", async () => {
     const fakeEmbedding = createFakeEmbedding();
-    const embedFn = vi.fn().mockResolvedValue([{ values: fakeEmbedding }]);
+    const embedFn = vi.fn().mockResolvedValue({ data: [{ values: fakeEmbedding }] });
     const mockPinecone = createMockPinecone(embedFn);
     const service = new EmbeddingService(mockPinecone);
 
     const result = await service.embed(["Hello world"], "query");
 
-    expect(embedFn).toHaveBeenCalledWith(
-      "multilingual-e5-large",
-      ["Hello world"],
-      { inputType: "query" },
-    );
+    expect(embedFn).toHaveBeenCalledWith({
+      model: "multilingual-e5-large",
+      inputs: ["Hello world"],
+      parameters: { input_type: "query", truncate: "END" },
+    });
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual(fakeEmbedding);
   });
 
   it("handles multiple texts in a single batch", async () => {
     const fakeEmbedding = createFakeEmbedding();
-    const embedFn = vi.fn().mockResolvedValue([
+    const embedFn = vi.fn().mockResolvedValue({ data: [
       { values: fakeEmbedding },
       { values: fakeEmbedding },
       { values: fakeEmbedding },
-    ]);
+    ] });
     const mockPinecone = createMockPinecone(embedFn);
     const service = new EmbeddingService(mockPinecone);
 
@@ -60,8 +60,8 @@ describe("EmbeddingService", () => {
 
   it("auto-splits into batches when exceeding BATCH_SIZE", async () => {
     const fakeEmbedding = createFakeEmbedding();
-    const embedFn = vi.fn().mockImplementation((_model: string, texts: string[]) =>
-      Promise.resolve(texts.map(() => ({ values: fakeEmbedding }))),
+    const embedFn = vi.fn().mockImplementation((params: { inputs: string[] }) =>
+      Promise.resolve({ data: params.inputs.map(() => ({ values: fakeEmbedding })) }),
     );
     const mockPinecone = createMockPinecone(embedFn);
     const service = new EmbeddingService(mockPinecone);
@@ -74,30 +74,30 @@ describe("EmbeddingService", () => {
     expect(result).toHaveLength(200);
 
     // Verify batch sizes
-    expect(embedFn.mock.calls[0][1]).toHaveLength(96);
-    expect(embedFn.mock.calls[1][1]).toHaveLength(96);
-    expect(embedFn.mock.calls[2][1]).toHaveLength(8);
+    expect(embedFn.mock.calls[0][0].inputs).toHaveLength(96);
+    expect(embedFn.mock.calls[1][0].inputs).toHaveLength(96);
+    expect(embedFn.mock.calls[2][0].inputs).toHaveLength(8);
   });
 
   it("passes inputType correctly for passage and query", async () => {
     const fakeEmbedding = createFakeEmbedding();
-    const embedFn = vi.fn().mockResolvedValue([{ values: fakeEmbedding }]);
+    const embedFn = vi.fn().mockResolvedValue({ data: [{ values: fakeEmbedding }] });
     const mockPinecone = createMockPinecone(embedFn);
     const service = new EmbeddingService(mockPinecone);
 
     await service.embed(["passage text"], "passage");
-    expect(embedFn).toHaveBeenCalledWith(
-      "multilingual-e5-large",
-      ["passage text"],
-      { inputType: "passage" },
-    );
+    expect(embedFn).toHaveBeenCalledWith({
+      model: "multilingual-e5-large",
+      inputs: ["passage text"],
+      parameters: { input_type: "passage", truncate: "END" },
+    });
 
     await service.embed(["query text"], "query");
-    expect(embedFn).toHaveBeenCalledWith(
-      "multilingual-e5-large",
-      ["query text"],
-      { inputType: "query" },
-    );
+    expect(embedFn).toHaveBeenCalledWith({
+      model: "multilingual-e5-large",
+      inputs: ["query text"],
+      parameters: { input_type: "query", truncate: "END" },
+    });
   });
 
   it("has BATCH_SIZE of 96", () => {
