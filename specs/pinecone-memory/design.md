@@ -258,6 +258,14 @@ export class PineconeContextEngine implements ContextEngine {
 5. エラー時はログ出力のみ（例外を伝播させない）
 ```
 
+#### turnId の冪等設計
+
+turnId は決定論的 hash で生成する（冪等設計）。
+- 同一 sessionId + role + content → 常に同一 turnId
+- 同じメッセージを 2 回 ingest しても Pinecone は上書き（重複エントリなし）
+- 形式: sha256(sessionId + ":" + role + ":" + text) の先頭 16 文字
+- 例: "${sessionId}:a1b2c3d4e5f6a7b8"
+
 #### compact() の処理フロー
 
 ```
