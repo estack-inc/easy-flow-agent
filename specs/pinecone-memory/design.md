@@ -286,6 +286,10 @@ turnId は決定論的 hash で生成する（冪等設計）。
    → upsert 失敗時にステップ 3 を実行すると、Pinecone 未保存のターンが
      セッションファイルからも削除され、記憶が永久に失われるため
 
+注意: compact() は ingestRoles フィルターを適用しない。
+compact 対象のターンは ingest() 時点でフィルタリング済みのため、
+compact() はセッションファイルの全ターンを対象に upsert する。
+
 4. delegate の compact() は呼ばない（Pinecone が代替）
 ```
 
