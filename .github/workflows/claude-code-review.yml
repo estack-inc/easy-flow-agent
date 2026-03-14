@@ -39,6 +39,39 @@ jobs:
             echo "Target files changed: $CHANGED"
           fi
 
+      - name: Wait for CI to succeed
+        if: steps.check_files.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.event.pull_request.head.sha }}"
+          REPO="${{ github.repository }}"
+          echo "Waiting for CI check on $SHA ..."
+          for i in $(seq 1 60); do
+            STATUS=$(gh api repos/$REPO/commits/$SHA/check-runs \
+              --jq '.check_runs[] | select(.name | startswith("test")) | .status + ":" + (.conclusion // "pending")' \
+              | head -1)
+            echo "  Attempt $i: $STATUS"
+            if [ -z "$STATUS" ]; then
+              echo "  CI check not found yet, waiting..."
+              sleep 10
+              continue
+            fi
+            case "$STATUS" in
+              completed:success)
+                echo "CI passed!"
+                exit 0
+                ;;
+              completed:*)
+                echo "CI failed: $STATUS"
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+          echo "Timed out waiting for CI"
+          exit 1
+
       - name: Checkout repository
         if: steps.check_files.outputs.skip != 'true'
         uses: actions/checkout@v4
@@ -116,6 +149,7 @@ jobs:
             - 確信がない指摘は避け、確実な問題のみ指摘する
             - 修正漏れの検出を最優先で行う
             - インラインコメントで具体的な箇所を指摘する
+            - **全ての指摘を1回のレビューで網羅的に出し切ること。** 🔴🟡🔵 全レベルの指摘を漏れなく含める。push のたびにレビューが再実行されるため、指摘の小出しはトークンコストの無駄になる
 
           claude_args: |
             --model ${{ vars.AI_REVIEW_MODEL || 'sonnet' }}

@@ -239,6 +239,28 @@ describe("PineconeContextEngine", () => {
       expect(chunks1[0].metadata.turnId).toBe(chunks2[0].metadata.turnId);
     });
 
+    it("produces different chunk IDs for different messages in the same session", async () => {
+      const client = createMockClient();
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "test-agent",
+      });
+
+      await engine.ingest({
+        sessionId: "s1",
+        message: { role: "user", content: "Hello" },
+      });
+      await engine.ingest({
+        sessionId: "s1",
+        message: { role: "assistant", content: "World" },
+      });
+
+      expect(client.upsert).toHaveBeenCalledTimes(2);
+      const chunks1 = client.upsert.mock.calls[0][0] as MemoryChunk[];
+      const chunks2 = client.upsert.mock.calls[1][0] as MemoryChunk[];
+      expect(chunks1[0].id).not.toBe(chunks2[0].id);
+    });
+
     it("retries on 429 up to 3 times (4 total attempts) before giving up gracefully", async () => {
       const client = createMockClient();
       const rateLimitError = Object.assign(new Error("429"), { status: 429 });
