@@ -242,6 +242,10 @@ export class PineconeContextEngine implements ContextEngine {
             ? msg.content
             : JSON.stringify(msg.content);
 
+        if (!text || text.length === 0) {
+          return [];
+        }
+
         const contentHash = createHash("sha256")
           .update(`${sessionId}:${msg.role}:${text}`)
           .digest("hex")
