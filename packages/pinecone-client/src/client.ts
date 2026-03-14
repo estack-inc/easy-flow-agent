@@ -98,7 +98,7 @@ export class PineconeClient implements IPineconeClient {
 
     const index = this.indexManager.getIndex();
     const ns = index.namespace(`agent:${agentId}`);
-    await ns.deleteMany(ids);
+    await ns.deleteMany({ ids });
   }
 
   async deleteBySource(agentId: string, sourceFile: string): Promise<void> {

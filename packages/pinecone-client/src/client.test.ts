@@ -269,10 +269,12 @@ describe("PineconeClient", () => {
       expect(mockIndex.namespace).toHaveBeenCalledWith("agent:mell");
 
       const mockNs = mockIndex.namespace();
-      expect(mockNs.deleteMany).toHaveBeenCalledWith([
-        "mell:MEMORY.md:0",
-        "mell:MEMORY.md:1",
-      ]);
+      expect(mockNs.deleteMany).toHaveBeenCalledWith({
+        ids: [
+          "mell:MEMORY.md:0",
+          "mell:MEMORY.md:1",
+        ],
+      });
     });
   });
 
@@ -288,10 +290,12 @@ describe("PineconeClient", () => {
       expect(mockNs.listPaginated).toHaveBeenCalledWith({
         prefix: "mell:MEMORY.md:",
       });
-      expect(mockNs.deleteMany).toHaveBeenCalledWith([
-        "mell:MEMORY.md:0",
-        "mell:MEMORY.md:1",
-      ]);
+      expect(mockNs.deleteMany).toHaveBeenCalledWith({
+        ids: [
+          "mell:MEMORY.md:0",
+          "mell:MEMORY.md:1",
+        ],
+      });
     });
 
     it("handles pagination", async () => {
@@ -308,10 +312,12 @@ describe("PineconeClient", () => {
       await client.deleteBySource("mell", "file.md");
 
       expect(mockNs.listPaginated).toHaveBeenCalledTimes(2);
-      expect(mockNs.deleteMany).toHaveBeenCalledWith([
-        "mell:file.md:0",
-        "mell:file.md:1",
-      ]);
+      expect(mockNs.deleteMany).toHaveBeenCalledWith({
+        ids: [
+          "mell:file.md:0",
+          "mell:file.md:1",
+        ],
+      });
     });
 
     it("does not call deleteMany when no vectors found", async () => {

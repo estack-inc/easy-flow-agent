@@ -73,7 +73,7 @@ export class IndexManager {
     }
 
     if (ids.length > 0) {
-      await ns.deleteMany(ids);
+      await ns.deleteMany({ ids });
     }
   }
 
