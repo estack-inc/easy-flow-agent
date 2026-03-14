@@ -343,12 +343,12 @@ describe("PineconeClient", () => {
 
   describe("constructor", () => {
     it("uses default index name", () => {
-      const c = new PineconeClient({ apiKey: "key" });
+      new PineconeClient({ apiKey: "key" });
       expect(Pinecone).toHaveBeenCalledWith({ apiKey: "key" });
     });
 
     it("accepts custom index name", () => {
-      const c = new PineconeClient({ apiKey: "key", indexName: "custom-index" });
+      new PineconeClient({ apiKey: "key", indexName: "custom-index" });
       expect(Pinecone).toHaveBeenCalled();
     });
   });
