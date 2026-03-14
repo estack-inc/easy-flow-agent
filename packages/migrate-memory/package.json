@@ -1,21 +1,24 @@
 {
-  "name": "@easy-flow/pinecone-client",
+  "name": "@easy-flow/migrate-memory",
   "version": "1.0.0",
   "private": true,
-  "description": "Pinecone vector DB client for Easy Flow Agent memory",
+  "description": "CLI tool to migrate MEMORY.md files to Pinecone vector DB",
   "type": "module",
+  "bin": {
+    "easy-flow": "./src/cli.ts"
+  },
   "exports": {
     ".": "./src/index.ts"
   },
   "scripts": {
     "test": "vitest run",
-    "test:integration": "PINECONE_INTEGRATION=true vitest run",
     "build": "tsc"
   },
   "dependencies": {
-    "@pinecone-database/pinecone": "^7.0.0"
+    "@easy-flow/pinecone-client": "1.0.0"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }
