@@ -3,6 +3,8 @@ import { EmbeddingService } from "./embedding.js";
 import { IndexManager } from "./index-manager.js";
 import type { IPineconeClient, MemoryChunk, QueryParams, QueryResult } from "./types.js";
 
+const UPSERT_BATCH_SIZE = 100;
+
 export class PineconeClient implements IPineconeClient {
   private readonly pinecone: Pinecone;
   private readonly embeddingService: EmbeddingService;
@@ -45,7 +47,9 @@ export class PineconeClient implements IPineconeClient {
       },
     }));
 
-    await ns.upsert(records);
+    for (let i = 0; i < records.length; i += UPSERT_BATCH_SIZE) {
+      await ns.upsert(records.slice(i, i + UPSERT_BATCH_SIZE));
+    }
   }
 
   async query(params: QueryParams): Promise<QueryResult[]> {

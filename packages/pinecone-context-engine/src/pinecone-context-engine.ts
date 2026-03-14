@@ -337,7 +337,13 @@ export class PineconeContextEngine implements ContextEngine {
         try {
           const entry = JSON.parse(line);
           // Session entries have a timestamp field
-          if (entry.timestamp && entry.timestamp < cutoffTimestamp && entry.message) {
+          if (
+            entry.timestamp &&
+            entry.timestamp < cutoffTimestamp &&
+            entry.message &&
+            typeof entry.message.role === "string" &&
+            entry.message.content !== undefined
+          ) {
             oldMessages.push(entry.message);
           }
         } catch {
