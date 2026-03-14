@@ -6,14 +6,20 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "build": "tsc",
     "test": "vitest run"
   },
   "dependencies": {
     "@easy-flow/pinecone-client": "*",
     "@easy-flow/pinecone-context-engine": "*"
   },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.7"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": { "optional": true }
+  },
   "devDependencies": {
-    "openclaw": "*",
     "typescript": "^5.0.0",
     "vitest": "^3.0.0"
   }

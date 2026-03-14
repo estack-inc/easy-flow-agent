@@ -32,7 +32,11 @@ describe("pinecone-memory plugin", () => {
     );
     expect(api.registerContextEngine).not.toHaveBeenCalled();
 
-    process.env.PINECONE_API_KEY = originalEnv;
+    if (originalEnv === undefined) {
+      delete process.env.PINECONE_API_KEY;
+    } else {
+      process.env.PINECONE_API_KEY = originalEnv;
+    }
   });
 
   it("registers context engine with API key from pluginConfig", () => {
@@ -60,7 +64,11 @@ describe("pinecone-memory plugin", () => {
       expect.any(Function)
     );
 
-    process.env.PINECONE_API_KEY = originalEnv;
+    if (originalEnv === undefined) {
+      delete process.env.PINECONE_API_KEY;
+    } else {
+      process.env.PINECONE_API_KEY = originalEnv;
+    }
   });
 
   it("uses default agentId when not specified", () => {
