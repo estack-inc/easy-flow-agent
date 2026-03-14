@@ -5,10 +5,10 @@
   "description": "CLI tool to migrate MEMORY.md files to Pinecone vector DB",
   "type": "module",
   "bin": {
-    "easy-flow": "./src/cli.ts"
+    "easy-flow": "./dist/cli.js"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./dist/index.js"
   },
   "scripts": {
     "test": "vitest run",

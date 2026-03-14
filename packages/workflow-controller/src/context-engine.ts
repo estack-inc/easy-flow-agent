@@ -42,6 +42,7 @@ export class WorkflowContextEngine implements ContextEngine {
     activeWorkflowId?: string;
     pinecone?: {
       client: IPineconeClient;
+      agentId: string;
       tokenBudget?: number;
       ingestRoles?: ("user" | "assistant")[];
       compactAfterDays?: number;
@@ -51,7 +52,7 @@ export class WorkflowContextEngine implements ContextEngine {
     this.delegate = params.pinecone
       ? new PineconeContextEngine({
           pineconeClient: params.pinecone.client,
-          agentId: params.agentDir ?? "default",
+          agentId: params.pinecone.agentId,
           tokenBudget: params.pinecone.tokenBudget,
           ingestRoles: params.pinecone.ingestRoles,
           compactAfterDays: params.pinecone.compactAfterDays,

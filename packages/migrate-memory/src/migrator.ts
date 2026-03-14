@@ -37,7 +37,7 @@ export class Migrator {
       errors: [],
     };
 
-    const files = await this.collectFiles(sources);
+    const files = await this.collectFiles(sources, result.skippedFiles);
 
     for (const file of files) {
       try {
@@ -73,7 +73,10 @@ export class Migrator {
     return result;
   }
 
-  private async collectFiles(sources: string[]): Promise<string[]> {
+  private async collectFiles(
+    sources: string[],
+    skippedFiles: string[],
+  ): Promise<string[]> {
     const files: string[] = [];
 
     for (const source of sources) {
@@ -85,7 +88,7 @@ export class Migrator {
           files.push(source);
         }
       } catch {
-        // skip inaccessible paths
+        skippedFiles.push(source);
       }
     }
 
