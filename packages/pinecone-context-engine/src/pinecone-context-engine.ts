@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type {
   ContextEngine,
@@ -128,7 +129,11 @@ export class PineconeContextEngine implements ContextEngine {
         return { ingested: false };
       }
 
-      const turnId = `${sessionId}:${Date.now()}`;
+      const contentHash = createHash("sha256")
+        .update(`${sessionId}:${message.role}:${text}`)
+        .digest("hex")
+        .slice(0, 16);
+      const turnId = `${sessionId}:${contentHash}`;
       const chunks = this.chunker.chunk({
         text,
         agentId: this.agentId,

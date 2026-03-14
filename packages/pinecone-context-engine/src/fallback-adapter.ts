@@ -52,6 +52,10 @@ export class FallbackContextEngine implements ContextEngine {
     sessionFile: string;
     tokenBudget?: number;
     force?: boolean;
+    currentTokenCount?: number;
+    compactionTarget?: "budget" | "threshold";
+    customInstructions?: string;
+    runtimeContext?: Record<string, unknown>;
   }): Promise<CompactResult> {
     return this.wrapped.compact(params);
   }

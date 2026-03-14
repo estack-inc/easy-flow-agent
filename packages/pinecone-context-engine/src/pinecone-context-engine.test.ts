@@ -220,6 +220,25 @@ describe("PineconeContextEngine", () => {
       expect(consoleSpy).toHaveBeenCalled();
     });
 
+    it("produces identical chunk IDs for the same message (idempotent turnId)", async () => {
+      const client = createMockClient();
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "test-agent",
+      });
+
+      const message = { role: "user" as const, content: "Hello, world!" };
+
+      await engine.ingest({ sessionId: "s1", message });
+      await engine.ingest({ sessionId: "s1", message });
+
+      expect(client.upsert).toHaveBeenCalledTimes(2);
+      const chunks1 = client.upsert.mock.calls[0][0] as MemoryChunk[];
+      const chunks2 = client.upsert.mock.calls[1][0] as MemoryChunk[];
+      expect(chunks1[0].id).toBe(chunks2[0].id);
+      expect(chunks1[0].metadata.turnId).toBe(chunks2[0].metadata.turnId);
+    });
+
     it("retries on 429 up to 3 times (4 total attempts) before giving up gracefully", async () => {
       const client = createMockClient();
       const rateLimitError = Object.assign(new Error("429"), { status: 429 });
@@ -427,6 +446,8 @@ describe("PineconeContextEngine", () => {
     });
 
     it("falls back after 3-second timeout", async () => {
+      vi.useFakeTimers();
+
       const client = createMockClient();
       // query never resolves (simulates hang)
       client.query.mockImplementation(
@@ -443,11 +464,15 @@ describe("PineconeContextEngine", () => {
       vi.spyOn(console, "error").mockImplementation(() => {});
 
       const messages = [{ role: "user" as const, content: "test" }];
-      const result = await engine.assemble({ sessionId: "s1", messages });
+      const promise = engine.assemble({ sessionId: "s1", messages });
+      await vi.runAllTimersAsync();
+      const result = await promise;
 
       expect(fallback.assemble).toHaveBeenCalled();
       expect(result.systemPromptAddition).toBe("fallback content");
-    }, 10000);
+
+      vi.useRealTimers();
+    });
 
     it("returns empty systemPromptAddition on failure without fallbackAdapter", async () => {
       const client = createMockClient();
