@@ -1,0 +1,20 @@
+{
+  "name": "@easy-flow/openclaw-pinecone-plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@easy-flow/pinecone-client": "*",
+    "@easy-flow/pinecone-context-engine": "*"
+  },
+  "devDependencies": {
+    "openclaw": "*",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  }
+}
