@@ -30,7 +30,9 @@
         "**/*accounts*.md",
         "**/employees/**",
         "**/node_modules/**",
-        "**/downloads/**"
+        "**/downloads/**",
+        "**/skills/**",
+        "**/AGENTS.md"
       ],
       "memoryHint": "AI agent for Central HD (central-hd.co.jp) real estate company. Memory is sparse."
     },
