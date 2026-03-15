@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { UnifiedAgentState } from "./types.js";
 import type { AgentState } from "./agent-state-converter.js";
 import {
   agentStateToUnified,
+  formatAgentContextForLLM,
   unifiedToAgentState,
   updateAgentContext,
-  formatAgentContextForLLM,
 } from "./agent-state-converter.js";
+import type { UnifiedAgentState } from "./types.js";
 
 /** テスト用の AgentState ファクトリ */
 function createTestAgentState(overrides?: Partial<AgentState>): AgentState {

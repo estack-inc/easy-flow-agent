@@ -1,11 +1,8 @@
-import type {
-  OpenClawPluginApi,
-  OpenClawPluginToolFactory,
-} from "openclaw/plugin-sdk/core";
+import type { OpenClawPluginApi, OpenClawPluginToolFactory } from "openclaw/plugin-sdk/core";
 import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/core";
 import { WorkflowContextEngine } from "./src/context-engine.js";
-import { createWorkflowTools } from "./src/tools.js";
 import { createNoopDelegate } from "./src/noop-delegate.js";
+import { createWorkflowTools } from "./src/tools.js";
 
 /**
  * Workflow Controller プラグイン

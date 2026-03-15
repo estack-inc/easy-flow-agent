@@ -1,13 +1,39 @@
-import { describe, it, expect, vi } from "vitest";
-import { MemoryDeleter } from "./deleter.js";
 import type { IPineconeClient } from "@easy-flow/pinecone-client";
+import { describe, expect, it, vi } from "vitest";
+import { MemoryDeleter } from "./deleter.js";
 
 function createMockClient(): IPineconeClient {
   return {
     upsert: vi.fn().mockResolvedValue(undefined),
     query: vi.fn().mockResolvedValue([
-      { chunk: { id: "chunk-1", text: "田中花子の情報", metadata: { agentId: "mell", sourceFile: "test", sourceType: "session_turn", chunkIndex: 0, createdAt: Date.now() } }, score: 0.9 },
-      { chunk: { id: "chunk-2", text: "田中さんのアルパカ", metadata: { agentId: "mell", sourceFile: "test", sourceType: "session_turn", chunkIndex: 1, createdAt: Date.now() } }, score: 0.85 },
+      {
+        chunk: {
+          id: "chunk-1",
+          text: "田中花子の情報",
+          metadata: {
+            agentId: "mell",
+            sourceFile: "test",
+            sourceType: "session_turn",
+            chunkIndex: 0,
+            createdAt: Date.now(),
+          },
+        },
+        score: 0.9,
+      },
+      {
+        chunk: {
+          id: "chunk-2",
+          text: "田中さんのアルパカ",
+          metadata: {
+            agentId: "mell",
+            sourceFile: "test",
+            sourceType: "session_turn",
+            chunkIndex: 1,
+            createdAt: Date.now(),
+          },
+        },
+        score: 0.85,
+      },
     ]),
     delete: vi.fn().mockResolvedValue(undefined),
     deleteBySource: vi.fn().mockResolvedValue(undefined),
@@ -19,11 +45,17 @@ function createMockClient(): IPineconeClient {
 describe("MemoryDeleter", () => {
   it("deleteByKeyword - dry run does not call delete", async () => {
     const mockClient = createMockClient();
-    const deleter = new MemoryDeleter({ pineconeClient: mockClient, agentId: "mell", dryRun: true });
+    const deleter = new MemoryDeleter({
+      pineconeClient: mockClient,
+      agentId: "mell",
+      dryRun: true,
+    });
 
     const result = await deleter.deleteByKeyword("田中花子");
 
-    expect(mockClient.query).toHaveBeenCalledWith(expect.objectContaining({ text: "田中花子", agentId: "mell" }));
+    expect(mockClient.query).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "田中花子", agentId: "mell" }),
+    );
     expect(mockClient.delete).not.toHaveBeenCalled();
     expect(result.searchedChunks).toBe(2);
     expect(result.deletedChunks).toBe(0);
@@ -42,7 +74,11 @@ describe("MemoryDeleter", () => {
 
   it("deleteBySource - dry run does not call deleteBySource", async () => {
     const mockClient = createMockClient();
-    const deleter = new MemoryDeleter({ pineconeClient: mockClient, agentId: "mell", dryRun: true });
+    const deleter = new MemoryDeleter({
+      pineconeClient: mockClient,
+      agentId: "mell",
+      dryRun: true,
+    });
 
     await deleter.deleteBySource("session:abc123");
 
@@ -60,7 +96,11 @@ describe("MemoryDeleter", () => {
 
   it("deleteAll - dry run does not call deleteNamespace", async () => {
     const mockClient = createMockClient();
-    const deleter = new MemoryDeleter({ pineconeClient: mockClient, agentId: "mell", dryRun: true });
+    const deleter = new MemoryDeleter({
+      pineconeClient: mockClient,
+      agentId: "mell",
+      dryRun: true,
+    });
 
     await deleter.deleteAll();
 

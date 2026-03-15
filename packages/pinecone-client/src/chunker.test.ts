@@ -132,9 +132,7 @@ describe("TextChunker", () => {
       sourceType: "memory_file",
     });
 
-    expect(result[0].metadata.createdAt).toBe(
-      new Date("2026-03-14T00:00:00Z").getTime(),
-    );
+    expect(result[0].metadata.createdAt).toBe(new Date("2026-03-14T00:00:00Z").getTime());
 
     vi.useRealTimers();
   });

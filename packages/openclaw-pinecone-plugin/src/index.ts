@@ -1,6 +1,6 @@
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { PineconeClient } from "@easy-flow/pinecone-client";
 import { PineconeContextEngine } from "@easy-flow/pinecone-context-engine";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 type PluginConfig = {
   apiKey?: string;
@@ -32,6 +32,6 @@ export default function register(api: OpenClawPluginApi): void {
   });
 
   api.logger.info(
-    `pinecone-memory: registered (agentId: ${agentId}, index: ${indexName}, compactAfterDays: ${compactAfterDays})`
+    `pinecone-memory: registered (agentId: ${agentId}, index: ${indexName}, compactAfterDays: ${compactAfterDays})`,
   );
 }

@@ -19,7 +19,7 @@ export function estimateTokens(text: string): number {
     } else if (
       (code >= 0x3000 && code <= 0x9fff) || // CJK punct, Hiragana, Katakana, CJK Unified Ideographs
       (code >= 0xf900 && code <= 0xfaff) || // CJK Compatibility Ideographs
-      (code >= 0xac00 && code <= 0xd7af)    // Korean Hangul (bonus coverage)
+      (code >= 0xac00 && code <= 0xd7af) // Korean Hangul (bonus coverage)
     ) {
       // Japanese/CJK: empirically ~1.5 tokens/char
       tokens += 1.5;

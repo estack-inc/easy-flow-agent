@@ -128,9 +128,7 @@ export function formatAgentContextForLLM(state: AgentState): string {
   }
 
   if (state.openQuestions.length > 0) {
-    sections.push(
-      `\n**Open Questions:**\n${state.openQuestions.map((q) => `- ${q}`).join("\n")}`,
-    );
+    sections.push(`\n**Open Questions:**\n${state.openQuestions.map((q) => `- ${q}`).join("\n")}`);
   }
 
   if (state.completedSteps.length > 0) {

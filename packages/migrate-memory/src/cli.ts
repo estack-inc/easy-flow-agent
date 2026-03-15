@@ -2,9 +2,9 @@
 
 import { parseArgs } from "node:util";
 import { PineconeClient } from "@easy-flow/pinecone-client";
-import { Migrator } from "./migrator.js";
-import { MemoryDeleter } from "./deleter.js";
 import { bulkMigrate } from "./bulk-migrator.js";
+import { MemoryDeleter } from "./deleter.js";
+import { Migrator } from "./migrator.js";
 
 function printUsage(): void {
   console.log(`Usage: easy-flow <command> [options]
@@ -165,7 +165,7 @@ async function runDelete(args: string[]): Promise<void> {
 
   console.log(`${dryRun ? "[DRY RUN] " : ""}Deleting memory for agent: ${agentId}`);
 
-  let result;
+  let result: Awaited<ReturnType<MemoryDeleter["deleteByKeyword"]>> | undefined;
 
   if (keyword) {
     console.log(`Warning: Keyword search uses semantic similarity — review results carefully.`);
@@ -190,8 +190,9 @@ async function runDelete(args: string[]): Promise<void> {
       console.log(`Chunks found: ${result.searchedChunks}`);
     }
     if (!dryRun) {
-      console.log(`Chunks deleted: ${result.deletedChunks != null ? result.deletedChunks : "done"}`);
-
+      console.log(
+        `Chunks deleted: ${result.deletedChunks != null ? result.deletedChunks : "done"}`,
+      );
     }
   }
 }
@@ -213,14 +214,11 @@ async function runBulkMigrate(args: string[]): Promise<void> {
   }
 
   const configPath =
-    args.find((a) => a.startsWith("--config="))?.split("=")[1] ??
-    "./easy-flow-instances.json";
+    args.find((a) => a.startsWith("--config="))?.split("=")[1] ?? "./easy-flow-instances.json";
   const dryRun = args.includes("--dry-run");
   const target = args.find((a) => a.startsWith("--target="))?.split("=")[1];
 
-  console.log(
-    `Bulk migrate: config=${configPath}, dryRun=${dryRun}, target=${target ?? "all"}`,
-  );
+  console.log(`Bulk migrate: config=${configPath}, dryRun=${dryRun}, target=${target ?? "all"}`);
   const result = await bulkMigrate({ configPath, dryRun, targetInstance: target });
   if (result.failed > 0) {
     process.exitCode = 1;

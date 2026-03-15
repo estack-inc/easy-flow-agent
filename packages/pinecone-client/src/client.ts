@@ -13,10 +13,7 @@ export class PineconeClient implements IPineconeClient {
   constructor(config: { apiKey: string; indexName?: string }) {
     this.pinecone = new Pinecone({ apiKey: config.apiKey });
     this.embeddingService = new EmbeddingService(this.pinecone);
-    this.indexManager = new IndexManager(
-      this.pinecone,
-      config.indexName ?? "easy-flow-memory",
-    );
+    this.indexManager = new IndexManager(this.pinecone, config.indexName ?? "easy-flow-memory");
   }
 
   async ensureIndex(): Promise<void> {
@@ -83,7 +80,9 @@ export class PineconeClient implements IPineconeClient {
           metadata: {
             agentId: (match.metadata?.agentId as string) ?? agentId,
             sourceFile: (match.metadata?.sourceFile as string) ?? "",
-            sourceType: (match.metadata?.sourceType as MemoryChunk["metadata"]["sourceType"]) ?? "memory_file",
+            sourceType:
+              (match.metadata?.sourceType as MemoryChunk["metadata"]["sourceType"]) ??
+              "memory_file",
             chunkIndex: (match.metadata?.chunkIndex as number) ?? 0,
             createdAt: (match.metadata?.createdAt as number) ?? 0,
             turnId: match.metadata?.turnId as string | undefined,

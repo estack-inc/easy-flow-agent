@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PineconeClient } from "./client.js";
 
 const SKIP = !process.env.PINECONE_INTEGRATION;
@@ -6,7 +6,7 @@ const describeIntegration = SKIP ? describe.skip : describe;
 
 describeIntegration("PineconeClient Integration", () => {
   let client: PineconeClient;
-  const agentId = "test-integration-" + Date.now();
+  const agentId = `test-integration-${Date.now()}`;
 
   beforeAll(async () => {
     client = new PineconeClient({ apiKey: process.env.PINECONE_API_KEY! });

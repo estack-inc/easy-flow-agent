@@ -1,5 +1,5 @@
-import { execSync } from "child_process";
-import * as fs from "fs";
+import { execSync } from "node:child_process";
+import * as fs from "node:fs";
 
 export interface InstanceConfig {
   name: string;
@@ -46,9 +46,7 @@ export async function bulkMigrate(
   options: BulkMigrateOptions,
   runner: CommandRunner = defaultRunner,
 ): Promise<BulkMigrateResult> {
-  const config: BulkMigrateConfig = JSON.parse(
-    runner.readFile(options.configPath),
-  );
+  const config: BulkMigrateConfig = JSON.parse(runner.readFile(options.configPath));
 
   const targets = options.targetInstance
     ? config.instances.filter((i) => i.name === options.targetInstance)
@@ -83,7 +81,10 @@ export async function bulkMigrate(
       console.log(`${instance.name}: migration complete`);
       processed++;
     } catch (err) {
-      console.error(`${instance.name}: migration failed:`, err instanceof Error ? err.message : String(err));
+      console.error(
+        `${instance.name}: migration failed:`,
+        err instanceof Error ? err.message : String(err),
+      );
       failed++;
     }
   }
@@ -91,22 +92,14 @@ export async function bulkMigrate(
   return { processed, failed };
 }
 
-function getApiKeyFromFly(
-  flyApp: string,
-  dryRun: boolean,
-  runner: CommandRunner,
-): string {
+function getApiKeyFromFly(flyApp: string, dryRun: boolean, runner: CommandRunner): string {
   if (dryRun) return "DRY_RUN_API_KEY";
   try {
     const result = runner.exec(`fly secrets list -a ${flyApp} --json`);
     const secrets: Array<{ Name: string }> = JSON.parse(result);
     const hasKey = secrets.some((s) => s.Name === "PINECONE_API_KEY");
     if (!hasKey) return "";
-    return runner
-      .exec(
-        `fly ssh console -a ${flyApp} -C "printenv PINECONE_API_KEY"`,
-      )
-      .trim();
+    return runner.exec(`fly ssh console -a ${flyApp} -C "printenv PINECONE_API_KEY"`).trim();
   } catch {
     return "";
   }
@@ -143,9 +136,7 @@ print('done')
   `.trim();
 
   const b64 = Buffer.from(script).toString("base64");
-  runner.exec(
-    `fly ssh console -a ${instance.flyApp} -C "echo '${b64}' | base64 -d | python3"`,
-  );
+  runner.exec(`fly ssh console -a ${instance.flyApp} -C "echo '${b64}' | base64 -d | python3"`);
 }
 
 async function runMigrateMemory(

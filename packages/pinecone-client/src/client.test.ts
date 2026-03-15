@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MemoryChunk } from "./types.js";
 
 // Mock @pinecone-database/pinecone before importing client
@@ -20,17 +20,19 @@ vi.mock("@pinecone-database/pinecone", () => {
     listIndexes: vi.fn().mockResolvedValue({ indexes: [{ name: "easy-flow-memory" }] }),
     createIndex: vi.fn().mockResolvedValue(undefined),
     inference: {
-      embed: vi.fn().mockImplementation((params: { inputs: string[] }) =>
-        Promise.resolve({ data: params.inputs.map(() => ({ values: Array(1024).fill(0.1) })) }),
-      ),
+      embed: vi
+        .fn()
+        .mockImplementation((params: { inputs: string[] }) =>
+          Promise.resolve({ data: params.inputs.map(() => ({ values: Array(1024).fill(0.1) })) }),
+        ),
     },
   }));
 
   return { Pinecone: MockPinecone };
 });
 
-import { PineconeClient } from "./client.js";
 import { Pinecone } from "@pinecone-database/pinecone";
+import { PineconeClient } from "./client.js";
 
 function createChunk(overrides: Partial<MemoryChunk> = {}): MemoryChunk {
   return {
@@ -55,9 +57,8 @@ describe("PineconeClient", () => {
     vi.clearAllMocks();
     client = new PineconeClient({ apiKey: "test-api-key" });
     // Get the mock instance created by the constructor
-    mockPineconeInstance = (Pinecone as any).mock.results[
-      (Pinecone as any).mock.results.length - 1
-    ].value;
+    mockPineconeInstance = (Pinecone as any).mock.results[(Pinecone as any).mock.results.length - 1]
+      .value;
   });
 
   describe("ensureIndex", () => {
@@ -70,9 +71,8 @@ describe("PineconeClient", () => {
       mockPineconeInstance.listIndexes.mockResolvedValueOnce({ indexes: [] });
       // Need a new client to pick up the mock
       const newClient = new PineconeClient({ apiKey: "test-key" });
-      const newInstance = (Pinecone as any).mock.results[
-        (Pinecone as any).mock.results.length - 1
-      ].value;
+      const newInstance = (Pinecone as any).mock.results[(Pinecone as any).mock.results.length - 1]
+        .value;
       newInstance.listIndexes.mockResolvedValueOnce({ indexes: [] });
 
       await newClient.ensureIndex();
@@ -132,7 +132,11 @@ describe("PineconeClient", () => {
     it("upserts multiple chunks", async () => {
       const chunks = [
         createChunk({ id: "mell:MEMORY.md:0", text: "chunk 0" }),
-        createChunk({ id: "mell:MEMORY.md:1", text: "chunk 1", metadata: { ...createChunk().metadata, chunkIndex: 1 } }),
+        createChunk({
+          id: "mell:MEMORY.md:1",
+          text: "chunk 1",
+          metadata: { ...createChunk().metadata, chunkIndex: 1 },
+        }),
       ];
 
       await client.upsert(chunks);
@@ -259,7 +263,9 @@ describe("PineconeClient", () => {
     });
 
     it("throws if ids have mixed agentIds", async () => {
-      await expect(client.delete(["mell:a.md:0", "other:b.md:0"])).rejects.toThrow("All ids must belong to the same agentId");
+      await expect(client.delete(["mell:a.md:0", "other:b.md:0"])).rejects.toThrow(
+        "All ids must belong to the same agentId",
+      );
     });
 
     it("deletes by ids in correct namespace", async () => {
@@ -270,10 +276,7 @@ describe("PineconeClient", () => {
 
       const mockNs = mockIndex.namespace();
       expect(mockNs.deleteMany).toHaveBeenCalledWith({
-        ids: [
-          "mell:MEMORY.md:0",
-          "mell:MEMORY.md:1",
-        ],
+        ids: ["mell:MEMORY.md:0", "mell:MEMORY.md:1"],
       });
     });
   });
@@ -291,10 +294,7 @@ describe("PineconeClient", () => {
         prefix: "mell:MEMORY.md:",
       });
       expect(mockNs.deleteMany).toHaveBeenCalledWith({
-        ids: [
-          "mell:MEMORY.md:0",
-          "mell:MEMORY.md:1",
-        ],
+        ids: ["mell:MEMORY.md:0", "mell:MEMORY.md:1"],
       });
     });
 
@@ -313,10 +313,7 @@ describe("PineconeClient", () => {
 
       expect(mockNs.listPaginated).toHaveBeenCalledTimes(2);
       expect(mockNs.deleteMany).toHaveBeenCalledWith({
-        ids: [
-          "mell:file.md:0",
-          "mell:file.md:1",
-        ],
+        ids: ["mell:file.md:0", "mell:file.md:1"],
       });
     });
 

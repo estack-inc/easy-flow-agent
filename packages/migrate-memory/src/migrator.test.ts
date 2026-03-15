@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { Migrator } from "./migrator.js";
 import type { IPineconeClient, MemoryChunk } from "@easy-flow/pinecone-client";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { Migrator } from "./migrator.js";
 
 function createMockClient(): IPineconeClient & {
   [K in keyof IPineconeClient]: Mock;

@@ -1,12 +1,12 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import type {
-  WorkflowState,
-  CreateWorkflowParams,
   AdvanceStepParams,
   BlockStepParams,
+  CreateWorkflowParams,
   WorkflowContextSummary,
+  WorkflowState,
 } from "./types.js";
 
 /**
@@ -212,9 +212,7 @@ export function renderContextMarkdown(state: WorkflowState): string {
   }
 
   if (summary.openQuestions.length > 0) {
-    sections.push(
-      `\n### Open Questions\n${summary.openQuestions.map((q) => `- ${q}`).join("\n")}`,
-    );
+    sections.push(`\n### Open Questions\n${summary.openQuestions.map((q) => `- ${q}`).join("\n")}`);
   }
 
   // Step overview

@@ -1,13 +1,13 @@
 import type { AnyAgentTool } from "openclaw/plugin-sdk";
+import type { WorkflowContextEngine } from "./context-engine.js";
 import {
-  createWorkflow,
   advanceStep,
   blockStep,
-  loadWorkflow,
+  createWorkflow,
   listWorkflows,
+  loadWorkflow,
   renderContextMarkdown,
 } from "./store.js";
-import type { WorkflowContextEngine } from "./context-engine.js";
 
 /**
  * ワークフロー管理ツール群を生成する。
@@ -152,7 +152,8 @@ export function createWorkflowTools(params: {
 
   const workflowStatusTool: AnyAgentTool = {
     name: "workflow_status",
-    description: "Get the current status of a workflow, including progress, facts, and open questions.",
+    description:
+      "Get the current status of a workflow, including progress, facts, and open questions.",
     parameters: {
       type: "object",
       properties: {

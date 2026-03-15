@@ -1,8 +1,8 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import picomatch from "picomatch";
-import { TextChunker } from "@easy-flow/pinecone-client";
 import type { IPineconeClient } from "@easy-flow/pinecone-client";
+import { TextChunker } from "@easy-flow/pinecone-client";
+import picomatch from "picomatch";
 
 export interface MigrateResult {
   processedFiles: number;
@@ -80,10 +80,7 @@ export class Migrator {
     return result;
   }
 
-  private async collectFiles(
-    sources: string[],
-    skippedFiles: string[],
-  ): Promise<string[]> {
+  private async collectFiles(sources: string[], skippedFiles: string[]): Promise<string[]> {
     const files: string[] = [];
 
     for (const source of sources) {

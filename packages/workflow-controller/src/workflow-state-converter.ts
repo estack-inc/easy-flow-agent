@@ -1,8 +1,8 @@
 import type {
-  UnifiedAgentState,
-  WorkflowState,
   AdvanceStepParams,
   BlockStepParams,
+  UnifiedAgentState,
+  WorkflowState,
 } from "./types.js";
 
 /**
@@ -99,10 +99,7 @@ export function advanceWorkflowStep(
  * 特定のステップをブロック状態にし、理由を記録。
  * 元の state は変更しない。
  */
-export function blockWorkflowStep(
-  state: WorkflowState,
-  params: BlockStepParams,
-): WorkflowState {
+export function blockWorkflowStep(state: WorkflowState, params: BlockStepParams): WorkflowState {
   const targetStepId = params.stepId ?? state.currentStepId;
 
   const updatedSteps = state.steps.map((step) => {
@@ -147,9 +144,7 @@ export function getWorkflowSummary(state: WorkflowState): string {
   }
 
   if (state.openQuestions.length > 0) {
-    sections.push(
-      `\n**Open Questions:**\n${state.openQuestions.map((q) => `- ${q}`).join("\n")}`,
-    );
+    sections.push(`\n**Open Questions:**\n${state.openQuestions.map((q) => `- ${q}`).join("\n")}`);
   }
 
   if (blockedStep?.blockedReasons && blockedStep.blockedReasons.length > 0) {

@@ -1,11 +1,11 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type {
+  AssembleResult,
+  BootstrapResult,
+  CompactResult,
   ContextEngine,
   ContextEngineInfo,
-  AssembleResult,
-  CompactResult,
   IngestResult,
-  BootstrapResult,
 } from "openclaw/plugin-sdk";
 
 /**
@@ -21,10 +21,7 @@ export class FallbackContextEngine implements ContextEngine {
     this.info = wrapped.info;
   }
 
-  async bootstrap(params: {
-    sessionId: string;
-    sessionFile: string;
-  }): Promise<BootstrapResult> {
+  async bootstrap(params: { sessionId: string; sessionFile: string }): Promise<BootstrapResult> {
     if (this.wrapped.bootstrap) {
       return this.wrapped.bootstrap(params);
     }

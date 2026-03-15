@@ -11,10 +11,7 @@ export class EmbeddingService {
     this.pinecone = pinecone;
   }
 
-  async embed(
-    texts: string[],
-    inputType: "passage" | "query",
-  ): Promise<number[][]> {
+  async embed(texts: string[], inputType: "passage" | "query"): Promise<number[][]> {
     if (texts.length === 0) {
       return [];
     }
