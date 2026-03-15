@@ -291,25 +291,29 @@ describe("bulkMigrate", () => {
 
       const errorSpy = vi.spyOn(console, "error");
 
-      const result = await bulkMigrate(
-        { configPath: "mock", dryRun: false, targetInstance: "no-token" },
-        mockRunner,
-      );
+      try {
+        const result = await bulkMigrate(
+          { configPath: "mock", dryRun: false, targetInstance: "no-token" },
+          mockRunner,
+        );
 
-      // ensureEasyFlowAgent がエラーをスローし、bulkMigrate が catch して failed にカウント
-      expect(result.failed).toBe(1);
-      expect(result.processed).toBe(0);
+        // ensureEasyFlowAgent がエラーをスローし、bulkMigrate が catch して failed にカウント
+        expect(result.failed).toBe(1);
+        expect(result.processed).toBe(0);
 
-      const errorLogs = errorSpy.mock.calls
-        .filter((call) => typeof call[0] === "string" && call[0].includes("migration failed"))
-        .map((call) => call[0]);
-      expect(errorLogs).toHaveLength(1);
+        const errorLogs = errorSpy.mock.calls
+          .filter((call) => typeof call[0] === "string" && call[0].includes("migration failed"))
+          .map((call) => call[0]);
+        expect(errorLogs).toHaveLength(1);
+      } finally {
+        // 環境変数を復元（アサーション失敗時も確実に実行）
+        if (origGhToken !== undefined) process.env.GH_TOKEN = origGhToken;
+        else delete process.env.GH_TOKEN;
+        if (origGithubToken !== undefined) process.env.GITHUB_TOKEN = origGithubToken;
+        else delete process.env.GITHUB_TOKEN;
 
-      // 環境変数を復元
-      if (origGhToken !== undefined) process.env.GH_TOKEN = origGhToken;
-      if (origGithubToken !== undefined) process.env.GITHUB_TOKEN = origGithubToken;
-
-      errorSpy.mockRestore();
+        errorSpy.mockRestore();
+      }
     });
   });
 
@@ -323,5 +327,113 @@ describe("bulkMigrate", () => {
 
     expect(result.failed).toBe(1);
     expect(result.processed).toBe(0);
+  });
+
+  describe("configurePineconePlugin — node スクリプト方式", () => {
+    it("sh -c 'echo <b64> | base64 -d | node' 形式のコマンドを生成する", async () => {
+      const execCalls: string[] = [];
+      const mockRunner: CommandRunner = {
+        exec: vi.fn().mockImplementation((cmd: string) => {
+          execCalls.push(cmd);
+          if (cmd.includes("secrets list")) {
+            return JSON.stringify([
+              { name: "PINECONE_API_KEY", digest: "abc", status: "Deployed" },
+            ]);
+          }
+          if (cmd.includes("printenv PINECONE_API_KEY")) return "pcsk_test";
+          if (cmd.includes("test -d /data/easy-flow-agent")) return "";
+          return "";
+        }),
+        readFile: vi.fn().mockReturnValue(
+          JSON.stringify({
+            instances: [
+              {
+                name: "test",
+                flyApp: "test",
+                agentId: "test-agent",
+                index: "easy-flow-memory",
+                sources: [],
+                excludePatterns: [],
+              },
+            ],
+            compactAfterDays: 7,
+          }),
+        ),
+      };
+
+      await bulkMigrate({ configPath: "mock", dryRun: false, targetInstance: "test" }, mockRunner);
+
+      // configurePineconePlugin: sh -c + base64 + node を使用
+      const configureCall = execCalls.find(
+        (c) =>
+          c.includes("sh -c") &&
+          c.includes("base64") &&
+          c.includes("| node") &&
+          !c.includes("migrate-memory"),
+      );
+      expect(configureCall).toBeDefined();
+      expect(configureCall).toContain("sh -c 'echo ");
+      expect(configureCall).toContain("| base64 -d | node'");
+      // python3 は使用しない
+      expect(configureCall).not.toContain("python3");
+    });
+  });
+
+  describe("runSmokeTest — sh -c + base64 方式", () => {
+    it("sh -c 'echo <b64> | base64 -d | node' 形式のコマンドを生成する", async () => {
+      const execCalls: string[] = [];
+      const mockRunner: CommandRunner = {
+        exec: vi.fn().mockImplementation((cmd: string) => {
+          execCalls.push(cmd);
+          if (cmd.includes("secrets list")) {
+            return JSON.stringify([
+              { name: "PINECONE_API_KEY", digest: "abc", status: "Deployed" },
+            ]);
+          }
+          if (cmd.includes("printenv PINECONE_API_KEY")) return "pcsk_test";
+          if (cmd.includes("test -d /data/easy-flow-agent")) return "";
+          // smoke test
+          if (
+            cmd.includes("describeIndexStats") ||
+            (cmd.includes("base64") && cmd.includes("| node"))
+          ) {
+            return JSON.stringify({ "agent:test-agent": { recordCount: 5 } });
+          }
+          return "";
+        }),
+        readFile: vi.fn().mockReturnValue(
+          JSON.stringify({
+            instances: [
+              {
+                name: "test",
+                flyApp: "test",
+                agentId: "test-agent",
+                index: "easy-flow-memory",
+                sources: [],
+                excludePatterns: [],
+              },
+            ],
+            compactAfterDays: 7,
+          }),
+        ),
+      };
+
+      await bulkMigrate({ configPath: "mock", dryRun: false, targetInstance: "test" }, mockRunner);
+
+      // runSmokeTest: sh -c + base64 + node を使用
+      const smokeCall = execCalls.find(
+        (c) =>
+          c.includes("sh -c") &&
+          c.includes("base64") &&
+          c.includes("| node") &&
+          !c.includes("migrate-memory") &&
+          !c.includes("openclaw.json"),
+      );
+      expect(smokeCall).toBeDefined();
+      expect(smokeCall).toContain("sh -c 'echo ");
+      expect(smokeCall).toContain("| base64 -d | node'");
+      // cd コマンドは使用しない（base64 経由で require の絶対パスを使う）
+      expect(smokeCall).not.toContain('"cd ');
+    });
   });
 });

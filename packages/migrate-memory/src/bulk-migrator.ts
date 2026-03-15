@@ -124,18 +124,20 @@ async function configurePineconePlugin(
     return;
   }
 
-  const script = `
-import json
-with open('/data/openclaw.json', 'r') as f:
-    d = json.load(f)
-d.setdefault('plugins', {}).setdefault('pinecone-memory', {}).update(${JSON.stringify(pluginConfig)})
-with open('/data/openclaw.json', 'w') as f:
-    json.dump(d, f, indent=2, ensure_ascii=False)
-print('done')
+  // python3 ではなく node を使用（全インスタンスで利用可能）
+  // sh -c でラップして echo | base64 -d | node のパイプを有効化
+  const nodeScript = `
+const fs = require('fs');
+const d = JSON.parse(fs.readFileSync('/data/openclaw.json', 'utf8'));
+if (!d.plugins) d.plugins = {};
+if (!d.plugins['pinecone-memory']) d.plugins['pinecone-memory'] = {};
+Object.assign(d.plugins['pinecone-memory'], ${JSON.stringify(pluginConfig)});
+fs.writeFileSync('/data/openclaw.json', JSON.stringify(d, null, 2));
+console.log('done');
   `.trim();
 
-  const b64 = Buffer.from(script).toString("base64");
-  runner.exec(`fly ssh console -a ${instance.flyApp} -C "echo '${b64}' | base64 -d | python3"`);
+  const b64 = Buffer.from(nodeScript).toString("base64");
+  runner.exec(`fly ssh console -a ${instance.flyApp} -C "sh -c 'echo ${b64} | base64 -d | node'"`);
 }
 
 async function runMigrateMemory(
@@ -233,7 +235,18 @@ async function runSmokeTest(
     console.log(`[DRY RUN] Would run smoke test for ${instance.name}`);
     return;
   }
-  const cmd = `fly ssh console -a ${instance.flyApp} -C "cd /data/easy-flow-agent && node -e \\"const {Pinecone}=require('./node_modules/@pinecone-database/pinecone');new Pinecone({apiKey:process.env.PINECONE_API_KEY}).index('${instance.index}').describeIndexStats().then(s=>console.log(JSON.stringify(s.namespaces))).catch(e=>console.error(e.message))\\""`;
+  // sh -c でラップし、node スクリプトを base64 経由で渡す
+  // （fly ssh console -C はシェルを介さないため cd && node 等の複合コマンドが使えない）
+  const smokeScript = `
+const {Pinecone}=require('/data/easy-flow-agent/node_modules/@pinecone-database/pinecone');
+new Pinecone({apiKey:process.env.PINECONE_API_KEY})
+  .index(${JSON.stringify(instance.index)})
+  .describeIndexStats()
+  .then(s=>console.log(JSON.stringify(s.namespaces)))
+  .catch(e=>console.error(e.message));
+  `.trim();
+  const b64 = Buffer.from(smokeScript).toString("base64");
+  const cmd = `fly ssh console -a ${instance.flyApp} -C "sh -c 'echo ${b64} | base64 -d | node'"`;
   const result = runner.exec(cmd);
   console.log(`Smoke test result for ${instance.name}:`, result);
 }
