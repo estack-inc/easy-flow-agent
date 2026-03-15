@@ -926,21 +926,20 @@ describe("PineconeContextEngine", () => {
 
 describe("buildEnrichedQuery", () => {
   it("薄いクエリ（20トークン未満）には memoryHint を付加する", () => {
-    const result = buildEnrichedQuery("あの件どうなった？", "mell", "eSTACK AI agent");
+    const result = buildEnrichedQuery("あの件どうなった？", "eSTACK AI agent");
     expect(result).toContain("eSTACK AI agent");
   });
 
   it("十分なクエリ（固有名詞あり・20トークン以上）はそのまま返す", () => {
     const result = buildEnrichedQuery(
       "セントラルHDの長田さんとの3月11日アポの結果を教えて",
-      "mell",
       "eSTACK AI agent",
     );
     expect(result).not.toContain("eSTACK AI agent");
   });
 
   it("memoryHint なしでも動作する", () => {
-    const result = buildEnrichedQuery("あの件は？", "mell");
+    const result = buildEnrichedQuery("あの件は？");
     expect(result).toBe("あの件は？");
   });
 });
@@ -956,6 +955,10 @@ describe("isQueryThin", () => {
 
   it("ASCII のみで固有名詞なしのクエリは thin", () => {
     expect(isQueryThin("what about that thing we discussed?")).toBe(true);
+  });
+
+  it("ひらがなのみの長文は固有名詞なしとして thin と判定", () => {
+    expect(isQueryThin("おはようございます。きょうもよろしくおねがいします。ほんじつのよていについてかくにんさせてください。")).toBe(true);
   });
 });
 

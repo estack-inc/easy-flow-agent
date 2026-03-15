@@ -48,7 +48,7 @@ const DEFAULT_COMPACT_AFTER_DAYS = 7;
  */
 export function isQueryThin(query: string, minTokens: number = DEFAULT_MIN_QUERY_TOKENS): boolean {
   const tokens = estimateTokens(query);
-  const hasProperNoun = /[A-Z\u4E00-\u9FFF\u30A0-\u30FF\u3040-\u309F]/.test(query);
+  const hasProperNoun = /[A-Z\u4E00-\u9FFF\u30A0-\u30FF]/.test(query);
   return tokens < minTokens || !hasProperNoun;
 }
 
@@ -58,7 +58,6 @@ export function isQueryThin(query: string, minTokens: number = DEFAULT_MIN_QUERY
  */
 export function buildEnrichedQuery(
   baseQuery: string,
-  agentId: string,
   memoryHint?: string,
   minTokens: number = DEFAULT_MIN_QUERY_TOKENS,
 ): string {
@@ -354,7 +353,7 @@ export class PineconeContextEngine implements ContextEngine {
   }
 
   private enrichQuery(baseQuery: string): string {
-    return buildEnrichedQuery(baseQuery, this.agentId, this.memoryHint, this.minQueryTokens);
+    return buildEnrichedQuery(baseQuery, this.memoryHint, this.minQueryTokens);
   }
 
   private buildQueryFromRecentTurns(messages: AgentMessage[]): string {
