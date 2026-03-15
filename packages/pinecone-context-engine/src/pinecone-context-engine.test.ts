@@ -691,6 +691,62 @@ describe("PineconeContextEngine", () => {
       expect(chunks.every((c) => c.text === "valid")).toBe(true);
     });
 
+    it("skips old turns matching skipPatterns", async () => {
+      const client = createMockClient();
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "test-agent",
+        compactAfterDays: 7,
+        skipPatterns: ["記憶しないで"],
+      });
+
+      const sessionFile = path.join(tmpDir, "session.jsonl");
+      const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+      writeSessionFile(sessionFile, [
+        {
+          timestamp: eightDaysAgo,
+          message: { role: "user", content: "記憶しないでください" },
+        },
+        {
+          timestamp: eightDaysAgo,
+          message: { role: "user", content: "normal message" },
+        },
+      ]);
+
+      const result = await engine.compact({ sessionId: "s1", sessionFile });
+
+      expect(result.compacted).toBe(true);
+      expect(client.upsert).toHaveBeenCalledOnce();
+      const chunks = client.upsert.mock.calls[0][0] as MemoryChunk[];
+      expect(chunks.every((c) => !c.text.includes("記憶しないで"))).toBe(true);
+      expect(chunks.some((c) => c.text === "normal message")).toBe(true);
+    });
+
+    it("applies defaultCategory to chunk metadata", async () => {
+      const client = createMockClient();
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "test-agent",
+        compactAfterDays: 7,
+        defaultCategory: "archive",
+      });
+
+      const sessionFile = path.join(tmpDir, "session.jsonl");
+      const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+      writeSessionFile(sessionFile, [
+        {
+          timestamp: eightDaysAgo,
+          message: { role: "user", content: "old message" },
+        },
+      ]);
+
+      const result = await engine.compact({ sessionId: "s1", sessionFile });
+
+      expect(result.compacted).toBe(true);
+      const chunks = client.upsert.mock.calls[0][0] as MemoryChunk[];
+      expect(chunks[0].metadata.category).toBe("archive");
+    });
+
     it("uses custom compactAfterDays", async () => {
       const client = createMockClient();
       const engine = new PineconeContextEngine({

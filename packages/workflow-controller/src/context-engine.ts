@@ -47,6 +47,8 @@ export class WorkflowContextEngine implements ContextEngine {
       ingestRoles?: ("user" | "assistant")[];
       compactAfterDays?: number;
       fallbackAdapter?: ContextEngine;
+      skipPatterns?: string[];
+      defaultCategory?: string;
     };
   }) {
     this.delegate = params.pinecone
@@ -57,6 +59,8 @@ export class WorkflowContextEngine implements ContextEngine {
           ingestRoles: params.pinecone.ingestRoles,
           compactAfterDays: params.pinecone.compactAfterDays,
           fallbackAdapter: params.pinecone.fallbackAdapter ?? params.delegate,
+          skipPatterns: params.pinecone.skipPatterns,
+          defaultCategory: params.pinecone.defaultCategory,
         })
       : params.delegate;
     this.agentDir = params.agentDir;
