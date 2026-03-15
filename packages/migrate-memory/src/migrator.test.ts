@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { IPineconeClient, MemoryChunk } from "@easy-flow/pinecone-client";
@@ -176,5 +177,123 @@ describe("Migrator", () => {
     expect(result.processedFiles).toBe(0);
     expect(result.skippedFiles).toContain(file);
     expect(client.upsert).not.toHaveBeenCalled();
+  });
+
+  describe("getCategoryFromPath (via migrate)", () => {
+    it("memory/daily/YYYY-MM-DD.md を daily カテゴリとして認識する", async () => {
+      const client = createMockClient();
+      const migrator = new Migrator({
+        pineconeClient: client,
+        agentId: "test-agent",
+        dryRun: true,
+      });
+
+      const chunkerSpy = vi.spyOn(
+        (migrator as unknown as { chunker: { chunk: unknown } }).chunker,
+        "chunk",
+      );
+
+      const dailyFile = path.join(tmpDir, "memory", "daily", "2026-03-15.md");
+      await mkdir(path.dirname(dailyFile), { recursive: true });
+      await writeFile(dailyFile, "今日の作業ログ\n".repeat(10));
+
+      await migrator.migrate([path.dirname(dailyFile)]);
+
+      const calls = chunkerSpy.mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      expect(calls[0][0]).toMatchObject({ category: "daily" });
+    });
+
+    it("memory/YYYY-MM-DD.md（サブディレクトリなし）も daily カテゴリとして認識する", async () => {
+      const client = createMockClient();
+      const migrator = new Migrator({
+        pineconeClient: client,
+        agentId: "test-agent",
+        dryRun: true,
+      });
+
+      const chunkerSpy = vi.spyOn(
+        (migrator as unknown as { chunker: { chunk: unknown } }).chunker,
+        "chunk",
+      );
+
+      const flatDailyFile = path.join(tmpDir, "memory", "2026-03-10.md");
+      await mkdir(path.dirname(flatDailyFile), { recursive: true });
+      await writeFile(flatDailyFile, "フラット構造の daily ログ\n".repeat(10));
+
+      await migrator.migrate([path.dirname(flatDailyFile)]);
+
+      const calls = chunkerSpy.mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      expect(calls[0][0]).toMatchObject({ category: "daily" });
+    });
+
+    it("memory/projects/ 配下のファイルを project カテゴリとして認識する", async () => {
+      const client = createMockClient();
+      const migrator = new Migrator({
+        pineconeClient: client,
+        agentId: "test-agent",
+        dryRun: true,
+      });
+
+      const chunkerSpy = vi.spyOn(
+        (migrator as unknown as { chunker: { chunk: unknown } }).chunker,
+        "chunk",
+      );
+
+      const projectFile = path.join(tmpDir, "memory", "projects", "ai-service.md");
+      await mkdir(path.dirname(projectFile), { recursive: true });
+      await writeFile(projectFile, "プロジェクト記録\n".repeat(10));
+
+      await migrator.migrate([path.dirname(path.dirname(projectFile))]);
+
+      const calls = chunkerSpy.mock.calls;
+      const projectCall = calls.find(([args]) => args.sourceFile?.includes("projects"));
+      expect(projectCall?.[0]).toMatchObject({ category: "project" });
+    });
+
+    it("MEMORY.md を memory_index カテゴリとして認識する", async () => {
+      const client = createMockClient();
+      const migrator = new Migrator({
+        pineconeClient: client,
+        agentId: "test-agent",
+        dryRun: true,
+      });
+
+      const chunkerSpy = vi.spyOn(
+        (migrator as unknown as { chunker: { chunk: unknown } }).chunker,
+        "chunk",
+      );
+
+      const memoryFile = path.join(tmpDir, "MEMORY.md");
+      await writeFile(memoryFile, "長期記憶インデックス\n".repeat(10));
+
+      await migrator.migrate([memoryFile]);
+
+      const calls = chunkerSpy.mock.calls;
+      expect(calls[0][0]).toMatchObject({ category: "memory_index" });
+    });
+
+    it("カテゴリ非該当ファイルは category が undefined になる", async () => {
+      const client = createMockClient();
+      const migrator = new Migrator({
+        pineconeClient: client,
+        agentId: "test-agent",
+        dryRun: true,
+      });
+
+      const chunkerSpy = vi.spyOn(
+        (migrator as unknown as { chunker: { chunk: unknown } }).chunker,
+        "chunk",
+      );
+
+      const otherFile = path.join(tmpDir, "notes.md");
+      await writeFile(otherFile, "その他のメモ\n".repeat(10));
+
+      await migrator.migrate([otherFile]);
+
+      const calls = chunkerSpy.mock.calls;
+      expect(calls[0][0].category).toBeUndefined();
+    });
   });
 });
