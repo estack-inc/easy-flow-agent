@@ -155,7 +155,7 @@ async function runMigrateMemory(
   runner: CommandRunner,
 ): Promise<void> {
   const sourceArgs = instance.sources.map((s) => `--source ${s}`).join(" ");
-  const excludeArgs = instance.excludePatterns.map((p) => `--exclude-pattern ${p}`).join(" ");
+  const excludeArgs = instance.excludePatterns.map((p) => `--exclude-pattern '${p}'`).join(" ");
   const dryRunFlag = dryRun ? "--dry-run" : "";
 
   const cmd = `fly ssh console -a ${instance.flyApp} -C "PINECONE_API_KEY=${apiKey} /usr/local/lib/node_modules/openclaw/node_modules/.bin/jiti /data/easy-flow-agent/packages/migrate-memory/src/cli.ts migrate-memory --agent-id ${instance.agentId} ${sourceArgs} ${excludeArgs} ${dryRunFlag}"`;

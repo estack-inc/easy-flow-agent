@@ -108,8 +108,8 @@ describe("bulkMigrate", () => {
       .map((call) => call[0]);
 
     expect(dryRunLogs).toHaveLength(1);
-    expect(dryRunLogs[0]).toContain("--exclude-pattern **/bank-accounts.md");
-    expect(dryRunLogs[0]).toContain("--exclude-pattern **/employees/**");
+    expect(dryRunLogs[0]).toContain("--exclude-pattern '**/bank-accounts.md'");
+    expect(dryRunLogs[0]).toContain("--exclude-pattern '**/employees/**'");
 
     consoleSpy.mockRestore();
   });
