@@ -3,8 +3,19 @@
 import { parseArgs } from "node:util";
 import { PineconeClient } from "@easy-flow/pinecone-client";
 import { Migrator } from "./migrator.js";
+import { MemoryDeleter } from "./deleter.js";
 
 function printUsage(): void {
+  console.log(`Usage: easy-flow <command> [options]
+
+Commands:
+  migrate-memory    Migrate markdown files to Pinecone
+  memory-delete     Delete memory from Pinecone
+
+Run 'easy-flow <command> --help' for command-specific options.`);
+}
+
+function printMigrateUsage(): void {
   console.log(`Usage: easy-flow migrate-memory [options]
 
 Options:
@@ -14,33 +25,47 @@ Options:
   --help              Show this help message`);
 }
 
-async function main(): Promise<void> {
-  const { values, positionals } = parseArgs({
-    args: process.argv.slice(2),
+function printDeleteUsage(): void {
+  console.log(`Usage: easy-flow memory-delete [options]
+
+Options:
+  --agent-id <id>     Agent ID (required)
+  --keyword <text>    Search by keyword and delete matching chunks (semantic search)
+  --source <file>     Delete chunks by exact sourceFile match
+  --all               Delete all memory for this agent (DANGEROUS)
+  --dry-run           Preview without deleting
+  --help              Show this help message
+
+WARNING: --keyword uses semantic similarity search. Results may include loosely related chunks.
+         Always use --dry-run first to preview what will be deleted.`);
+}
+
+function noopClient() {
+  return {
+    upsert: async () => {},
+    query: async () => [] as never[],
+    delete: async () => {},
+    deleteBySource: async () => {},
+    deleteNamespace: async () => {},
+    ensureIndex: async () => {},
+  };
+}
+
+async function runMigrate(args: string[]): Promise<void> {
+  const { values } = parseArgs({
+    args,
     options: {
       "agent-id": { type: "string" },
       source: { type: "string", multiple: true },
       "dry-run": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
-    allowPositionals: true,
     strict: true,
   });
 
-  if (values.help || positionals[0] === "help") {
-    printUsage();
+  if (values.help) {
+    printMigrateUsage();
     process.exit(0);
-  }
-
-  // Validate subcommand
-  if (positionals[0] !== "migrate-memory") {
-    if (positionals.length === 0) {
-      printUsage();
-      process.exit(0);
-    }
-    console.error(`Unknown command: ${positionals[0]}`);
-    printUsage();
-    process.exit(1);
   }
 
   const agentId = values["agent-id"] as string | undefined;
@@ -51,7 +76,6 @@ async function main(): Promise<void> {
     console.error("Error: --agent-id is required");
     process.exit(1);
   }
-
   if (sources.length === 0) {
     console.error("Error: at least one --source is required");
     process.exit(1);
@@ -63,27 +87,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const client = apiKey ? new PineconeClient({ apiKey }) : undefined;
-
-  // For dry-run without API key, create a no-op client
-  const noopClient = {
-    upsert: async () => {},
-    query: async () => [],
-    delete: async () => {},
-    deleteBySource: async () => {},
-    deleteNamespace: async () => {},
-    ensureIndex: async () => {},
-  };
-
-  const migrator = new Migrator({
-    pineconeClient: client ?? noopClient,
-    agentId,
-    dryRun,
-  });
+  const client = apiKey ? new PineconeClient({ apiKey }) : noopClient();
+  const migrator = new Migrator({ pineconeClient: client, agentId, dryRun });
 
   console.log(`${dryRun ? "[DRY RUN] " : ""}Migrating memory for agent: ${agentId}`);
-  console.log(`Sources: ${sources.join(", ")}`);
-  console.log("");
+  console.log(`Sources: ${sources.join(", ")}\n`);
 
   const result = await migrator.migrate(sources);
 
@@ -95,12 +103,108 @@ async function main(): Promise<void> {
   if (result.skippedFiles.length > 0) {
     console.log(`Skipped files: ${result.skippedFiles.join(", ")}`);
   }
-
   if (result.errors.length > 0) {
     console.log("\nErrors:");
     for (const err of result.errors) {
       console.log(`  ${err.file}: ${err.error}`);
     }
+    process.exit(1);
+  }
+}
+
+async function runDelete(args: string[]): Promise<void> {
+  const { values } = parseArgs({
+    args,
+    options: {
+      "agent-id": { type: "string" },
+      keyword: { type: "string" },
+      source: { type: "string" },
+      all: { type: "boolean", default: false },
+      "dry-run": { type: "boolean", default: false },
+      help: { type: "boolean", default: false },
+    },
+    strict: true,
+  });
+
+  if (values.help) {
+    printDeleteUsage();
+    process.exit(0);
+  }
+
+  const agentId = values["agent-id"] as string | undefined;
+  const keyword = values.keyword as string | undefined;
+  const source = values.source as string | undefined;
+  const deleteAll = values.all as boolean;
+  const dryRun = values["dry-run"] as boolean;
+
+  if (!agentId) {
+    console.error("Error: --agent-id is required");
+    process.exit(1);
+  }
+
+  const hasTarget = keyword || source || deleteAll;
+  if (!hasTarget) {
+    console.error("Error: specify one of --keyword, --source, or --all");
+    printDeleteUsage();
+    process.exit(1);
+  }
+
+  const apiKey = process.env.PINECONE_API_KEY;
+  if (!apiKey && !dryRun) {
+    console.error("Error: PINECONE_API_KEY environment variable is required");
+    process.exit(1);
+  }
+
+  const client = apiKey ? new PineconeClient({ apiKey }) : noopClient();
+  const deleter = new MemoryDeleter({ pineconeClient: client, agentId, dryRun });
+
+  console.log(`${dryRun ? "[DRY RUN] " : ""}Deleting memory for agent: ${agentId}`);
+
+  let result;
+
+  if (keyword) {
+    console.log(`Warning: Keyword search uses semantic similarity — review results carefully.`);
+    console.log(`Searching for: "${keyword}"\n`);
+    result = await deleter.deleteByKeyword(keyword);
+    console.log(`Found ${result.searchedChunks} similar chunk(s).`);
+  } else if (source) {
+    console.log(`Deleting chunks with sourceFile: "${source}"\n`);
+    result = await deleter.deleteBySource(source);
+  } else if (deleteAll) {
+    if (!dryRun) {
+      console.log(`Warning: This will delete ALL memory for agent "${agentId}".`);
+      console.log(`Proceeding in 3 seconds... (Ctrl+C to cancel)`);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+    result = await deleter.deleteAll();
+  }
+
+  if (result) {
+    console.log(dryRun ? "=== DRY RUN (no changes made) ===" : "=== Delete Result ===");
+    if (result.searchedChunks >= 0) {
+      console.log(`Chunks found: ${result.searchedChunks}`);
+    }
+    if (!dryRun) {
+      console.log(`Chunks deleted: ${result.deletedChunks >= 0 ? result.deletedChunks : "done"}`);
+    }
+  }
+}
+
+async function main(): Promise<void> {
+  const subcommand = process.argv[2];
+
+  if (!subcommand || subcommand === "--help" || subcommand === "help") {
+    printUsage();
+    process.exit(0);
+  }
+
+  if (subcommand === "migrate-memory") {
+    await runMigrate(process.argv.slice(3));
+  } else if (subcommand === "memory-delete") {
+    await runDelete(process.argv.slice(3));
+  } else {
+    console.error(`Unknown command: ${subcommand}`);
+    printUsage();
     process.exit(1);
   }
 }

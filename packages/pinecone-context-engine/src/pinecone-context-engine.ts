@@ -17,6 +17,17 @@ import {
   EmptyFallbackContextEngine,
 } from "./fallback-adapter.js";
 
+const DEFAULT_SKIP_PATTERNS = [
+  "記憶しないで",
+  "覚えなくていい",
+  "覚えないで",
+  "no memory",
+  "skip memory",
+  "dont remember",
+  "don't remember",
+  "skip ingest",
+];
+
 const RECENT_TURNS_FOR_QUERY = 3;
 const DEFAULT_TOP_K = 20;
 const DEFAULT_MIN_SCORE = 0.7;
@@ -79,6 +90,8 @@ export class PineconeContextEngine implements ContextEngine {
   private readonly compactAfterDays: number;
   private readonly fallback: ContextEngine;
   private readonly chunker: TextChunker;
+  private readonly skipPatterns: string[];
+  private readonly defaultCategory: string;
 
   constructor(params: PineconeContextEngineParams) {
     this.client = params.pineconeClient;
@@ -90,6 +103,8 @@ export class PineconeContextEngine implements ContextEngine {
       ? new FallbackContextEngine(params.fallbackAdapter)
       : new EmptyFallbackContextEngine();
     this.chunker = new TextChunker();
+    this.skipPatterns = params.skipPatterns ?? DEFAULT_SKIP_PATTERNS;
+    this.defaultCategory = params.defaultCategory ?? "conversation";
   }
 
   async bootstrap(params: {
@@ -129,6 +144,15 @@ export class PineconeContextEngine implements ContextEngine {
         return { ingested: false };
       }
 
+      // Skip messages containing skip patterns
+      const lowerText = text.toLowerCase();
+      const shouldSkip = this.skipPatterns.some((pattern) =>
+        lowerText.includes(pattern.toLowerCase()),
+      );
+      if (shouldSkip) {
+        return { ingested: false };
+      }
+
       const contentHash = createHash("sha256")
         .update(`${sessionId}:${message.role}:${text}`)
         .digest("hex")
@@ -141,6 +165,7 @@ export class PineconeContextEngine implements ContextEngine {
         sourceType: "session_turn",
         turnId,
         role: message.role as "user" | "assistant",
+        category: this.defaultCategory,
       });
 
       if (chunks.length === 0) {
@@ -246,6 +271,12 @@ export class PineconeContextEngine implements ContextEngine {
           return [];
         }
 
+        // Skip messages containing skip patterns (same logic as ingest())
+        const lowerText = text.toLowerCase();
+        if (this.skipPatterns.some((p) => lowerText.includes(p.toLowerCase()))) {
+          return [];
+        }
+
         const contentHash = createHash("sha256")
           .update(`${sessionId}:${msg.role}:${text}`)
           .digest("hex")
@@ -258,6 +289,7 @@ export class PineconeContextEngine implements ContextEngine {
           sourceType: "session_turn",
           turnId: `${sessionId}:${contentHash}`,
           role: msg.role as "user" | "assistant",
+          category: this.defaultCategory,
         });
       });
 

@@ -53,18 +53,25 @@ export class PineconeClient implements IPineconeClient {
   }
 
   async query(params: QueryParams): Promise<QueryResult[]> {
-    const { text, agentId, topK = 20, minScore = 0.7, filter } = params;
+    const { text, agentId, topK = 20, minScore = 0.7, filter, filterCategory } = params;
 
     const [queryEmbedding] = await this.embeddingService.embed([text], "query");
 
     const index = this.indexManager.getIndex();
     const ns = index.namespace(`agent:${agentId}`);
 
+    const pineconeFilter: Record<string, unknown> = {
+      ...filter,
+    };
+    if (filterCategory) {
+      pineconeFilter.category = { $eq: filterCategory };
+    }
+
     const results = await ns.query({
       vector: queryEmbedding,
       topK,
       includeMetadata: true,
-      filter,
+      filter: Object.keys(pineconeFilter).length > 0 ? pineconeFilter : undefined,
     });
 
     return (results.matches ?? [])
@@ -81,6 +88,7 @@ export class PineconeClient implements IPineconeClient {
             createdAt: (match.metadata?.createdAt as number) ?? 0,
             turnId: match.metadata?.turnId as string | undefined,
             role: match.metadata?.role as "user" | "assistant" | undefined,
+            category: match.metadata?.category as string | undefined,
           },
         },
         score: match.score ?? 0,

@@ -139,6 +139,29 @@ describe("TextChunker", () => {
     vi.useRealTimers();
   });
 
+  it("includes category in metadata when specified", () => {
+    const chunker = new TextChunker();
+    const chunks = chunker.chunk({
+      text: "test text",
+      agentId: "agent1",
+      sourceFile: "test.md",
+      sourceType: "memory_file",
+      category: "memory",
+    });
+    expect(chunks[0].metadata.category).toBe("memory");
+  });
+
+  it("omits category from metadata when not specified", () => {
+    const chunker = new TextChunker();
+    const chunks = chunker.chunk({
+      text: "test text",
+      agentId: "agent1",
+      sourceFile: "test.md",
+      sourceType: "memory_file",
+    });
+    expect(chunks[0].metadata.category).toBeUndefined();
+  });
+
   it("handles text exactly equal to chunkSize", () => {
     const chunker = new TextChunker({ chunkSize: 100, overlapSize: 10 });
     const text = "c".repeat(100);
