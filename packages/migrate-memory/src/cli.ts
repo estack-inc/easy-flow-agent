@@ -5,6 +5,7 @@ import { PineconeClient } from "@easy-flow/pinecone-client";
 import { bulkMigrate } from "./bulk-migrator.js";
 import { MemoryDeleter } from "./deleter.js";
 import { Migrator } from "./migrator.js";
+import { validateExcludePatterns } from "./preflight.js";
 
 function printUsage(): void {
   console.log(`Usage: easy-flow <command> [options]
@@ -25,6 +26,7 @@ Options:
   --source <path>            Source file or directory (repeatable)
   --exclude-pattern <glob>   Exclude files matching glob pattern (repeatable)
   --dry-run                  Preview without writing to Pinecone
+  --force                    Skip pre-flight security checks (NOT RECOMMENDED)
   --help                     Show this help message`);
 }
 
@@ -62,6 +64,7 @@ async function runMigrate(args: string[]): Promise<void> {
       source: { type: "string", multiple: true },
       "exclude-pattern": { type: "string", multiple: true },
       "dry-run": { type: "boolean", default: false },
+      force: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
     strict: true,
@@ -76,6 +79,7 @@ async function runMigrate(args: string[]): Promise<void> {
   const sources = (values.source as string[] | undefined) ?? [];
   const excludePatterns = (values["exclude-pattern"] as string[] | undefined) ?? [];
   const dryRun = values["dry-run"] as boolean;
+  const force = values.force as boolean;
 
   if (!agentId) {
     console.error("Error: --agent-id is required");
@@ -92,8 +96,19 @@ async function runMigrate(args: string[]): Promise<void> {
     process.exit(1);
   }
 
+  // excludePatterns の **/ 検証
+  for (const w of validateExcludePatterns(excludePatterns)) {
+    console.warn(`[PREFLIGHT WARN] ${w}`);
+  }
+
   const client = apiKey ? new PineconeClient({ apiKey }) : noopClient();
-  const migrator = new Migrator({ pineconeClient: client, agentId, dryRun, excludePatterns });
+  const migrator = new Migrator({
+    pineconeClient: client,
+    agentId,
+    dryRun,
+    force,
+    excludePatterns,
+  });
 
   console.log(`${dryRun ? "[DRY RUN] " : ""}Migrating memory for agent: ${agentId}`);
   console.log(`Sources: ${sources.join(", ")}\n`);

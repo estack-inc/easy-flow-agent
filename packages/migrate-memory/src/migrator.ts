@@ -3,6 +3,7 @@ import path from "node:path";
 import type { IPineconeClient } from "@easy-flow/pinecone-client";
 import { TextChunker } from "@easy-flow/pinecone-client";
 import picomatch from "picomatch";
+import { runPreflight } from "./preflight.js";
 
 export interface MigrateResult {
   processedFiles: number;
@@ -16,6 +17,7 @@ export class Migrator {
   private readonly client: IPineconeClient;
   private readonly agentId: string;
   private readonly dryRun: boolean;
+  private readonly force: boolean;
   private readonly chunker: TextChunker;
   private readonly isExcluded: (filePath: string) => boolean;
 
@@ -23,11 +25,13 @@ export class Migrator {
     pineconeClient: IPineconeClient;
     agentId: string;
     dryRun?: boolean;
+    force?: boolean;
     excludePatterns?: string[];
   }) {
     this.client = params.pineconeClient;
     this.agentId = params.agentId;
     this.dryRun = params.dryRun ?? false;
+    this.force = params.force ?? false;
     this.chunker = new TextChunker();
     this.isExcluded =
       params.excludePatterns && params.excludePatterns.length > 0
@@ -45,6 +49,31 @@ export class Migrator {
     };
 
     const files = await this.collectFiles(sources, result.skippedFiles);
+
+    // pre-flight チェック
+    const preflightResults = await runPreflight(files);
+    if (preflightResults.hasSecrets) {
+      if (!this.force) {
+        throw new Error(
+          `[PREFLIGHT ERROR] 機密情報のパターンが検出されました。\n` +
+            `投入を中止します。--force フラグで強制続行できますが推奨しません。\n` +
+            preflightResults.results
+              .filter((r) => r.secrets.length > 0)
+              .map((r) => `  ${r.file}: ${r.secrets.join(", ")}`)
+              .join("\n"),
+        );
+      }
+      console.warn("[PREFLIGHT WARN] --force が指定されたため機密情報検出を無視して続行します:");
+      for (const r of preflightResults.results.filter((r) => r.secrets.length > 0)) {
+        console.warn(`  ${r.file}: ${r.secrets.join(", ")}`);
+      }
+    }
+    // 品質警告は --dry-run 時も表示
+    for (const r of preflightResults.results) {
+      for (const w of r.warnings) {
+        console.warn(`[PREFLIGHT WARN] ${r.file}: ${w}`);
+      }
+    }
 
     for (const file of files) {
       try {
