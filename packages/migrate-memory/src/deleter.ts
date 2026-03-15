@@ -1,8 +1,8 @@
 import type { IPineconeClient, QueryResult } from "@easy-flow/pinecone-client";
 
 export interface DeleteResult {
-  searchedChunks: number;
-  deletedChunks: number;
+  searchedChunks: number | undefined;
+  deletedChunks: number | undefined;
   dryRun: boolean;
 }
 
@@ -61,8 +61,8 @@ export class MemoryDeleter {
     }
 
     return {
-      searchedChunks: -1, // unknown (deleteBySource doesn't return count)
-      deletedChunks: this.dryRun ? 0 : -1,
+      searchedChunks: undefined,
+      deletedChunks: this.dryRun ? 0 : undefined,
       dryRun: this.dryRun,
     };
   }
@@ -76,8 +76,8 @@ export class MemoryDeleter {
     }
 
     return {
-      searchedChunks: -1,
-      deletedChunks: this.dryRun ? 0 : -1,
+      searchedChunks: undefined,
+      deletedChunks: this.dryRun ? 0 : undefined,
       dryRun: this.dryRun,
     };
   }

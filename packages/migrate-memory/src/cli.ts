@@ -181,11 +181,11 @@ async function runDelete(args: string[]): Promise<void> {
 
   if (result) {
     console.log(dryRun ? "=== DRY RUN (no changes made) ===" : "=== Delete Result ===");
-    if (result.searchedChunks >= 0) {
+    if (result.searchedChunks != null) {
       console.log(`Chunks found: ${result.searchedChunks}`);
     }
     if (!dryRun) {
-      console.log(`Chunks deleted: ${result.deletedChunks >= 0 ? result.deletedChunks : "done"}`);
+      console.log(`Chunks deleted: ${result.deletedChunks != null ? result.deletedChunks : "done"}`);
     }
   }
 }
