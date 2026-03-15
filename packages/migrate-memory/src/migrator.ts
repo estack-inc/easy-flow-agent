@@ -52,15 +52,21 @@ export class Migrator {
 
     // pre-flight チェック
     const preflightResults = await runPreflight(files);
-    if (preflightResults.hasSecrets && !this.force) {
-      throw new Error(
-        `[PREFLIGHT ERROR] 機密情報のパターンが検出されました。\n` +
-          `投入を中止します。--force フラグで強制続行できますが推奨しません。\n` +
-          preflightResults.results
-            .filter((r) => r.secrets.length > 0)
-            .map((r) => `  ${r.file}: ${r.secrets.join(", ")}`)
-            .join("\n"),
-      );
+    if (preflightResults.hasSecrets) {
+      if (!this.force) {
+        throw new Error(
+          `[PREFLIGHT ERROR] 機密情報のパターンが検出されました。\n` +
+            `投入を中止します。--force フラグで強制続行できますが推奨しません。\n` +
+            preflightResults.results
+              .filter((r) => r.secrets.length > 0)
+              .map((r) => `  ${r.file}: ${r.secrets.join(", ")}`)
+              .join("\n"),
+        );
+      }
+      console.warn("[PREFLIGHT WARN] --force が指定されたため機密情報検出を無視して続行します:");
+      for (const r of preflightResults.results.filter((r) => r.secrets.length > 0)) {
+        console.warn(`  ${r.file}: ${r.secrets.join(", ")}`);
+      }
     }
     // 品質警告は --dry-run 時も表示
     for (const r of preflightResults.results) {

@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 const SECRET_PATTERNS: { name: string; pattern: RegExp }[] = [
-  { name: "GitHub PAT", pattern: /ghp_[A-Za-z0-9]{36}/ },
+  { name: "GitHub PAT (classic)", pattern: /ghp_[A-Za-z0-9]{36}/ },
+  { name: "GitHub PAT (fine-grained)", pattern: /github_pat_[A-Za-z0-9_]{22,}/ },
   { name: "GitLab PAT", pattern: /glpat-[A-Za-z0-9-]{20}/ },
   { name: "Slack Webhook URL", pattern: /hooks\.slack\.com\/services\// },
   { name: "PW直書き", pattern: /PW:\s*\S+/i },
@@ -29,7 +31,17 @@ export async function runPreflight(files: string[]): Promise<{
   for (const file of files) {
     const result: PreflightResult = { file, secrets: [], warnings: [] };
 
-    const content = await readFile(file, "utf-8");
+    let content: string;
+    try {
+      content = await readFile(file, "utf-8");
+    } catch (err) {
+      result.warnings.push(
+        `ファイル読み取りエラー: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      results.push(result);
+      continue;
+    }
+
     const lines = content.split("\n");
 
     for (const line of lines) {
@@ -56,4 +68,16 @@ export async function runPreflight(files: string[]): Promise<{
   }
 
   return { results, hasSecrets };
+}
+
+export function validateExcludePatterns(patterns: string[]): string[] {
+  const warnings: string[] = [];
+  for (const p of patterns) {
+    if (!p.startsWith("**/") && !p.startsWith("/") && !path.isAbsolute(p)) {
+      warnings.push(
+        `excludePattern "${p}" は絶対パスにマッチしない可能性があります。"**/${p}" に変更することを推奨します。`,
+      );
+    }
+  }
+  return warnings;
 }

@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runPreflight } from "./preflight.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { runPreflight, validateExcludePatterns } from "./preflight.js";
 
 describe("runPreflight", () => {
   let tmpDir: string;
@@ -26,7 +26,7 @@ describe("runPreflight", () => {
     const { results, hasSecrets } = await runPreflight([file]);
 
     expect(hasSecrets).toBe(true);
-    expect(results[0].secrets).toContain("GitHub PAT");
+    expect(results[0].secrets).toContain("GitHub PAT (classic)");
     // 値が含まれていないことを検証
     const serialized = JSON.stringify(results);
     expect(serialized).not.toContain("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ");
@@ -119,6 +119,16 @@ describe("runPreflight", () => {
     expect(pwCount).toBe(1);
   });
 
+  it("handles file read errors gracefully", async () => {
+    const nonExistent = path.join(tmpDir, "does-not-exist.md");
+
+    const { results, hasSecrets } = await runPreflight([nonExistent]);
+
+    expect(hasSecrets).toBe(false);
+    expect(results[0].warnings).toHaveLength(1);
+    expect(results[0].warnings[0]).toContain("ファイル読み取りエラー");
+  });
+
   it("handles multiple files independently", async () => {
     const clean = path.join(tmpDir, "clean.md");
     const dirty = path.join(tmpDir, "dirty.md");
@@ -133,43 +143,28 @@ describe("runPreflight", () => {
 
     expect(hasSecrets).toBe(true);
     expect(results[0].secrets).toHaveLength(0);
-    expect(results[1].secrets).toContain("GitHub PAT");
+    expect(results[1].secrets).toContain("GitHub PAT (classic)");
   });
 });
 
-describe("excludePattern validation", () => {
+describe("validateExcludePatterns", () => {
   it("warns when excludePattern lacks **/ prefix", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnings = validateExcludePatterns(["bank-accounts.md", "*.secret.md"]);
 
-    const excludePatterns = ["bank-accounts.md", "*.secret.md"];
-    for (const p of excludePatterns) {
-      if (!p.startsWith("**/") && !p.startsWith("/") && !path.isAbsolute(p)) {
-        console.warn(
-          `[PREFLIGHT WARN] excludePattern "${p}" は絶対パスにマッチしない可能性があります。` +
-            ` "**/${p}" に変更することを推奨します。`,
-        );
-      }
-    }
-
-    expect(warnSpy).toHaveBeenCalledTimes(2);
-    expect(warnSpy.mock.calls[0][0]).toContain("bank-accounts.md");
-    expect(warnSpy.mock.calls[1][0]).toContain("*.secret.md");
-
-    warnSpy.mockRestore();
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain("bank-accounts.md");
+    expect(warnings[1]).toContain("*.secret.md");
   });
 
   it("does not warn for patterns with **/ prefix", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnings = validateExcludePatterns(["**/bank-accounts.md", "/absolute/path.md"]);
 
-    const excludePatterns = ["**/bank-accounts.md", "/absolute/path.md"];
-    for (const p of excludePatterns) {
-      if (!p.startsWith("**/") && !p.startsWith("/") && !path.isAbsolute(p)) {
-        console.warn(`warn: ${p}`);
-      }
-    }
+    expect(warnings).toHaveLength(0);
+  });
 
-    expect(warnSpy).not.toHaveBeenCalled();
+  it("does not warn for absolute paths", () => {
+    const warnings = validateExcludePatterns(["/Users/test/secret.md"]);
 
-    warnSpy.mockRestore();
+    expect(warnings).toHaveLength(0);
   });
 });

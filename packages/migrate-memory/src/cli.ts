@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import path from "node:path";
 import { parseArgs } from "node:util";
 import { PineconeClient } from "@easy-flow/pinecone-client";
 import { bulkMigrate } from "./bulk-migrator.js";
 import { MemoryDeleter } from "./deleter.js";
 import { Migrator } from "./migrator.js";
+import { validateExcludePatterns } from "./preflight.js";
 
 function printUsage(): void {
   console.log(`Usage: easy-flow <command> [options]
@@ -97,13 +97,8 @@ async function runMigrate(args: string[]): Promise<void> {
   }
 
   // excludePatterns の **/ 検証
-  for (const p of excludePatterns) {
-    if (!p.startsWith("**/") && !p.startsWith("/") && !path.isAbsolute(p)) {
-      console.warn(
-        `[PREFLIGHT WARN] excludePattern "${p}" は絶対パスにマッチしない可能性があります。` +
-          ` "**/${p}" に変更することを推奨します。`,
-      );
-    }
+  for (const w of validateExcludePatterns(excludePatterns)) {
+    console.warn(`[PREFLIGHT WARN] ${w}`);
   }
 
   const client = apiKey ? new PineconeClient({ apiKey }) : noopClient();
