@@ -113,6 +113,49 @@ describe("bulkMigrate", () => {
     consoleSpy.mockRestore();
   });
 
+  describe("getApiKeyFromFly — 大文字小文字ケース", () => {
+    it("fly secrets list --json が lowercase name を返す場合でも PINECONE_API_KEY を検出する", async () => {
+      const mockRunner: CommandRunner = {
+        exec: vi.fn().mockImplementation((cmd: string) => {
+          if (cmd.includes("secrets list")) {
+            // fly CLI が lowercase name を返す（実際の挙動）
+            return JSON.stringify([
+              { name: "ANTHROPIC_API_KEY", digest: "abc", status: "Deployed" },
+              { name: "PINECONE_API_KEY", digest: "def", status: "Deployed" },
+            ]);
+          }
+          if (cmd.includes("printenv PINECONE_API_KEY")) {
+            return "pcsk_test_key_12345";
+          }
+          return "";
+        }),
+        readFile: vi.fn().mockReturnValue(
+          JSON.stringify({
+            instances: [
+              {
+                name: "test",
+                flyApp: "test",
+                agentId: "test",
+                index: "test",
+                sources: [],
+                excludePatterns: [],
+              },
+            ],
+            compactAfterDays: 7,
+          }),
+        ),
+      };
+
+      const result = await bulkMigrate(
+        { configPath: "mock", dryRun: false, targetInstance: "test" },
+        mockRunner,
+      );
+      // PINECONE_API_KEY が検出されれば migrate に進む（今回はソースが空なので processed=1）
+      // 少なくとも「PINECONE_API_KEY not set」で失敗しないことを確認
+      expect(result.failed).toBe(0);
+    });
+  });
+
   it("存在しないインスタンス名を指定すると failed=1 を返す", async () => {
     const runner = createMockRunner();
 

@@ -95,8 +95,8 @@ function getApiKeyFromFly(flyApp: string, dryRun: boolean, runner: CommandRunner
   if (dryRun) return "DRY_RUN_API_KEY";
   try {
     const result = runner.exec(`fly secrets list -a ${flyApp} --json`);
-    const secrets: Array<{ Name: string }> = JSON.parse(result);
-    const hasKey = secrets.some((s) => s.Name === "PINECONE_API_KEY");
+    const secrets: Array<{ Name?: string; name?: string }> = JSON.parse(result);
+    const hasKey = secrets.some((s) => (s.Name || s.name) === "PINECONE_API_KEY");
     if (!hasKey) return "";
     return runner.exec(`fly ssh console -a ${flyApp} -C "printenv PINECONE_API_KEY"`).trim();
   } catch {
@@ -148,7 +148,12 @@ async function runMigrateMemory(
   const excludeArgs = instance.excludePatterns.map((p) => `--exclude-pattern '${p}'`).join(" ");
   const dryRunFlag = dryRun ? "--dry-run" : "";
 
-  const cmd = `fly ssh console -a ${instance.flyApp} -C "PINECONE_API_KEY=${apiKey} /usr/local/lib/node_modules/openclaw/node_modules/.bin/jiti /data/easy-flow-agent/packages/migrate-memory/src/cli.ts migrate-memory --agent-id ${instance.agentId} ${sourceArgs} ${excludeArgs} ${dryRunFlag}"`;
+  // easy-flow-agent が存在しない場合は自動インストールする
+  await ensureEasyFlowAgent(instance, dryRun, runner);
+
+  // sh -c でラップして環境変数を正しく渡す
+  const innerCmd = `PINECONE_API_KEY=${apiKey} /usr/local/lib/node_modules/openclaw/node_modules/.bin/jiti /data/easy-flow-agent/packages/migrate-memory/src/cli.ts migrate-memory --agent-id ${instance.agentId} ${sourceArgs} ${excludeArgs} ${dryRunFlag}`;
+  const cmd = `fly ssh console -a ${instance.flyApp} -C "sh -c '${innerCmd}'"`;
 
   console.log(`Running migrate-memory for ${instance.name}...`);
   if (dryRun) {
@@ -156,6 +161,67 @@ async function runMigrateMemory(
     return;
   }
   runner.exec(cmd, { stdio: "inherit" });
+}
+
+/**
+ * 対象インスタンスに /data/easy-flow-agent が存在しない場合、
+ * GitHub からクローンして npm install を実行する。
+ */
+async function ensureEasyFlowAgent(
+  instance: InstanceConfig,
+  dryRun: boolean,
+  runner: CommandRunner,
+): Promise<void> {
+  if (dryRun) {
+    console.log(`[DRY RUN] Would ensure easy-flow-agent is installed on ${instance.flyApp}`);
+    return;
+  }
+
+  // /data/easy-flow-agent が存在するか確認
+  try {
+    runner.exec(`fly ssh console -a ${instance.flyApp} -C "sh -c 'test -d /data/easy-flow-agent'"`);
+    console.log(`${instance.name}: easy-flow-agent already installed`);
+    return;
+  } catch {
+    // 存在しない場合はインストールへ
+  }
+
+  console.log(`${instance.name}: Installing easy-flow-agent...`);
+
+  // GH_TOKEN を取得（gh CLI から → mell-dev secrets → 環境変数 の順で試行）
+  let ghToken = "";
+  try {
+    ghToken = runner.exec("gh auth token").trim();
+  } catch {
+    try {
+      ghToken = runner
+        .exec(`fly ssh console -a mell-dev -C "sh -c 'printenv GH_TOKEN || printenv GITHUB_TOKEN'"`)
+        .trim();
+    } catch {
+      ghToken = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN ?? "";
+    }
+  }
+
+  if (!ghToken) {
+    throw new Error(
+      `easy-flow-agent のインストールに必要な GH_TOKEN が取得できませんでした。` +
+        `fly secrets set GH_TOKEN=<PAT> --app ${instance.flyApp} を実行してから再試行してください。`,
+    );
+  }
+
+  // git clone
+  runner.exec(
+    `fly ssh console -a ${instance.flyApp} -C "sh -c 'cd /data && git clone https://x:${ghToken}@github.com/estack-inc/easy-flow-agent.git easy-flow-agent'"`,
+    { stdio: "inherit" },
+  );
+
+  // npm install（--omit=dev で本番パッケージのみ）
+  runner.exec(
+    `fly ssh console -a ${instance.flyApp} -C "sh -c 'cd /data/easy-flow-agent && npm install --omit=dev 2>&1 | tail -5'"`,
+    { stdio: "inherit" },
+  );
+
+  console.log(`${instance.name}: easy-flow-agent installed`);
 }
 
 async function runSmokeTest(
