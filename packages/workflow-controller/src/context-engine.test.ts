@@ -214,5 +214,128 @@ describe("WorkflowContextEngine", () => {
       const chunks = client.upsert.mock.calls[0][0];
       expect(chunks[0].metadata.agentId).toBe("mell");
     });
+
+    describe("integration scenarios", () => {
+      it("skipPatterns propagates through WorkflowContextEngine to PineconeContextEngine", async () => {
+        const client = createMockPineconeClient();
+        const engine = new WorkflowContextEngine({
+          delegate: createNoopDelegate(),
+          agentDir: tmpDir,
+          pinecone: {
+            client,
+            agentId: "mell",
+            skipPatterns: ["記憶しないで", "skip-this"],
+          },
+        });
+
+        // skipPattern に一致するメッセージ → ingest されない
+        const skippedResult = await engine.ingest({
+          sessionId: "s1",
+          message: { role: "user", content: "記憶しないでこの情報は一時的なものです" },
+        });
+        expect(skippedResult.ingested).toBe(false);
+        expect(client.upsert).not.toHaveBeenCalled();
+
+        // 通常メッセージ → ingest される
+        const normalResult = await engine.ingest({
+          sessionId: "s1",
+          message: { role: "user", content: "今日の会議は10時です" },
+        });
+        expect(normalResult.ingested).toBe(true);
+        expect(client.upsert).toHaveBeenCalledOnce();
+      });
+
+      it("defaultCategory propagates through WorkflowContextEngine to chunk metadata", async () => {
+        const client = createMockPineconeClient();
+        const engine = new WorkflowContextEngine({
+          delegate: createNoopDelegate(),
+          agentDir: tmpDir,
+          pinecone: {
+            client,
+            agentId: "mell",
+            defaultCategory: "conversation",
+          },
+        });
+
+        await engine.ingest({
+          sessionId: "s1",
+          message: { role: "user", content: "カテゴリテスト用メッセージ" },
+        });
+
+        const chunks = client.upsert.mock.calls[0][0];
+        expect(chunks[0].metadata.category).toBe("conversation");
+      });
+
+      it("merges Pinecone relevant memory and active workflow in assemble()", async () => {
+        const client = createMockPineconeClient();
+        // Pinecone が記憶を返すようにモック
+        client.query.mockResolvedValue([
+          {
+            chunk: {
+              id: "chunk-1",
+              text: "タケウチ食品の締め切りは25日",
+              metadata: {
+                agentId: "mell",
+                sourceFile: "session:s0:abc",
+                sourceType: "session_turn" as const,
+                chunkIndex: 0,
+                createdAt: Date.now(),
+              },
+            },
+            score: 0.9,
+          },
+        ]);
+
+        // ワークフローを作成
+        const wf = createWorkflow(tmpDir, {
+          label: "契約フロー",
+          steps: [{ id: "s1", label: "契約書送付" }],
+        });
+
+        const engine = new WorkflowContextEngine({
+          delegate: createNoopDelegate(),
+          agentDir: tmpDir,
+          activeWorkflowId: wf.workflowId,
+          pinecone: {
+            client,
+            agentId: "mell",
+          },
+        });
+
+        const result = await engine.assemble({
+          sessionId: "s1",
+          messages: [{ role: "user" as const, content: "タケウチ食品の締め切りを教えて" }],
+        });
+
+        // Pinecone の記憶が systemPromptAddition に含まれる
+        expect(result.systemPromptAddition).toContain("タケウチ食品");
+        // ワークフロー状態も含まれる
+        expect(result.systemPromptAddition).toContain("# Active Workflow");
+        expect(result.systemPromptAddition).toContain("契約フロー");
+      });
+
+      it("falls back gracefully when Pinecone query fails", async () => {
+        const client = createMockPineconeClient();
+        client.query.mockRejectedValue(new Error("Pinecone connection error"));
+
+        const engine = new WorkflowContextEngine({
+          delegate: createNoopDelegate(),
+          agentDir: tmpDir,
+          pinecone: {
+            client,
+            agentId: "mell",
+          },
+        });
+
+        // Pinecone 障害時もエラーにならずフォールバックで返る
+        const result = await engine.assemble({
+          sessionId: "s1",
+          messages: [{ role: "user" as const, content: "test" }],
+        });
+
+        expect(result).toBeDefined();
+        expect(result.messages).toBeDefined();
+      });
+    });
   });
 });
