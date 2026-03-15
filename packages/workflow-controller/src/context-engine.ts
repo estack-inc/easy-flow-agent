@@ -1,19 +1,17 @@
+import { type IPineconeClient, PineconeContextEngine } from "@easy-flow/pinecone-context-engine";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type {
+  AssembleResult,
+  BootstrapResult,
+  CompactResult,
   ContextEngine,
   ContextEngineInfo,
-  AssembleResult,
-  CompactResult,
-  IngestResult,
   IngestBatchResult,
-  BootstrapResult,
+  IngestResult,
 } from "openclaw/plugin-sdk";
-import {
-  PineconeContextEngine,
-  type IPineconeClient,
-} from "@easy-flow/pinecone-context-engine";
 
 type ContextEngineRuntimeContext = Record<string, unknown>;
+
 import { loadWorkflow, renderContextMarkdown } from "./store.js";
 
 /**
@@ -77,10 +75,7 @@ export class WorkflowContextEngine implements ContextEngine {
     this.agentDir = agentDir;
   }
 
-  async bootstrap(params: {
-    sessionId: string;
-    sessionFile: string;
-  }): Promise<BootstrapResult> {
+  async bootstrap(params: { sessionId: string; sessionFile: string }): Promise<BootstrapResult> {
     if (this.delegate.bootstrap) {
       return this.delegate.bootstrap(params);
     }

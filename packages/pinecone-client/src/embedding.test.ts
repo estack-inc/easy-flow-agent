@@ -41,18 +41,13 @@ describe("EmbeddingService", () => {
 
   it("handles multiple texts in a single batch", async () => {
     const fakeEmbedding = createFakeEmbedding();
-    const embedFn = vi.fn().mockResolvedValue({ data: [
-      { values: fakeEmbedding },
-      { values: fakeEmbedding },
-      { values: fakeEmbedding },
-    ] });
+    const embedFn = vi.fn().mockResolvedValue({
+      data: [{ values: fakeEmbedding }, { values: fakeEmbedding }, { values: fakeEmbedding }],
+    });
     const mockPinecone = createMockPinecone(embedFn);
     const service = new EmbeddingService(mockPinecone);
 
-    const result = await service.embed(
-      ["text1", "text2", "text3"],
-      "passage",
-    );
+    const result = await service.embed(["text1", "text2", "text3"], "passage");
 
     expect(embedFn).toHaveBeenCalledTimes(1);
     expect(result).toHaveLength(3);
@@ -60,9 +55,11 @@ describe("EmbeddingService", () => {
 
   it("auto-splits into batches when exceeding BATCH_SIZE", async () => {
     const fakeEmbedding = createFakeEmbedding();
-    const embedFn = vi.fn().mockImplementation((params: { inputs: string[] }) =>
-      Promise.resolve({ data: params.inputs.map(() => ({ values: fakeEmbedding })) }),
-    );
+    const embedFn = vi
+      .fn()
+      .mockImplementation((params: { inputs: string[] }) =>
+        Promise.resolve({ data: params.inputs.map(() => ({ values: fakeEmbedding })) }),
+      );
     const mockPinecone = createMockPinecone(embedFn);
     const service = new EmbeddingService(mockPinecone);
 

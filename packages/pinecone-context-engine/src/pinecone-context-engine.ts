@@ -1,21 +1,18 @@
 import { createHash } from "node:crypto";
+import type { IPineconeClient, QueryResult } from "@easy-flow/pinecone-client";
+import { TextChunker } from "@easy-flow/pinecone-client";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type {
+  AssembleResult,
+  BootstrapResult,
+  CompactResult,
   ContextEngine,
   ContextEngineInfo,
-  AssembleResult,
-  CompactResult,
   IngestResult,
-  BootstrapResult,
 } from "openclaw/plugin-sdk";
-import { TextChunker } from "@easy-flow/pinecone-client";
-import type { IPineconeClient, QueryResult } from "@easy-flow/pinecone-client";
-import type { PineconeContextEngineParams } from "./types.js";
+import { EmptyFallbackContextEngine, FallbackContextEngine } from "./fallback-adapter.js";
 import { estimateTokens } from "./token-estimator.js";
-import {
-  FallbackContextEngine,
-  EmptyFallbackContextEngine,
-} from "./fallback-adapter.js";
+import type { PineconeContextEngineParams } from "./types.js";
 
 const DEFAULT_SKIP_PATTERNS = [
   "記憶しないで",
@@ -73,8 +70,7 @@ const ASSEMBLE_TIMEOUT_MS = 3000;
 
 function isRateLimitError(err: unknown): boolean {
   if (err && typeof err === "object") {
-    if ("status" in err && (err as { status: number }).status === 429)
-      return true;
+    if ("status" in err && (err as { status: number }).status === 429) return true;
     if (
       "message" in err &&
       typeof (err as { message: string }).message === "string" &&
@@ -101,7 +97,7 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
       if (!isRateLimitError(err) || attempt === maxAttempts - 1) {
         throw err;
       }
-      const delay = RETRY_BASE_MS * Math.pow(2, attempt);
+      const delay = RETRY_BASE_MS * 2 ** attempt;
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
@@ -143,10 +139,7 @@ export class PineconeContextEngine implements ContextEngine {
     this.minQueryTokens = params.minQueryTokens ?? DEFAULT_MIN_QUERY_TOKENS;
   }
 
-  async bootstrap(params: {
-    sessionId: string;
-    sessionFile: string;
-  }): Promise<BootstrapResult> {
+  async bootstrap(_params: { sessionId: string; sessionFile: string }): Promise<BootstrapResult> {
     try {
       await withRetry(() => this.client.ensureIndex());
       return { bootstrapped: true };
@@ -172,9 +165,7 @@ export class PineconeContextEngine implements ContextEngine {
       }
 
       const text =
-        typeof message.content === "string"
-          ? message.content
-          : JSON.stringify(message.content);
+        typeof message.content === "string" ? message.content : JSON.stringify(message.content);
 
       if (!text || text.length === 0) {
         return { ingested: false };
@@ -244,10 +235,7 @@ export class PineconeContextEngine implements ContextEngine {
           }),
         ),
         new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error("assemble timeout")),
-            ASSEMBLE_TIMEOUT_MS,
-          ),
+          setTimeout(() => reject(new Error("assemble timeout")), ASSEMBLE_TIMEOUT_MS),
         ),
       ]);
 
@@ -259,10 +247,7 @@ export class PineconeContextEngine implements ContextEngine {
       }
 
       const budget = params.tokenBudget ?? this.tokenBudget;
-      const { markdown, tokenCount } = this.buildSystemPromptAddition(
-        results,
-        budget,
-      );
+      const { markdown, tokenCount } = this.buildSystemPromptAddition(results, budget);
 
       return {
         messages: params.messages,
@@ -288,8 +273,7 @@ export class PineconeContextEngine implements ContextEngine {
     try {
       const { sessionId, sessionFile } = params;
 
-      const cutoff =
-        Date.now() - this.compactAfterDays * 24 * 60 * 60 * 1000;
+      const cutoff = Date.now() - this.compactAfterDays * 24 * 60 * 60 * 1000;
 
       const oldMessages = await this.readOldTurns(sessionFile, cutoff);
 
@@ -300,10 +284,7 @@ export class PineconeContextEngine implements ContextEngine {
       // Upsert all old turns to Pinecone (idempotent)
       // Use content hash (same as ingest()) to avoid duplicate entries
       const allChunks = oldMessages.flatMap((msg) => {
-        const text =
-          typeof msg.content === "string"
-            ? msg.content
-            : JSON.stringify(msg.content);
+        const text = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
 
         if (!text || text.length === 0) {
           return [];
@@ -359,9 +340,7 @@ export class PineconeContextEngine implements ContextEngine {
   private buildQueryFromRecentTurns(messages: AgentMessage[]): string {
     const recent = messages.slice(-RECENT_TURNS_FOR_QUERY);
     const texts = recent
-      .map((m) =>
-        typeof m.content === "string" ? m.content : JSON.stringify(m.content),
-      )
+      .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)))
       .filter((t) => t.length > 0);
     return texts.join("\n");
   }
@@ -390,9 +369,7 @@ export class PineconeContextEngine implements ContextEngine {
       return { markdown: "", tokenCount: 0 };
     }
 
-    const markdown =
-      "## Relevant Memory\n\n" +
-      selectedTexts.map((t) => `- ${t}`).join("\n");
+    const markdown = `## Relevant Memory\n\n${selectedTexts.map((t) => `- ${t}`).join("\n")}`;
 
     return { markdown, tokenCount: totalTokens };
   }

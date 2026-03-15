@@ -1,23 +1,23 @@
 import { describe, expect, it } from "vitest";
+import {
+  agentStateToUnified,
+  formatAgentContextForLLM,
+  unifiedToAgentState,
+  updateAgentContext,
+} from "./agent-state-converter.js";
+import {
+  createMockAgentState,
+  createMockUnifiedAgentState,
+  createMockWorkflowState,
+} from "./test-fixtures.js";
 import type { UnifiedAgentState } from "./types.js";
 import { toUnifiedAgentState } from "./types.js";
 import {
-  workflowStateToUnified,
   advanceWorkflowStep,
   blockWorkflowStep,
   getWorkflowSummary,
+  workflowStateToUnified,
 } from "./workflow-state-converter.js";
-import {
-  agentStateToUnified,
-  unifiedToAgentState,
-  updateAgentContext,
-  formatAgentContextForLLM,
-} from "./agent-state-converter.js";
-import {
-  createMockWorkflowState,
-  createMockAgentState,
-  createMockUnifiedAgentState,
-} from "./test-fixtures.js";
 
 // =============================================================================
 // Workflow → Unified → Agent ラウンドトリップ

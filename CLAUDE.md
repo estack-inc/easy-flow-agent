@@ -12,9 +12,13 @@ eSTACK Inc. のプライベートリポジトリ。
 ```bash
 npm install          # 依存関係のインストール
 npm test             # 全パッケージのテスト実行
+npm run lint         # Biome による Lint チェック
+npm run lint:fix     # Lint + Format 自動修正
+npm run format       # コードフォーマットのみ
 ```
 
 テストフレームワークは **vitest**（各パッケージの `devDependencies` で管理）。
+Lint / Format は **Biome**（ルートの `biome.json` で統一設定）。
 ビルドは不要（ソース直接参照パターン: `exports` → `./src/index.ts`）。
 `migrate-memory` のみ `dist/` へのビルドあり（CLI バイナリ提供のため）。
 

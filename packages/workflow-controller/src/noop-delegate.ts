@@ -1,9 +1,9 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type {
-  ContextEngine,
-  ContextEngineInfo,
   AssembleResult,
   CompactResult,
+  ContextEngine,
+  ContextEngineInfo,
   IngestResult,
 } from "openclaw/plugin-sdk";
 

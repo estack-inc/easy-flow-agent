@@ -3,16 +3,15 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  createWorkflow,
-  loadWorkflow,
   advanceStep,
   blockStep,
-  listWorkflows,
   buildContextSummary,
+  createWorkflow,
+  listWorkflows,
+  loadWorkflow,
   renderContextMarkdown,
   saveWorkflow,
 } from "./store.js";
-import type { WorkflowState } from "./types.js";
 
 describe("workflow store", () => {
   let tmpDir: string;
@@ -61,9 +60,9 @@ describe("workflow store", () => {
     });
 
     it("throws when no steps provided", () => {
-      expect(() =>
-        createWorkflow(tmpDir, { label: "Empty", steps: [] }),
-      ).toThrow("at least one step");
+      expect(() => createWorkflow(tmpDir, { label: "Empty", steps: [] })).toThrow(
+        "at least one step",
+      );
     });
   });
 
@@ -117,9 +116,7 @@ describe("workflow store", () => {
     });
 
     it("throws for unknown workflow", () => {
-      expect(() =>
-        advanceStep(tmpDir, { workflowId: "nonexistent" }),
-      ).toThrow("not found");
+      expect(() => advanceStep(tmpDir, { workflowId: "nonexistent" })).toThrow("not found");
     });
   });
 
@@ -136,10 +133,7 @@ describe("workflow store", () => {
       });
 
       expect(after.steps[0].status).toBe("blocked");
-      expect(after.steps[0].blockedReasons).toEqual([
-        "Missing API key",
-        "Needs approval",
-      ]);
+      expect(after.steps[0].blockedReasons).toEqual(["Missing API key", "Needs approval"]);
     });
   });
 

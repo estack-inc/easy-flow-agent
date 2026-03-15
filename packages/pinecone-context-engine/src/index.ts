@@ -1,8 +1,8 @@
-export { PineconeContextEngine, isQueryThin, buildEnrichedQuery } from "./pinecone-context-engine.js";
 export {
-  FallbackContextEngine,
   EmptyFallbackContextEngine,
+  FallbackContextEngine,
 } from "./fallback-adapter.js";
+export { PineconeContextEngine } from "./pinecone-context-engine.js";
 export { estimateTokens } from "./token-estimator.js";
 export type {
   IPineconeClient,

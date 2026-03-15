@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { Migrator } from "./migrator.js";
 import type { IPineconeClient, MemoryChunk } from "@easy-flow/pinecone-client";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { Migrator } from "./migrator.js";
 
 function createMockClient(): IPineconeClient & {
   [K in keyof IPineconeClient]: Mock;
@@ -137,6 +137,28 @@ describe("Migrator", () => {
     // small.md = 1 chunk, large.md = multiple chunks
     expect(result.totalChunks).toBeGreaterThanOrEqual(3);
     expect(result.upsertedChunks).toBe(result.totalChunks);
+  });
+
+  it("excludes files matching excludePatterns", async () => {
+    const client = createMockClient();
+    const migrator = new Migrator({
+      pineconeClient: client,
+      agentId: "test-agent",
+      excludePatterns: ["**/bank-accounts.md", "**/employees/**"],
+    });
+
+    // Create files — some should be excluded
+    const subDir = path.join(tmpDir, "employees");
+    fs.mkdirSync(subDir);
+    fs.writeFileSync(path.join(tmpDir, "normal.md"), "normal content", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, "bank-accounts.md"), "secret", "utf-8");
+    fs.writeFileSync(path.join(subDir, "staff.md"), "employee data", "utf-8");
+
+    const result = await migrator.migrate([tmpDir]);
+
+    // Only normal.md should be processed
+    expect(result.processedFiles).toBe(1);
+    expect(client.upsert).toHaveBeenCalledTimes(1);
   });
 
   it("skips empty files", async () => {

@@ -13,12 +13,53 @@ permissions:
   pull-requests: write
   checks: write
   id-token: write
+  actions: read
 
 jobs:
-  claude-review:
-    if: |
+  wait-for-ci:
+    if: >
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Wait for CI workflow to complete
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.event.pull_request.head.sha }}"
+          REPO="${{ github.repository }}"
+          echo "Waiting for CI on $SHA ..."
+
+          for i in $(seq 1 90); do
+            # Get CI workflow run for this SHA
+            RUN=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=1" \
+              --jq '.workflow_runs[0] | "\(.status):\(.conclusion // "pending")"' 2>/dev/null || echo "")
+
+            if [ -z "$RUN" ]; then
+              echo "  [$i] CI run not found yet..."
+              sleep 10
+              continue
+            fi
+
+            echo "  [$i] CI: $RUN"
+            case "$RUN" in
+              completed:success)
+                echo "CI passed!"
+                exit 0
+                ;;
+              completed:*)
+                echo "CI failed: $RUN"
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+          echo "Timed out waiting for CI"
+          exit 1
+
+  claude-review:
+    needs: [wait-for-ci]
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -39,39 +80,6 @@ jobs:
             echo "Target files changed: $CHANGED"
           fi
 
-      - name: Wait for CI to succeed
-        if: steps.check_files.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          SHA="${{ github.event.pull_request.head.sha }}"
-          REPO="${{ github.repository }}"
-          echo "Waiting for CI check on $SHA ..."
-          for i in $(seq 1 60); do
-            STATUS=$(gh api repos/$REPO/commits/$SHA/check-runs \
-              --jq '.check_runs[] | select(.name | startswith("test")) | .status + ":" + (.conclusion // "pending")' \
-              | head -1)
-            echo "  Attempt $i: $STATUS"
-            if [ -z "$STATUS" ]; then
-              echo "  CI check not found yet, waiting..."
-              sleep 10
-              continue
-            fi
-            case "$STATUS" in
-              completed:success)
-                echo "CI passed!"
-                exit 0
-                ;;
-              completed:*)
-                echo "CI failed: $STATUS"
-                exit 1
-                ;;
-            esac
-            sleep 10
-          done
-          echo "Timed out waiting for CI"
-          exit 1
-
       - name: Checkout repository
         if: steps.check_files.outputs.skip != 'true'
         uses: actions/checkout@v4
@@ -85,7 +93,7 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
           track_progress: true
-          prompt: |
+          direct_prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 

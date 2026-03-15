@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import type { IPineconeClient } from "@easy-flow/pinecone-context-engine";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { WorkflowContextEngine } from "./context-engine.js";
 import { createNoopDelegate } from "./noop-delegate.js";
 import { createWorkflow } from "./store.js";
-import type { IPineconeClient } from "@easy-flow/pinecone-context-engine";
 
 describe("WorkflowContextEngine", () => {
   let tmpDir: string;

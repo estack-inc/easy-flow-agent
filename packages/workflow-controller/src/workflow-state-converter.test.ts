@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { WorkflowState } from "./types.js";
 import {
-  workflowStateToUnified,
   advanceWorkflowStep,
   blockWorkflowStep,
   getWorkflowSummary,
+  workflowStateToUnified,
 } from "./workflow-state-converter.js";
 
 /** テスト用の WorkflowState ファクトリ */
@@ -332,9 +332,7 @@ describe("getWorkflowSummary", () => {
 
   it("includes blocked reasons when a step is blocked", () => {
     const state = createTestState({
-      steps: [
-        { id: "step-1", label: "S1", status: "blocked", blockedReasons: ["Blocked!"] },
-      ],
+      steps: [{ id: "step-1", label: "S1", status: "blocked", blockedReasons: ["Blocked!"] }],
     });
 
     const summary = getWorkflowSummary(state);

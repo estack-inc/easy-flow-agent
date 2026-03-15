@@ -2,8 +2,9 @@
 
 import { parseArgs } from "node:util";
 import { PineconeClient } from "@easy-flow/pinecone-client";
-import { Migrator } from "./migrator.js";
+import { bulkMigrate } from "./bulk-migrator.js";
 import { MemoryDeleter } from "./deleter.js";
+import { Migrator } from "./migrator.js";
 
 function printUsage(): void {
   console.log(`Usage: easy-flow <command> [options]
@@ -11,6 +12,7 @@ function printUsage(): void {
 Commands:
   migrate-memory    Migrate markdown files to Pinecone
   memory-delete     Delete memory from Pinecone
+  bulk-migrate      Bulk migrate all EasyFlow instances to Pinecone
 
 Run 'easy-flow <command> --help' for command-specific options.`);
 }
@@ -19,10 +21,11 @@ function printMigrateUsage(): void {
   console.log(`Usage: easy-flow migrate-memory [options]
 
 Options:
-  --agent-id <id>     Agent ID (required)
-  --source <path>     Source file or directory (repeatable)
-  --dry-run           Preview without writing to Pinecone
-  --help              Show this help message`);
+  --agent-id <id>            Agent ID (required)
+  --source <path>            Source file or directory (repeatable)
+  --exclude-pattern <glob>   Exclude files matching glob pattern (repeatable)
+  --dry-run                  Preview without writing to Pinecone
+  --help                     Show this help message`);
 }
 
 function printDeleteUsage(): void {
@@ -57,6 +60,7 @@ async function runMigrate(args: string[]): Promise<void> {
     options: {
       "agent-id": { type: "string" },
       source: { type: "string", multiple: true },
+      "exclude-pattern": { type: "string", multiple: true },
       "dry-run": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
@@ -70,6 +74,7 @@ async function runMigrate(args: string[]): Promise<void> {
 
   const agentId = values["agent-id"] as string | undefined;
   const sources = (values.source as string[] | undefined) ?? [];
+  const excludePatterns = (values["exclude-pattern"] as string[] | undefined) ?? [];
   const dryRun = values["dry-run"] as boolean;
 
   if (!agentId) {
@@ -88,7 +93,7 @@ async function runMigrate(args: string[]): Promise<void> {
   }
 
   const client = apiKey ? new PineconeClient({ apiKey }) : noopClient();
-  const migrator = new Migrator({ pineconeClient: client, agentId, dryRun });
+  const migrator = new Migrator({ pineconeClient: client, agentId, dryRun, excludePatterns });
 
   console.log(`${dryRun ? "[DRY RUN] " : ""}Migrating memory for agent: ${agentId}`);
   console.log(`Sources: ${sources.join(", ")}\n`);
@@ -160,7 +165,7 @@ async function runDelete(args: string[]): Promise<void> {
 
   console.log(`${dryRun ? "[DRY RUN] " : ""}Deleting memory for agent: ${agentId}`);
 
-  let result;
+  let result: Awaited<ReturnType<MemoryDeleter["deleteByKeyword"]>> | undefined;
 
   if (keyword) {
     console.log(`Warning: Keyword search uses semantic similarity — review results carefully.`);
@@ -185,9 +190,38 @@ async function runDelete(args: string[]): Promise<void> {
       console.log(`Chunks found: ${result.searchedChunks}`);
     }
     if (!dryRun) {
-      console.log(`Chunks deleted: ${result.deletedChunks != null ? result.deletedChunks : "done"}`);
-
+      console.log(
+        `Chunks deleted: ${result.deletedChunks != null ? result.deletedChunks : "done"}`,
+      );
     }
+  }
+}
+
+function printBulkMigrateUsage(): void {
+  console.log(`Usage: easy-flow bulk-migrate [options]
+
+Options:
+  --config=<path>     Config file path (default: ./easy-flow-instances.json)
+  --target=<name>     Process only the specified instance
+  --dry-run           Preview without making changes
+  --help              Show this help message`);
+}
+
+async function runBulkMigrate(args: string[]): Promise<void> {
+  if (args.includes("--help")) {
+    printBulkMigrateUsage();
+    process.exit(0);
+  }
+
+  const configPath =
+    args.find((a) => a.startsWith("--config="))?.split("=")[1] ?? "./easy-flow-instances.json";
+  const dryRun = args.includes("--dry-run");
+  const target = args.find((a) => a.startsWith("--target="))?.split("=")[1];
+
+  console.log(`Bulk migrate: config=${configPath}, dryRun=${dryRun}, target=${target ?? "all"}`);
+  const result = await bulkMigrate({ configPath, dryRun, targetInstance: target });
+  if (result.failed > 0) {
+    process.exitCode = 1;
   }
 }
 
@@ -203,6 +237,8 @@ async function main(): Promise<void> {
     await runMigrate(process.argv.slice(3));
   } else if (subcommand === "memory-delete") {
     await runDelete(process.argv.slice(3));
+  } else if (subcommand === "bulk-migrate") {
+    await runBulkMigrate(process.argv.slice(3));
   } else {
     console.error(`Unknown command: ${subcommand}`);
     printUsage();

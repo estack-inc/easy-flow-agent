@@ -1,23 +1,15 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { MemoryChunk, QueryParams, QueryResult } from "@easy-flow/pinecone-client";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-  type Mock,
-} from "vitest";
-import { PineconeContextEngine, isQueryThin, buildEnrichedQuery } from "./pinecone-context-engine.js";
+  buildEnrichedQuery,
+  isQueryThin,
+  PineconeContextEngine,
+} from "./pinecone-context-engine.js";
 import { estimateTokens } from "./token-estimator.js";
 import type { IPineconeClient } from "./types.js";
-import type {
-  MemoryChunk,
-  QueryResult,
-  QueryParams,
-} from "@easy-flow/pinecone-client";
 
 function createMockClient(
   overrides?: Partial<IPineconeClient>,
@@ -112,9 +104,7 @@ describe("PineconeContextEngine", () => {
       const rateLimitError = Object.assign(new Error("Rate limited"), {
         status: 429,
       });
-      client.ensureIndex
-        .mockRejectedValueOnce(rateLimitError)
-        .mockResolvedValueOnce(undefined);
+      client.ensureIndex.mockRejectedValueOnce(rateLimitError).mockResolvedValueOnce(undefined);
 
       const engine = new PineconeContextEngine({
         pineconeClient: client,
@@ -314,9 +304,7 @@ describe("PineconeContextEngine", () => {
         agentId: "test-agent",
       });
 
-      const messages = [
-        { role: "user" as const, content: "How do I write tests?" },
-      ];
+      const messages = [{ role: "user" as const, content: "How do I write tests?" }];
 
       const result = await engine.assemble({
         sessionId: "s1",
@@ -329,9 +317,7 @@ describe("PineconeContextEngine", () => {
       expect(queryParams.minScore).toBe(0.7);
       expect(queryParams.agentId).toBe("test-agent");
       expect(result.systemPromptAddition).toContain("Relevant Memory");
-      expect(result.systemPromptAddition).toContain(
-        "Previous conversation about testing",
-      );
+      expect(result.systemPromptAddition).toContain("Previous conversation about testing");
       expect(result.messages).toBe(messages);
     });
 
@@ -428,7 +414,7 @@ describe("PineconeContextEngine", () => {
               createdAt: Date.now(),
             },
           },
-          score: 0.80,
+          score: 0.8,
         },
       ]);
 
@@ -472,9 +458,7 @@ describe("PineconeContextEngine", () => {
 
       const client = createMockClient();
       // query never resolves (simulates hang)
-      client.query.mockImplementation(
-        () => new Promise(() => {}),
-      );
+      client.query.mockImplementation(() => new Promise(() => {}));
 
       const fallback = createMockFallback();
       const engine = new PineconeContextEngine({
@@ -506,9 +490,7 @@ describe("PineconeContextEngine", () => {
         memoryHint: "eSTACK AI agent service",
       });
 
-      const messages = [
-        { role: "user" as const, content: "あの件どうなった？" },
-      ];
+      const messages = [{ role: "user" as const, content: "あの件どうなった？" }];
 
       await engine.assemble({ sessionId: "s1", messages });
 
@@ -689,11 +671,7 @@ describe("PineconeContextEngine", () => {
         { timestamp: eightDaysAgo, message: { role: 123, content: "bad role" } },
         { timestamp: eightDaysAgo, message: { role: "user", content: "valid" } },
       ];
-      fs.writeFileSync(
-        sessionFile,
-        entries.map((e) => JSON.stringify(e)).join("\n"),
-        "utf-8",
-      );
+      fs.writeFileSync(sessionFile, entries.map((e) => JSON.stringify(e)).join("\n"), "utf-8");
 
       const result = await engine.compact({ sessionId: "s1", sessionFile });
 
@@ -717,11 +695,7 @@ describe("PineconeContextEngine", () => {
         { timestamp: eightDaysAgo, message: { role: "user" } },
         { timestamp: eightDaysAgo, message: { role: "user", content: "valid" } },
       ];
-      fs.writeFileSync(
-        sessionFile,
-        entries.map((e) => JSON.stringify(e)).join("\n"),
-        "utf-8",
-      );
+      fs.writeFileSync(sessionFile, entries.map((e) => JSON.stringify(e)).join("\n"), "utf-8");
 
       const result = await engine.compact({ sessionId: "s1", sessionFile });
 
@@ -958,7 +932,11 @@ describe("isQueryThin", () => {
   });
 
   it("ひらがなのみの長文は固有名詞なしとして thin と判定", () => {
-    expect(isQueryThin("おはようございます。きょうもよろしくおねがいします。ほんじつのよていについてかくにんさせてください。")).toBe(true);
+    expect(
+      isQueryThin(
+        "おはようございます。きょうもよろしくおねがいします。ほんじつのよていについてかくにんさせてください。",
+      ),
+    ).toBe(true);
   });
 });
 
