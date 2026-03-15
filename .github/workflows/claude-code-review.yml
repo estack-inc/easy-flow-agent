@@ -1,11 +1,12 @@
 name: Claude Code Review
 
 on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}
+  group: claude-review-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: true
 
 permissions:
@@ -13,22 +14,54 @@ permissions:
   pull-requests: write
   checks: write
   id-token: write
+  actions: read
 
 jobs:
   claude-review:
-    if: |
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.fork == false
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
+      - name: Get PR number
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.event.workflow_run.head_sha }}"
+          REPO="${{ github.repository }}"
+
+          PR_NUMBER=$(gh api "repos/$REPO/commits/$SHA/pulls" \
+            --jq '.[0].number // empty')
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No PR found for commit $SHA"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          PR_DRAFT=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.draft')
+          PR_FORK=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.head.repo.fork')
+
+          if [ "$PR_DRAFT" = "true" ] || [ "$PR_FORK" = "true" ]; then
+            echo "Skipping: draft=$PR_DRAFT, fork=$PR_FORK"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "PR #$PR_NUMBER found"
+
       - name: Check if target files changed
+        if: steps.pr.outputs.skip != 'true'
         id: check_files
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          CHANGED=$(gh pr diff ${{ github.event.pull_request.number }} \
+          CHANGED=$(gh pr diff ${{ steps.pr.outputs.pr_number }} \
             --repo ${{ github.repository }} --name-only | \
             grep -cE '^packages/.*\.(ts|js|json)$|^specs/.*\.md$|^\.github/workflows/.*\.(yml|yaml)$|^CLAUDE\.md$' || echo "0")
           if [ "$CHANGED" -eq 0 ]; then
@@ -39,55 +72,25 @@ jobs:
             echo "Target files changed: $CHANGED"
           fi
 
-      - name: Wait for CI to succeed
-        if: steps.check_files.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          SHA="${{ github.event.pull_request.head.sha }}"
-          REPO="${{ github.repository }}"
-          echo "Waiting for CI check on $SHA ..."
-          for i in $(seq 1 60); do
-            STATUS=$(gh api repos/$REPO/commits/$SHA/check-runs \
-              --jq '.check_runs[] | select(.name | startswith("test")) | .status + ":" + (.conclusion // "pending")' \
-              | head -1)
-            echo "  Attempt $i: $STATUS"
-            if [ -z "$STATUS" ]; then
-              echo "  CI check not found yet, waiting..."
-              sleep 10
-              continue
-            fi
-            case "$STATUS" in
-              completed:success)
-                echo "CI passed!"
-                exit 0
-                ;;
-              completed:*)
-                echo "CI failed: $STATUS"
-                exit 1
-                ;;
-            esac
-            sleep 10
-          done
-          echo "Timed out waiting for CI"
-          exit 1
-
       - name: Checkout repository
-        if: steps.check_files.outputs.skip != 'true'
+        if: steps.pr.outputs.skip != 'true' && steps.check_files.outputs.skip != 'true'
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Run Claude Code Review
-        if: steps.check_files.outputs.skip != 'true'
+        if: steps.pr.outputs.skip != 'true' && steps.check_files.outputs.skip != 'true'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
           track_progress: true
-          prompt: |
+          trigger_phrase: ""
+          use_bedrock: false
+          direct_prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ steps.pr.outputs.pr_number }}
 
             あなたは Easy Flow Agent プロジェクトのシニアコードレビュアーです。
 
@@ -160,10 +163,10 @@ jobs:
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(grep:*),Bash(find:*),Bash(rg:*),Bash(cat:*),Bash(wc:*),Read"
 
       - name: Submit review verdict
-        if: steps.check_files.outputs.skip != 'true' && success()
+        if: steps.pr.outputs.skip != 'true' && steps.check_files.outputs.skip != 'true' && success()
         env:
           GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
           REPO: ${{ github.repository }}
         run: |
           # Issue コメントから検索
