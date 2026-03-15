@@ -88,6 +88,7 @@ export class Migrator {
           agentId: this.agentId,
           sourceFile: file,
           sourceType: "memory_file",
+          category: this.getCategoryFromPath(file),
         });
 
         result.totalChunks += chunks.length;
@@ -126,6 +127,36 @@ export class Migrator {
     }
 
     return files;
+  }
+
+  /**
+   * ファイルパスからカテゴリを動的に判定する。
+   * assemble() のフィルタリングと重み付けに使用される。
+   *
+   * - daily: memory/daily/YYYY-MM-DD.md または memory/YYYY-MM-DD.md（ミノ形式）
+   * - project: memory/projects/ 配下のファイル
+   * - memory_index: MEMORY.md / MEMORY-WORK.md
+   * - undefined: その他（カテゴリなし）
+   */
+  private getCategoryFromPath(filePath: string): string | undefined {
+    const normalizedPath = filePath.replace(/\\/g, "/");
+
+    // daily ログ: memory/daily/YYYY-MM-DD.md または memory/YYYY-MM-DD.md
+    if (/memory\/(daily\/)?(\d{4}-\d{2}-\d{2})\.md$/.test(normalizedPath)) {
+      return "daily";
+    }
+
+    // projects ディレクトリ配下
+    if (/\/memory\/projects\//.test(normalizedPath)) {
+      return "project";
+    }
+
+    // MEMORY.md / MEMORY-WORK.md（インデックスファイル）
+    if (/\/(MEMORY|MEMORY-WORK)\.md$/.test(normalizedPath)) {
+      return "memory_index";
+    }
+
+    return undefined;
   }
 
   private async scanDirectory(dir: string, files: string[]): Promise<void> {

@@ -32,6 +32,54 @@
         "**/employees/**"
       ],
       "memoryHint": "AI agent for Central HD (central-hd.co.jp) real estate company."
+    },
+    {
+      "name": "mino-openclaw",
+      "flyApp": "mino-openclaw",
+      "agentId": "mino",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/memory/"
+      ],
+      "excludePatterns": [
+        "**/bank-accounts.md",
+        "**/howto-king-of-time.md",
+        "**/entrance-reception-system.md",
+        "**/2026-02-25.md",
+        "**/contracts/**",
+        "**/openclaw-src/**",
+        "**/node_modules/**"
+      ],
+      "memoryHint": "AI agent for MINO (Japanese SME). Memory files located in flat /workspace/memory/ directory."
+    },
+    {
+      "name": "buzz-openclaw",
+      "flyApp": "buzz-openclaw",
+      "agentId": "buzz",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/MEMORY.md",
+        "/data/workspace/memory/"
+      ],
+      "excludePatterns": [
+        "**/mail-rules.md",
+        "**/node_modules/**"
+      ],
+      "memoryHint": "AI agent for BUZZ. MEMORY.md + memory/ (1 file only)."
+    },
+    {
+      "name": "umito-openclaw",
+      "flyApp": "umito-openclaw",
+      "agentId": "umito",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/umito.md"
+      ],
+      "excludePatterns": [
+        "**/spec/**",
+        "**/node_modules/**"
+      ],
+      "memoryHint": "AI agent for UMITO (WithSea). MEMORY.md excluded (contains embedded PAT). Primary source: umito.md."
     }
   ],
   "compactAfterDays": 7
