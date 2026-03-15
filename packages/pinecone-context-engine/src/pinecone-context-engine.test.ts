@@ -718,6 +718,68 @@ describe("PineconeContextEngine", () => {
     });
   });
 
+  describe("ingest - skip patterns", () => {
+    it("skips messages containing default skip pattern", async () => {
+      const engine = new PineconeContextEngine({
+        pineconeClient: createMockClient(),
+        agentId: "test",
+      });
+
+      const result = await engine.ingest({
+        sessionId: "s1",
+        message: { role: "user", content: "これは記憶しないでください" },
+      });
+
+      expect(result.ingested).toBe(false);
+    });
+
+    it("ingests messages that do not match any skip pattern", async () => {
+      const mockClient = createMockClient();
+      const engine = new PineconeContextEngine({
+        pineconeClient: mockClient,
+        agentId: "test",
+      });
+
+      const result = await engine.ingest({
+        sessionId: "s1",
+        message: { role: "user", content: "今日はいい天気ですね" },
+      });
+
+      expect(result.ingested).toBe(true);
+      expect(mockClient.upsert).toHaveBeenCalled();
+    });
+
+    it("supports custom skipPatterns override", async () => {
+      const engine = new PineconeContextEngine({
+        pineconeClient: createMockClient(),
+        agentId: "test",
+        skipPatterns: ["custom-skip-keyword"],
+      });
+
+      const result = await engine.ingest({
+        sessionId: "s1",
+        message: { role: "user", content: "custom-skip-keyword in message" },
+      });
+
+      expect(result.ingested).toBe(false);
+    });
+
+    it("is case-insensitive for skip patterns", async () => {
+      const engine = new PineconeContextEngine({
+        pineconeClient: createMockClient(),
+        agentId: "test",
+        skipPatterns: ["NO MEMORY"],
+      });
+
+      const result = await engine.ingest({
+        sessionId: "s1",
+        message: { role: "user", content: "no memory please" },
+      });
+
+      expect(result.ingested).toBe(false);
+    });
+  });
+
   describe("dispose", () => {
     it("completes without error", async () => {
       const engine = new PineconeContextEngine({

@@ -10,4 +10,11 @@ export interface PineconeContextEngineParams {
   ingestRoles?: ("user" | "assistant")[];
   compactAfterDays?: number;
   fallbackAdapter?: ContextEngine;
+  /**
+   * Messages containing any of these patterns (case-insensitive) will be skipped during ingest.
+   * Defaults to DEFAULT_SKIP_PATTERNS if not specified.
+   */
+  skipPatterns?: string[];
+  /** Default category for ingested session turns. Default: "conversation" */
+  defaultCategory?: string;
 }

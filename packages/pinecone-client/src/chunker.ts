@@ -16,6 +16,7 @@ export class TextChunker {
     sourceType: ChunkMetadata["sourceType"];
     turnId?: string;
     role?: "user" | "assistant";
+    category?: string;
   }): MemoryChunk[] {
     const { text, agentId, sourceFile, sourceType, turnId, role } = params;
 
@@ -42,6 +43,7 @@ export class TextChunker {
           createdAt: Date.now(),
           ...(turnId !== undefined && { turnId }),
           ...(role !== undefined && { role }),
+          ...(params.category !== undefined && { category: params.category }),
         },
       });
 

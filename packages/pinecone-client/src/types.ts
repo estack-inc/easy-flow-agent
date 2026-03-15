@@ -13,6 +13,8 @@ export interface ChunkMetadata {
   createdAt: number;
   turnId?: string;
   role?: "user" | "assistant";
+  /** Optional category for filtering (e.g. "conversation", "memory", "workflow") */
+  category?: string;
 }
 
 export interface QueryResult {
@@ -35,4 +37,6 @@ export interface QueryParams {
   topK?: number;
   minScore?: number;
   filter?: Record<string, unknown>;
+  /** If specified, only return chunks with this category */
+  filterCategory?: string;
 }
