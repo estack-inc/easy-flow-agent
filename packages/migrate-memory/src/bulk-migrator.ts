@@ -240,7 +240,7 @@ async function runSmokeTest(
   const smokeScript = `
 const {Pinecone}=require('/data/easy-flow-agent/node_modules/@pinecone-database/pinecone');
 new Pinecone({apiKey:process.env.PINECONE_API_KEY})
-  .index('${instance.index}')
+  .index(${JSON.stringify(instance.index)})
   .describeIndexStats()
   .then(s=>console.log(JSON.stringify(s.namespaces)))
   .catch(e=>console.error(e.message));

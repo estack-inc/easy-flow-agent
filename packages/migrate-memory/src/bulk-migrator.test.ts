@@ -291,25 +291,29 @@ describe("bulkMigrate", () => {
 
       const errorSpy = vi.spyOn(console, "error");
 
-      const result = await bulkMigrate(
-        { configPath: "mock", dryRun: false, targetInstance: "no-token" },
-        mockRunner,
-      );
+      try {
+        const result = await bulkMigrate(
+          { configPath: "mock", dryRun: false, targetInstance: "no-token" },
+          mockRunner,
+        );
 
-      // ensureEasyFlowAgent がエラーをスローし、bulkMigrate が catch して failed にカウント
-      expect(result.failed).toBe(1);
-      expect(result.processed).toBe(0);
+        // ensureEasyFlowAgent がエラーをスローし、bulkMigrate が catch して failed にカウント
+        expect(result.failed).toBe(1);
+        expect(result.processed).toBe(0);
 
-      const errorLogs = errorSpy.mock.calls
-        .filter((call) => typeof call[0] === "string" && call[0].includes("migration failed"))
-        .map((call) => call[0]);
-      expect(errorLogs).toHaveLength(1);
+        const errorLogs = errorSpy.mock.calls
+          .filter((call) => typeof call[0] === "string" && call[0].includes("migration failed"))
+          .map((call) => call[0]);
+        expect(errorLogs).toHaveLength(1);
+      } finally {
+        // 環境変数を復元（アサーション失敗時も確実に実行）
+        if (origGhToken !== undefined) process.env.GH_TOKEN = origGhToken;
+        else delete process.env.GH_TOKEN;
+        if (origGithubToken !== undefined) process.env.GITHUB_TOKEN = origGithubToken;
+        else delete process.env.GITHUB_TOKEN;
 
-      // 環境変数を復元
-      if (origGhToken !== undefined) process.env.GH_TOKEN = origGhToken;
-      if (origGithubToken !== undefined) process.env.GITHUB_TOKEN = origGithubToken;
-
-      errorSpy.mockRestore();
+        errorSpy.mockRestore();
+      }
     });
   });
 
