@@ -31,7 +31,13 @@ const DEFAULT_SKIP_PATTERNS = [
 const RECENT_TURNS_FOR_QUERY = 3;
 const DEFAULT_TOP_K = 20;
 const DEFAULT_MIN_SCORE = 0.7;
-const DEFAULT_TOKEN_BUDGET = 8000;
+/**
+ * Default token budget for Pinecone memory injection.
+ * Set to 16000 to accommodate Japanese/CJK conversations, which use
+ * ~1.5 tokens/char (after PR #16 fix). This allows ~10,000 Japanese
+ * characters per context injection (comparable to pre-fix behavior).
+ */
+const DEFAULT_TOKEN_BUDGET = 16000;
 const DEFAULT_INGEST_ROLES: ("user" | "assistant")[] = ["user", "assistant"];
 const DEFAULT_COMPACT_AFTER_DAYS = 7;
 
