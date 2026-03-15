@@ -145,7 +145,7 @@ async function runMigrateMemory(
   runner: CommandRunner,
 ): Promise<void> {
   const sourceArgs = instance.sources.map((s) => `--source ${s}`).join(" ");
-  const excludeArgs = instance.excludePatterns.map((p) => `--exclude-pattern '${p}'`).join(" ");
+  const excludeArgs = instance.excludePatterns.map((p) => `--exclude-pattern ${p}`).join(" ");
   const dryRunFlag = dryRun ? "--dry-run" : "";
 
   // easy-flow-agent が存在しない場合は自動インストールする

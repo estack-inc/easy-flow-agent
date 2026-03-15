@@ -107,8 +107,8 @@ describe("bulkMigrate", () => {
       .map((call) => call[0]);
 
     expect(dryRunLogs).toHaveLength(1);
-    expect(dryRunLogs[0]).toContain("--exclude-pattern '**/bank-accounts.md'");
-    expect(dryRunLogs[0]).toContain("--exclude-pattern '**/employees/**'");
+    expect(dryRunLogs[0]).toContain("--exclude-pattern **/bank-accounts.md");
+    expect(dryRunLogs[0]).toContain("--exclude-pattern **/employees/**");
 
     consoleSpy.mockRestore();
   });
@@ -153,6 +153,163 @@ describe("bulkMigrate", () => {
       // PINECONE_API_KEY が検出されれば migrate に進む（今回はソースが空なので processed=1）
       // 少なくとも「PINECONE_API_KEY not set」で失敗しないことを確認
       expect(result.failed).toBe(0);
+    });
+  });
+
+  it("非dryRun で excludePatterns が sh -c クォートと衝突しない", async () => {
+    const execCalls: string[] = [];
+    const mockRunner: CommandRunner = {
+      exec: vi.fn().mockImplementation((cmd: string) => {
+        execCalls.push(cmd);
+        if (cmd.includes("secrets list")) {
+          return JSON.stringify([{ name: "PINECONE_API_KEY" }]);
+        }
+        if (cmd.includes("printenv PINECONE_API_KEY")) {
+          return "pcsk_key";
+        }
+        return "";
+      }),
+      readFile: vi.fn().mockReturnValue(
+        JSON.stringify({
+          instances: [
+            {
+              name: "test",
+              flyApp: "test-app",
+              agentId: "test",
+              index: "test",
+              sources: ["/data/memory/"],
+              excludePatterns: ["**/bank-accounts.md", "**/employees/**"],
+            },
+          ],
+          compactAfterDays: 7,
+        }),
+      ),
+    };
+
+    await bulkMigrate({ configPath: "mock", dryRun: false, targetInstance: "test" }, mockRunner);
+
+    // runMigrateMemory の実行コマンドを取得
+    const migrateCmd = execCalls.find((c) => c.includes("sh -c") && c.includes("migrate-memory"));
+    expect(migrateCmd).toBeDefined();
+    // シングルクォートが excludeArgs に含まれていないことを確認
+    expect(migrateCmd).toContain("--exclude-pattern **/bank-accounts.md");
+    expect(migrateCmd).not.toContain("--exclude-pattern '**/");
+  });
+
+  describe("ensureEasyFlowAgent", () => {
+    it("easy-flow-agent が未インストールの場合に git clone + npm install を実行する", async () => {
+      const execCalls: string[] = [];
+      const mockRunner: CommandRunner = {
+        exec: vi.fn().mockImplementation((cmd: string) => {
+          execCalls.push(cmd);
+          if (cmd.includes("secrets list")) {
+            return JSON.stringify([{ name: "PINECONE_API_KEY" }]);
+          }
+          if (cmd.includes("printenv PINECONE_API_KEY")) {
+            return "pcsk_key";
+          }
+          if (cmd.includes("test -d /data/easy-flow-agent")) {
+            throw new Error("exit code 1"); // 存在しない
+          }
+          if (cmd.includes("gh auth token")) {
+            return "ghp_test_token";
+          }
+          return "";
+        }),
+        readFile: vi.fn().mockReturnValue(
+          JSON.stringify({
+            instances: [
+              {
+                name: "new-instance",
+                flyApp: "new-app",
+                agentId: "test",
+                index: "test",
+                sources: [],
+                excludePatterns: [],
+              },
+            ],
+            compactAfterDays: 7,
+          }),
+        ),
+      };
+
+      await bulkMigrate(
+        { configPath: "mock", dryRun: false, targetInstance: "new-instance" },
+        mockRunner,
+      );
+
+      // git clone が実行されたことを確認
+      const cloneCmd = execCalls.find((c) => c.includes("git clone"));
+      expect(cloneCmd).toBeDefined();
+      expect(cloneCmd).toContain("new-app");
+
+      // npm install が実行されたことを確認
+      const installCmd = execCalls.find((c) => c.includes("npm install --omit=dev"));
+      expect(installCmd).toBeDefined();
+    });
+
+    it("GH_TOKEN が取得できない場合にエラーをスローする", async () => {
+      const mockRunner: CommandRunner = {
+        exec: vi.fn().mockImplementation((cmd: string) => {
+          if (cmd.includes("secrets list")) {
+            return JSON.stringify([{ name: "PINECONE_API_KEY" }]);
+          }
+          if (cmd.includes("printenv PINECONE_API_KEY")) {
+            return "pcsk_key";
+          }
+          if (cmd.includes("test -d /data/easy-flow-agent")) {
+            throw new Error("exit code 1"); // 存在しない
+          }
+          // gh auth token, mell-dev の GH_TOKEN 取得すべて失敗
+          if (cmd.includes("gh auth token") || cmd.includes("printenv GH_TOKEN")) {
+            throw new Error("not found");
+          }
+          return "";
+        }),
+        readFile: vi.fn().mockReturnValue(
+          JSON.stringify({
+            instances: [
+              {
+                name: "no-token",
+                flyApp: "no-token-app",
+                agentId: "test",
+                index: "test",
+                sources: [],
+                excludePatterns: [],
+              },
+            ],
+            compactAfterDays: 7,
+          }),
+        ),
+      };
+
+      // GH_TOKEN 環境変数もクリア
+      const origGhToken = process.env.GH_TOKEN;
+      const origGithubToken = process.env.GITHUB_TOKEN;
+      delete process.env.GH_TOKEN;
+      delete process.env.GITHUB_TOKEN;
+
+      const errorSpy = vi.spyOn(console, "error");
+
+      const result = await bulkMigrate(
+        { configPath: "mock", dryRun: false, targetInstance: "no-token" },
+        mockRunner,
+      );
+
+      // ensureEasyFlowAgent がエラーをスローし、bulkMigrate が catch して failed にカウント
+      expect(result.failed).toBe(1);
+      expect(result.processed).toBe(0);
+
+      const errorLogs = errorSpy.mock.calls
+        .filter((call) => typeof call[0] === "string" && call[0].includes("migration failed"))
+        .map((call) => call[0]);
+      expect(errorLogs).toHaveLength(1);
+
+      // 環境変数を復元
+      if (origGhToken !== undefined) process.env.GH_TOKEN = origGhToken;
+      if (origGithubToken !== undefined) process.env.GITHUB_TOKEN = origGithubToken;
+
+      errorSpy.mockRestore();
     });
   });
 
