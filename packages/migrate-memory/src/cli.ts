@@ -186,6 +186,7 @@ async function runDelete(args: string[]): Promise<void> {
     }
     if (!dryRun) {
       console.log(`Chunks deleted: ${result.deletedChunks != null ? result.deletedChunks : "done"}`);
+
     }
   }
 }
