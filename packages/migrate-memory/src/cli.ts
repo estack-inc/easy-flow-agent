@@ -21,10 +21,11 @@ function printMigrateUsage(): void {
   console.log(`Usage: easy-flow migrate-memory [options]
 
 Options:
-  --agent-id <id>     Agent ID (required)
-  --source <path>     Source file or directory (repeatable)
-  --dry-run           Preview without writing to Pinecone
-  --help              Show this help message`);
+  --agent-id <id>            Agent ID (required)
+  --source <path>            Source file or directory (repeatable)
+  --exclude-pattern <glob>   Exclude files matching glob pattern (repeatable)
+  --dry-run                  Preview without writing to Pinecone
+  --help                     Show this help message`);
 }
 
 function printDeleteUsage(): void {
@@ -59,6 +60,7 @@ async function runMigrate(args: string[]): Promise<void> {
     options: {
       "agent-id": { type: "string" },
       source: { type: "string", multiple: true },
+      "exclude-pattern": { type: "string", multiple: true },
       "dry-run": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
@@ -72,6 +74,7 @@ async function runMigrate(args: string[]): Promise<void> {
 
   const agentId = values["agent-id"] as string | undefined;
   const sources = (values.source as string[] | undefined) ?? [];
+  const excludePatterns = (values["exclude-pattern"] as string[] | undefined) ?? [];
   const dryRun = values["dry-run"] as boolean;
 
   if (!agentId) {
@@ -90,7 +93,7 @@ async function runMigrate(args: string[]): Promise<void> {
   }
 
   const client = apiKey ? new PineconeClient({ apiKey }) : noopClient();
-  const migrator = new Migrator({ pineconeClient: client, agentId, dryRun });
+  const migrator = new Migrator({ pineconeClient: client, agentId, dryRun, excludePatterns });
 
   console.log(`${dryRun ? "[DRY RUN] " : ""}Migrating memory for agent: ${agentId}`);
   console.log(`Sources: ${sources.join(", ")}\n`);
@@ -218,7 +221,10 @@ async function runBulkMigrate(args: string[]): Promise<void> {
   console.log(
     `Bulk migrate: config=${configPath}, dryRun=${dryRun}, target=${target ?? "all"}`,
   );
-  await bulkMigrate({ configPath, dryRun, targetInstance: target });
+  const result = await bulkMigrate({ configPath, dryRun, targetInstance: target });
+  if (result.failed > 0) {
+    process.exitCode = 1;
+  }
 }
 
 async function main(): Promise<void> {

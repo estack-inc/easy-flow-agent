@@ -139,6 +139,28 @@ describe("Migrator", () => {
     expect(result.upsertedChunks).toBe(result.totalChunks);
   });
 
+  it("excludes files matching excludePatterns", async () => {
+    const client = createMockClient();
+    const migrator = new Migrator({
+      pineconeClient: client,
+      agentId: "test-agent",
+      excludePatterns: ["**/bank-accounts.md", "**/employees/**"],
+    });
+
+    // Create files — some should be excluded
+    const subDir = path.join(tmpDir, "employees");
+    fs.mkdirSync(subDir);
+    fs.writeFileSync(path.join(tmpDir, "normal.md"), "normal content", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, "bank-accounts.md"), "secret", "utf-8");
+    fs.writeFileSync(path.join(subDir, "staff.md"), "employee data", "utf-8");
+
+    const result = await migrator.migrate([tmpDir]);
+
+    // Only normal.md should be processed
+    expect(result.processedFiles).toBe(1);
+    expect(client.upsert).toHaveBeenCalledTimes(1);
+  });
+
   it("skips empty files", async () => {
     const client = createMockClient();
     const migrator = new Migrator({

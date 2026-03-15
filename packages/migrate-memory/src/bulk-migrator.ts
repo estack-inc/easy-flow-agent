@@ -37,10 +37,15 @@ const defaultRunner: CommandRunner = {
   },
 };
 
+export interface BulkMigrateResult {
+  processed: number;
+  failed: number;
+}
+
 export async function bulkMigrate(
   options: BulkMigrateOptions,
   runner: CommandRunner = defaultRunner,
-): Promise<void> {
+): Promise<BulkMigrateResult> {
   const config: BulkMigrateConfig = JSON.parse(
     runner.readFile(options.configPath),
   );
@@ -55,8 +60,11 @@ export async function bulkMigrate(
         ? `No instance found with name: ${options.targetInstance}`
         : "No instances configured",
     );
-    return;
+    return { processed: 0, failed: 1 };
   }
+
+  let failed = 0;
+  let processed = 0;
 
   for (const instance of targets) {
     console.log(`\n=== Processing: ${instance.name} ===`);
@@ -64,17 +72,23 @@ export async function bulkMigrate(
     const apiKey = getApiKeyFromFly(instance.flyApp, options.dryRun, runner);
     if (!apiKey && !options.dryRun) {
       console.error(`PINECONE_API_KEY not set for ${instance.flyApp}`);
+      failed++;
       continue;
     }
 
-    await configurePineconePlugin(instance, config.compactAfterDays, options.dryRun, runner);
-
-    await runMigrateMemory(instance, apiKey, options.dryRun, runner);
-
-    await runSmokeTest(instance, options.dryRun, runner);
-
-    console.log(`${instance.name}: migration complete`);
+    try {
+      await configurePineconePlugin(instance, config.compactAfterDays, options.dryRun, runner);
+      await runMigrateMemory(instance, apiKey, options.dryRun, runner);
+      await runSmokeTest(instance, options.dryRun, runner);
+      console.log(`${instance.name}: migration complete`);
+      processed++;
+    } catch (err) {
+      console.error(`${instance.name}: migration failed:`, err instanceof Error ? err.message : String(err));
+      failed++;
+    }
   }
+
+  return { processed, failed };
 }
 
 function getApiKeyFromFly(
@@ -141,9 +155,10 @@ async function runMigrateMemory(
   runner: CommandRunner,
 ): Promise<void> {
   const sourceArgs = instance.sources.map((s) => `--source ${s}`).join(" ");
+  const excludeArgs = instance.excludePatterns.map((p) => `--exclude-pattern ${p}`).join(" ");
   const dryRunFlag = dryRun ? "--dry-run" : "";
 
-  const cmd = `fly ssh console -a ${instance.flyApp} -C "PINECONE_API_KEY=${apiKey} /usr/local/lib/node_modules/openclaw/node_modules/.bin/jiti /data/easy-flow-agent/packages/migrate-memory/src/cli.ts migrate-memory --agent-id ${instance.agentId} ${sourceArgs} ${dryRunFlag}"`;
+  const cmd = `fly ssh console -a ${instance.flyApp} -C "PINECONE_API_KEY=${apiKey} /usr/local/lib/node_modules/openclaw/node_modules/.bin/jiti /data/easy-flow-agent/packages/migrate-memory/src/cli.ts migrate-memory --agent-id ${instance.agentId} ${sourceArgs} ${excludeArgs} ${dryRunFlag}"`;
 
   console.log(`Running migrate-memory for ${instance.name}...`);
   if (dryRun) {
@@ -162,7 +177,7 @@ async function runSmokeTest(
     console.log(`[DRY RUN] Would run smoke test for ${instance.name}`);
     return;
   }
-  const cmd = `fly ssh console -a ${instance.flyApp} -C "cd /data/easy-flow-agent && node -e \\"const {Pinecone}=require('./node_modules/@pinecone-database/pinecone');new Pinecone({apiKey:process.env.PINECONE_API_KEY}).index('easy-flow-memory').describeIndexStats().then(s=>console.log(JSON.stringify(s.namespaces))).catch(e=>console.error(e.message))\\""`;
+  const cmd = `fly ssh console -a ${instance.flyApp} -C "cd /data/easy-flow-agent && node -e \\"const {Pinecone}=require('./node_modules/@pinecone-database/pinecone');new Pinecone({apiKey:process.env.PINECONE_API_KEY}).index('${instance.index}').describeIndexStats().then(s=>console.log(JSON.stringify(s.namespaces))).catch(e=>console.error(e.message))\\""`;
   const result = runner.exec(cmd);
   console.log(`Smoke test result for ${instance.name}:`, result);
 }

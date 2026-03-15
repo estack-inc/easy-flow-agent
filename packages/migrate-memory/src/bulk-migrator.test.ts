@@ -10,7 +10,7 @@ const testConfig: BulkMigrateConfig = {
       agentId: "mell",
       index: "easy-flow-memory",
       sources: ["/data/memory/projects/", "/data/MEMORY.md"],
-      excludePatterns: ["**/bank-accounts.md"],
+      excludePatterns: ["**/bank-accounts.md", "**/employees/**"],
       memoryHint: "Test agent",
     },
     {
@@ -37,7 +37,7 @@ describe("bulkMigrate", () => {
   it("dry-run で実際の変更を行わない", async () => {
     const runner = createMockRunner();
 
-    await bulkMigrate(
+    const result = await bulkMigrate(
       { configPath: "test-config.json", dryRun: true },
       runner,
     );
@@ -46,13 +46,15 @@ describe("bulkMigrate", () => {
     expect(runner.exec).not.toHaveBeenCalled();
     // 設定ファイルは読み込まれる
     expect(runner.readFile).toHaveBeenCalledWith("test-config.json");
+    expect(result.failed).toBe(0);
+    expect(result.processed).toBe(2);
   });
 
   it("--target で特定インスタンスのみ処理する", async () => {
     const runner = createMockRunner();
     const consoleSpy = vi.spyOn(console, "log");
 
-    await bulkMigrate(
+    const result = await bulkMigrate(
       { configPath: "test-config.json", dryRun: true, targetInstance: "mell-dev" },
       runner,
     );
@@ -63,18 +65,19 @@ describe("bulkMigrate", () => {
 
     expect(processingLogs).toHaveLength(1);
     expect(processingLogs[0]).toContain("mell-dev");
+    expect(result.processed).toBe(1);
 
     consoleSpy.mockRestore();
   });
 
-  it("PINECONE_API_KEY がない場合はスキップする", async () => {
+  it("PINECONE_API_KEY がない場合はスキップして failed をカウントする", async () => {
     const runner = createMockRunner();
     // fly secrets list が空配列を返す（キーなし）
     runner.exec.mockReturnValue("[]");
 
     const errorSpy = vi.spyOn(console, "error");
 
-    await bulkMigrate(
+    const result = await bulkMigrate(
       { configPath: "test-config.json", dryRun: false, targetInstance: "mell-dev" },
       runner,
     );
@@ -85,7 +88,41 @@ describe("bulkMigrate", () => {
 
     expect(errorLogs).toHaveLength(1);
     expect(errorLogs[0]).toContain("mell-dev");
+    expect(result.failed).toBe(1);
+    expect(result.processed).toBe(0);
 
     errorSpy.mockRestore();
+  });
+
+  it("dry-run で excludePatterns がコマンドに含まれる", async () => {
+    const runner = createMockRunner();
+    const consoleSpy = vi.spyOn(console, "log");
+
+    await bulkMigrate(
+      { configPath: "test-config.json", dryRun: true, targetInstance: "mell-dev" },
+      runner,
+    );
+
+    const dryRunLogs = consoleSpy.mock.calls
+      .filter((call) => typeof call[0] === "string" && call[0].includes("[DRY RUN] fly ssh"))
+      .map((call) => call[0]);
+
+    expect(dryRunLogs).toHaveLength(1);
+    expect(dryRunLogs[0]).toContain("--exclude-pattern **/bank-accounts.md");
+    expect(dryRunLogs[0]).toContain("--exclude-pattern **/employees/**");
+
+    consoleSpy.mockRestore();
+  });
+
+  it("存在しないインスタンス名を指定すると failed=1 を返す", async () => {
+    const runner = createMockRunner();
+
+    const result = await bulkMigrate(
+      { configPath: "test-config.json", dryRun: true, targetInstance: "nonexistent" },
+      runner,
+    );
+
+    expect(result.failed).toBe(1);
+    expect(result.processed).toBe(0);
   });
 });

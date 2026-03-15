@@ -1,5 +1,6 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import picomatch from "picomatch";
 import { TextChunker } from "@easy-flow/pinecone-client";
 import type { IPineconeClient } from "@easy-flow/pinecone-client";
 
@@ -16,16 +17,22 @@ export class Migrator {
   private readonly agentId: string;
   private readonly dryRun: boolean;
   private readonly chunker: TextChunker;
+  private readonly isExcluded: (filePath: string) => boolean;
 
   constructor(params: {
     pineconeClient: IPineconeClient;
     agentId: string;
     dryRun?: boolean;
+    excludePatterns?: string[];
   }) {
     this.client = params.pineconeClient;
     this.agentId = params.agentId;
     this.dryRun = params.dryRun ?? false;
     this.chunker = new TextChunker();
+    this.isExcluded =
+      params.excludePatterns && params.excludePatterns.length > 0
+        ? picomatch(params.excludePatterns)
+        : () => false;
   }
 
   async migrate(sources: string[]): Promise<MigrateResult> {
@@ -84,7 +91,7 @@ export class Migrator {
         const s = await stat(source);
         if (s.isDirectory()) {
           await this.scanDirectory(source, files);
-        } else if (source.endsWith(".md")) {
+        } else if (source.endsWith(".md") && !this.isExcluded(source)) {
           files.push(source);
         }
       } catch {
@@ -99,6 +106,9 @@ export class Migrator {
     const entries = await readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
+      if (this.isExcluded(fullPath)) {
+        continue;
+      }
       if (entry.isDirectory()) {
         await this.scanDirectory(fullPath, files);
       } else if (entry.name.endsWith(".md")) {
