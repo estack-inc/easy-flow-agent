@@ -88,6 +88,7 @@ export class PineconeClient implements IPineconeClient {
             createdAt: (match.metadata?.createdAt as number) ?? 0,
             turnId: match.metadata?.turnId as string | undefined,
             role: match.metadata?.role as "user" | "assistant" | undefined,
+            category: match.metadata?.category as string | undefined,
           },
         },
         score: match.score ?? 0,

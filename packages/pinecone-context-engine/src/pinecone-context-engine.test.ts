@@ -718,6 +718,41 @@ describe("PineconeContextEngine", () => {
     });
   });
 
+  describe("ingest - category", () => {
+    it("sets default category 'conversation' on ingested chunks", async () => {
+      const client = createMockClient();
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "test-agent",
+      });
+
+      await engine.ingest({
+        sessionId: "s1",
+        message: { role: "user", content: "Hello" },
+      });
+
+      const chunks = client.upsert.mock.calls[0][0] as MemoryChunk[];
+      expect(chunks[0].metadata.category).toBe("conversation");
+    });
+
+    it("uses custom defaultCategory when specified", async () => {
+      const client = createMockClient();
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "test-agent",
+        defaultCategory: "memory",
+      });
+
+      await engine.ingest({
+        sessionId: "s1",
+        message: { role: "user", content: "Hello" },
+      });
+
+      const chunks = client.upsert.mock.calls[0][0] as MemoryChunk[];
+      expect(chunks[0].metadata.category).toBe("memory");
+    });
+  });
+
   describe("ingest - skip patterns", () => {
     it("skips messages containing default skip pattern", async () => {
       const engine = new PineconeContextEngine({

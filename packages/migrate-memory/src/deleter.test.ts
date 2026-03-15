@@ -66,4 +66,13 @@ describe("MemoryDeleter", () => {
 
     expect(mockClient.deleteNamespace).not.toHaveBeenCalled();
   });
+
+  it("deleteAll - calls deleteNamespace on non-dry-run", async () => {
+    const mockClient = createMockClient();
+    const deleter = new MemoryDeleter({ pineconeClient: mockClient, agentId: "mell" });
+
+    await deleter.deleteAll();
+
+    expect(mockClient.deleteNamespace).toHaveBeenCalledWith("mell");
+  });
 });

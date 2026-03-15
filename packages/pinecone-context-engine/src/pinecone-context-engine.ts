@@ -271,6 +271,12 @@ export class PineconeContextEngine implements ContextEngine {
           return [];
         }
 
+        // Skip messages containing skip patterns (same logic as ingest())
+        const lowerText = text.toLowerCase();
+        if (this.skipPatterns.some((p) => lowerText.includes(p.toLowerCase()))) {
+          return [];
+        }
+
         const contentHash = createHash("sha256")
           .update(`${sessionId}:${msg.role}:${text}`)
           .digest("hex")
