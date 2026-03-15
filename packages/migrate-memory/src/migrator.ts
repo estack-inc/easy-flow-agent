@@ -142,12 +142,12 @@ export class Migrator {
     const normalizedPath = filePath.replace(/\\/g, "/");
 
     // daily ログ: memory/daily/YYYY-MM-DD.md または memory/YYYY-MM-DD.md
-    if (/memory\/(daily\/)?(\d{4}-\d{2}-\d{2})\.md$/.test(normalizedPath)) {
+    if (/(^|\/)memory\/(daily\/)?(\d{4}-\d{2}-\d{2})\.md$/.test(normalizedPath)) {
       return "daily";
     }
 
     // projects ディレクトリ配下
-    if (/\/memory\/projects\//.test(normalizedPath)) {
+    if (/(^|\/)memory\/projects\//.test(normalizedPath)) {
       return "project";
     }
 
