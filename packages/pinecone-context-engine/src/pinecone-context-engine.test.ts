@@ -732,24 +732,52 @@ describe("PineconeContextEngine", () => {
 
 describe("estimateTokens", () => {
   it("estimates ASCII text tokens", () => {
-    // 100 ASCII chars ≈ 25 tokens
+    // 100 ASCII chars × 0.25 = 25 tokens
     const text = "a".repeat(100);
     expect(estimateTokens(text)).toBe(25);
   });
 
   it("estimates Japanese text tokens", () => {
-    // 100 Japanese chars ≈ 50 tokens
+    // 100 Japanese chars × 1.5 = 150 tokens
     const text = "あ".repeat(100);
-    expect(estimateTokens(text)).toBe(50);
+    expect(estimateTokens(text)).toBe(150);
   });
 
   it("estimates mixed text tokens", () => {
-    // 10 Japanese (5) + 10 ASCII (2.5) = 7.5 → ceil = 8
+    // 10 Japanese (15) + 10 ASCII (2.5) = 17.5 → ceil = 18
     const text = "あ".repeat(10) + "a".repeat(10);
-    expect(estimateTokens(text)).toBe(8);
+    expect(estimateTokens(text)).toBe(18);
   });
 
   it("returns 0 for empty string", () => {
     expect(estimateTokens("")).toBe(0);
+  });
+
+  it("estimates ASCII text correctly", () => {
+    // "hello" = 5 chars × 0.25 = 1.25 → ceil = 2
+    expect(estimateTokens("hello")).toBe(2);
+    // 40 ASCII chars → 10 tokens
+    expect(estimateTokens("a".repeat(40))).toBe(10);
+  });
+
+  it("estimates Japanese hiragana correctly (1.5x factor)", () => {
+    // "あいうえお" = 5 chars × 1.5 = 7.5 → ceil = 8
+    expect(estimateTokens("あいうえお")).toBe(8);
+  });
+
+  it("estimates Japanese kanji correctly (1.5x factor)", () => {
+    // "東京都" = 3 chars × 1.5 = 4.5 → ceil = 5
+    expect(estimateTokens("東京都")).toBe(5);
+  });
+
+  it("estimates mixed Japanese+ASCII text correctly", () => {
+    // "Hello世界" = 5 ASCII (1.25) + 2 CJK (3.0) = 4.25 → ceil = 5
+    expect(estimateTokens("Hello世界")).toBe(5);
+  });
+
+  it("Japanese estimate is higher than old 0.5x estimate", () => {
+    const japaneseText = "今日は良い天気ですね。明日も晴れると良いな。";
+    // Old: 22 chars × 0.5 = 11 tokens. New: should be ~33 tokens (1.5×)
+    expect(estimateTokens(japaneseText)).toBeGreaterThan(25);
   });
 });
