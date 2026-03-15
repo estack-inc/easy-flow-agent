@@ -332,7 +332,9 @@ describe("bulkMigrate", () => {
         exec: vi.fn().mockImplementation((cmd: string) => {
           execCalls.push(cmd);
           if (cmd.includes("secrets list")) {
-            return JSON.stringify([{ name: "PINECONE_API_KEY", digest: "abc", status: "Deployed" }]);
+            return JSON.stringify([
+              { name: "PINECONE_API_KEY", digest: "abc", status: "Deployed" },
+            ]);
           }
           if (cmd.includes("printenv PINECONE_API_KEY")) return "pcsk_test";
           if (cmd.includes("test -d /data/easy-flow-agent")) return "";
@@ -358,7 +360,13 @@ describe("bulkMigrate", () => {
       await bulkMigrate({ configPath: "mock", dryRun: false, targetInstance: "test" }, mockRunner);
 
       // configurePineconePlugin: sh -c + base64 + node を使用
-      const configureCall = execCalls.find((c) => c.includes("sh -c") && c.includes("base64") && c.includes("| node") && !c.includes("migrate-memory"));
+      const configureCall = execCalls.find(
+        (c) =>
+          c.includes("sh -c") &&
+          c.includes("base64") &&
+          c.includes("| node") &&
+          !c.includes("migrate-memory"),
+      );
       expect(configureCall).toBeDefined();
       expect(configureCall).toContain("sh -c 'echo ");
       expect(configureCall).toContain("| base64 -d | node'");
@@ -374,12 +382,17 @@ describe("bulkMigrate", () => {
         exec: vi.fn().mockImplementation((cmd: string) => {
           execCalls.push(cmd);
           if (cmd.includes("secrets list")) {
-            return JSON.stringify([{ name: "PINECONE_API_KEY", digest: "abc", status: "Deployed" }]);
+            return JSON.stringify([
+              { name: "PINECONE_API_KEY", digest: "abc", status: "Deployed" },
+            ]);
           }
           if (cmd.includes("printenv PINECONE_API_KEY")) return "pcsk_test";
           if (cmd.includes("test -d /data/easy-flow-agent")) return "";
           // smoke test
-          if (cmd.includes("describeIndexStats") || (cmd.includes("base64") && cmd.includes("| node"))) {
+          if (
+            cmd.includes("describeIndexStats") ||
+            (cmd.includes("base64") && cmd.includes("| node"))
+          ) {
             return JSON.stringify({ "agent:test-agent": { recordCount: 5 } });
           }
           return "";
@@ -405,7 +418,12 @@ describe("bulkMigrate", () => {
 
       // runSmokeTest: sh -c + base64 + node を使用
       const smokeCall = execCalls.find(
-        (c) => c.includes("sh -c") && c.includes("base64") && c.includes("| node") && !c.includes("migrate-memory") && !c.includes("openclaw.json"),
+        (c) =>
+          c.includes("sh -c") &&
+          c.includes("base64") &&
+          c.includes("| node") &&
+          !c.includes("migrate-memory") &&
+          !c.includes("openclaw.json"),
       );
       expect(smokeCall).toBeDefined();
       expect(smokeCall).toContain("sh -c 'echo ");
