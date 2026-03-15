@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import type { MemoryChunk, QueryParams, QueryResult } from "@easy-flow/pinecone-client";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
-import { PineconeContextEngine, isQueryThin, buildEnrichedQuery } from "./pinecone-context-engine.js";
+import {
+  buildEnrichedQuery,
+  isQueryThin,
+  PineconeContextEngine,
+} from "./pinecone-context-engine.js";
 import { estimateTokens } from "./token-estimator.js";
 import type { IPineconeClient } from "./types.js";
 
@@ -486,9 +490,7 @@ describe("PineconeContextEngine", () => {
         memoryHint: "eSTACK AI agent service",
       });
 
-      const messages = [
-        { role: "user" as const, content: "あの件どうなった？" },
-      ];
+      const messages = [{ role: "user" as const, content: "あの件どうなった？" }];
 
       await engine.assemble({ sessionId: "s1", messages });
 
@@ -930,7 +932,11 @@ describe("isQueryThin", () => {
   });
 
   it("ひらがなのみの長文は固有名詞なしとして thin と判定", () => {
-    expect(isQueryThin("おはようございます。きょうもよろしくおねがいします。ほんじつのよていについてかくにんさせてください。")).toBe(true);
+    expect(
+      isQueryThin(
+        "おはようございます。きょうもよろしくおねがいします。ほんじつのよていについてかくにんさせてください。",
+      ),
+    ).toBe(true);
   });
 });
 

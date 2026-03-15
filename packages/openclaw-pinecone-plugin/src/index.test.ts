@@ -117,7 +117,7 @@ describe("pinecone-memory plugin", () => {
         agentId: "mell",
         memoryHint: "eSTACK AI agent",
         minQueryTokens: 30,
-      })
+      }),
     );
   });
 
