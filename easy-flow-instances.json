@@ -1,0 +1,39 @@
+{
+  "instances": [
+    {
+      "name": "mell-dev",
+      "flyApp": "mell-dev",
+      "agentId": "mell",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/memory/projects/",
+        "/data/MEMORY.md"
+      ],
+      "excludePatterns": [
+        "**/bank-accounts.md",
+        "**/estack-accounts.md",
+        "**/vps-central-demo-info.md",
+        "**/employees/**"
+      ],
+      "memoryHint": "Easy Flow AI agent for eSTACK Inc. Japanese SME AI service."
+    },
+    {
+      "name": "central-hd-osada-agent",
+      "flyApp": "central-hd-osada-agent",
+      "agentId": "central-hd-osada",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/memory/projects/",
+        "/data/MEMORY.md"
+      ],
+      "excludePatterns": [
+        "**/bank-accounts.md",
+        "**/*accounts*.md",
+        "**/employees/**"
+      ],
+      "memoryHint": "AI agent for Central HD (central-hd.co.jp) real estate company."
+    }
+  ],
+  "pineconeIndex": "easy-flow-memory",
+  "compactAfterDays": 7
+}

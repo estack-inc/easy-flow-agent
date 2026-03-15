@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import { PineconeClient } from "@easy-flow/pinecone-client";
 import { Migrator } from "./migrator.js";
 import { MemoryDeleter } from "./deleter.js";
+import { bulkMigrate } from "./bulk-migrator.js";
 
 function printUsage(): void {
   console.log(`Usage: easy-flow <command> [options]
@@ -11,6 +12,7 @@ function printUsage(): void {
 Commands:
   migrate-memory    Migrate markdown files to Pinecone
   memory-delete     Delete memory from Pinecone
+  bulk-migrate      Bulk migrate all EasyFlow instances to Pinecone
 
 Run 'easy-flow <command> --help' for command-specific options.`);
 }
@@ -191,6 +193,34 @@ async function runDelete(args: string[]): Promise<void> {
   }
 }
 
+function printBulkMigrateUsage(): void {
+  console.log(`Usage: easy-flow bulk-migrate [options]
+
+Options:
+  --config=<path>     Config file path (default: ./easy-flow-instances.json)
+  --target=<name>     Process only the specified instance
+  --dry-run           Preview without making changes
+  --help              Show this help message`);
+}
+
+async function runBulkMigrate(args: string[]): Promise<void> {
+  if (args.includes("--help")) {
+    printBulkMigrateUsage();
+    process.exit(0);
+  }
+
+  const configPath =
+    args.find((a) => a.startsWith("--config="))?.split("=")[1] ??
+    "./easy-flow-instances.json";
+  const dryRun = args.includes("--dry-run");
+  const target = args.find((a) => a.startsWith("--target="))?.split("=")[1];
+
+  console.log(
+    `Bulk migrate: config=${configPath}, dryRun=${dryRun}, target=${target ?? "all"}`,
+  );
+  await bulkMigrate({ configPath, dryRun, targetInstance: target });
+}
+
 async function main(): Promise<void> {
   const subcommand = process.argv[2];
 
@@ -203,6 +233,8 @@ async function main(): Promise<void> {
     await runMigrate(process.argv.slice(3));
   } else if (subcommand === "memory-delete") {
     await runDelete(process.argv.slice(3));
+  } else if (subcommand === "bulk-migrate") {
+    await runBulkMigrate(process.argv.slice(3));
   } else {
     console.error(`Unknown command: ${subcommand}`);
     printUsage();
