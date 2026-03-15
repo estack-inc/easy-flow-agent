@@ -22,7 +22,6 @@ const testConfig: BulkMigrateConfig = {
       excludePatterns: [],
     },
   ],
-  pineconeIndex: "easy-flow-memory",
   compactAfterDays: 7,
 };
 

@@ -34,6 +34,5 @@
       "memoryHint": "AI agent for Central HD (central-hd.co.jp) real estate company."
     }
   ],
-  "pineconeIndex": "easy-flow-memory",
   "compactAfterDays": 7
 }

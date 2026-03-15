@@ -13,7 +13,6 @@ export interface InstanceConfig {
 
 export interface BulkMigrateConfig {
   instances: InstanceConfig[];
-  pineconeIndex: string;
   compactAfterDays: number;
 }
 
