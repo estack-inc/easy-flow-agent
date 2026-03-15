@@ -7,6 +7,8 @@ type PluginConfig = {
   agentId?: string;
   indexName?: string;
   compactAfterDays?: number;
+  memoryHint?: string;
+  minQueryTokens?: number;
 };
 
 export default function register(api: OpenClawPluginApi): void {
@@ -28,6 +30,8 @@ export default function register(api: OpenClawPluginApi): void {
       pineconeClient: client,
       agentId,
       compactAfterDays,
+      memoryHint: cfg.memoryHint,
+      minQueryTokens: cfg.minQueryTokens,
     });
   });
 

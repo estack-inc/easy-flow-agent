@@ -100,6 +100,27 @@ describe("pinecone-memory plugin", () => {
     expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("compactAfterDays: 14"));
   });
 
+  it("passes memoryHint and minQueryTokens to PineconeContextEngine", () => {
+    const api = createMockApi({
+      apiKey: "test-key",
+      agentId: "mell",
+      memoryHint: "eSTACK AI agent",
+      minQueryTokens: 30,
+    });
+    register(api as any);
+
+    const factory = api.registerContextEngine.mock.calls[0][1];
+    factory();
+
+    expect(PineconeContextEngine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "mell",
+        memoryHint: "eSTACK AI agent",
+        minQueryTokens: 30,
+      })
+    );
+  });
+
   it("factory creates PineconeContextEngine with correct params", () => {
     const api = createMockApi({
       apiKey: "test-key",

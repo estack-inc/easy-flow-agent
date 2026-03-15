@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { MemoryChunk, QueryParams, QueryResult } from "@easy-flow/pinecone-client";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
-import { PineconeContextEngine } from "./pinecone-context-engine.js";
+import { PineconeContextEngine, isQueryThin, buildEnrichedQuery } from "./pinecone-context-engine.js";
 import { estimateTokens } from "./token-estimator.js";
 import type { IPineconeClient } from "./types.js";
 
@@ -476,6 +476,47 @@ describe("PineconeContextEngine", () => {
       vi.useRealTimers();
     });
 
+    it("appends memoryHint to thin query when calling Pinecone", async () => {
+      const client = createMockClient();
+      client.query.mockResolvedValue([]);
+
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "mell",
+        memoryHint: "eSTACK AI agent service",
+      });
+
+      const messages = [
+        { role: "user" as const, content: "あの件どうなった？" },
+      ];
+
+      await engine.assemble({ sessionId: "s1", messages });
+
+      const queryParams = client.query.mock.calls[0][0] as QueryParams;
+      expect(queryParams.text).toContain("あの件どうなった？");
+      expect(queryParams.text).toContain("eSTACK AI agent service");
+    });
+
+    it("does not append memoryHint to rich query", async () => {
+      const client = createMockClient();
+      client.query.mockResolvedValue([]);
+
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "mell",
+        memoryHint: "eSTACK AI agent service",
+      });
+
+      const messages = [
+        { role: "user" as const, content: "セントラルHDの長田さんとの3月11日アポの結果を教えて" },
+      ];
+
+      await engine.assemble({ sessionId: "s1", messages });
+
+      const queryParams = client.query.mock.calls[0][0] as QueryParams;
+      expect(queryParams.text).not.toContain("eSTACK AI agent service");
+    });
+
     it("returns empty systemPromptAddition on failure without fallbackAdapter", async () => {
       const client = createMockClient();
       client.query.mockRejectedValue(new Error("connection refused"));
@@ -852,6 +893,44 @@ describe("PineconeContextEngine", () => {
 
       await expect(engine.dispose()).resolves.toBeUndefined();
     });
+  });
+});
+
+describe("buildEnrichedQuery", () => {
+  it("薄いクエリ（20トークン未満）には memoryHint を付加する", () => {
+    const result = buildEnrichedQuery("あの件どうなった？", "eSTACK AI agent");
+    expect(result).toContain("eSTACK AI agent");
+  });
+
+  it("十分なクエリ（固有名詞あり・20トークン以上）はそのまま返す", () => {
+    const result = buildEnrichedQuery(
+      "セントラルHDの長田さんとの3月11日アポの結果を教えて",
+      "eSTACK AI agent",
+    );
+    expect(result).not.toContain("eSTACK AI agent");
+  });
+
+  it("memoryHint なしでも動作する", () => {
+    const result = buildEnrichedQuery("あの件は？");
+    expect(result).toBe("あの件は？");
+  });
+});
+
+describe("isQueryThin", () => {
+  it("短いクエリは thin と判定", () => {
+    expect(isQueryThin("hello")).toBe(true);
+  });
+
+  it("十分な長さで固有名詞ありのクエリは thin でない", () => {
+    expect(isQueryThin("セントラルHDの長田さんとの3月11日アポの結果を教えて")).toBe(false);
+  });
+
+  it("ASCII のみで固有名詞なしのクエリは thin", () => {
+    expect(isQueryThin("what about that thing we discussed?")).toBe(true);
+  });
+
+  it("ひらがなのみの長文は固有名詞なしとして thin と判定", () => {
+    expect(isQueryThin("おはようございます。きょうもよろしくおねがいします。ほんじつのよていについてかくにんさせてください。")).toBe(true);
   });
 });
 
