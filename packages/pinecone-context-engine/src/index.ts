@@ -1,4 +1,4 @@
-export { PineconeContextEngine } from "./pinecone-context-engine.js";
+export { PineconeContextEngine, isQueryThin, buildEnrichedQuery } from "./pinecone-context-engine.js";
 export {
   FallbackContextEngine,
   EmptyFallbackContextEngine,

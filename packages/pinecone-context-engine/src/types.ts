@@ -17,4 +17,8 @@ export interface PineconeContextEngineParams {
   skipPatterns?: string[];
   /** Default category for ingested session turns. Default: "conversation" */
   defaultCategory?: string;
+  /** Hint text appended to thin queries to improve Pinecone recall (e.g. MEMORY.md summary) */
+  memoryHint?: string;
+  /** Token threshold below which a query is considered "thin". Default: 20 */
+  minQueryTokens?: number;
 }

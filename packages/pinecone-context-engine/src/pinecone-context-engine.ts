@@ -38,8 +38,35 @@ const DEFAULT_MIN_SCORE = 0.7;
  * characters per context injection (comparable to pre-fix behavior).
  */
 const DEFAULT_TOKEN_BUDGET = 16000;
+const DEFAULT_MIN_QUERY_TOKENS = 20;
 const DEFAULT_INGEST_ROLES: ("user" | "assistant")[] = ["user", "assistant"];
 const DEFAULT_COMPACT_AFTER_DAYS = 7;
+
+/**
+ * Determine if a query is "thin" — too short or lacking proper nouns to
+ * produce good Pinecone vector-search results.
+ */
+export function isQueryThin(query: string, minTokens: number = DEFAULT_MIN_QUERY_TOKENS): boolean {
+  const tokens = estimateTokens(query);
+  const hasProperNoun = /[A-Z\u4E00-\u9FFF\u30A0-\u30FF\u3040-\u309F]/.test(query);
+  return tokens < minTokens || !hasProperNoun;
+}
+
+/**
+ * Enrich a thin query by appending a memoryHint suffix.
+ * Returns the original query unchanged if it is already rich enough.
+ */
+export function buildEnrichedQuery(
+  baseQuery: string,
+  agentId: string,
+  memoryHint?: string,
+  minTokens: number = DEFAULT_MIN_QUERY_TOKENS,
+): string {
+  if (!isQueryThin(baseQuery, minTokens) || !memoryHint) {
+    return baseQuery;
+  }
+  return `${baseQuery}\n${memoryHint.slice(0, 200)}`;
+}
 
 const RETRY_BASE_MS = 100;
 const MAX_RETRIES = 3;
@@ -98,6 +125,8 @@ export class PineconeContextEngine implements ContextEngine {
   private readonly chunker: TextChunker;
   private readonly skipPatterns: string[];
   private readonly defaultCategory: string;
+  private readonly memoryHint?: string;
+  private readonly minQueryTokens: number;
 
   constructor(params: PineconeContextEngineParams) {
     this.client = params.pineconeClient;
@@ -111,6 +140,8 @@ export class PineconeContextEngine implements ContextEngine {
     this.chunker = new TextChunker();
     this.skipPatterns = params.skipPatterns ?? DEFAULT_SKIP_PATTERNS;
     this.defaultCategory = params.defaultCategory ?? "conversation";
+    this.memoryHint = params.memoryHint;
+    this.minQueryTokens = params.minQueryTokens ?? DEFAULT_MIN_QUERY_TOKENS;
   }
 
   async bootstrap(params: {
@@ -193,14 +224,16 @@ export class PineconeContextEngine implements ContextEngine {
     tokenBudget?: number;
   }): Promise<AssembleResult> {
     try {
-      const queryText = this.buildQueryFromRecentTurns(params.messages);
+      const baseQuery = this.buildQueryFromRecentTurns(params.messages);
 
-      if (!queryText) {
+      if (!baseQuery) {
         return {
           messages: params.messages,
           estimatedTokens: 0,
         };
       }
+
+      const queryText = this.enrichQuery(baseQuery);
 
       const results = await Promise.race([
         withRetry(() =>
@@ -318,6 +351,10 @@ export class PineconeContextEngine implements ContextEngine {
 
   async dispose(): Promise<void> {
     // No resources to release
+  }
+
+  private enrichQuery(baseQuery: string): string {
+    return buildEnrichedQuery(baseQuery, this.agentId, this.memoryHint, this.minQueryTokens);
   }
 
   private buildQueryFromRecentTurns(messages: AgentMessage[]): string {
