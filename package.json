@@ -8,6 +8,12 @@
   ],
   "scripts": {
     "test": "npm test --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build --workspaces --if-present",
+    "lint": "biome check packages/",
+    "lint:fix": "biome check --write packages/",
+    "format": "biome format --write packages/"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.7"
   }
 }
