@@ -12,7 +12,7 @@
 export function estimateTokens(text: string): number {
   let tokens = 0;
   for (const char of text) {
-    const code = char.charCodeAt(0);
+    const code = char.codePointAt(0)!;
     if (code <= 0x7f) {
       // ASCII: ~4 chars per token
       tokens += 0.25;

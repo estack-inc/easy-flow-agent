@@ -731,38 +731,20 @@ describe("PineconeContextEngine", () => {
 });
 
 describe("estimateTokens", () => {
-  it("estimates ASCII text tokens", () => {
-    // 100 ASCII chars × 0.25 = 25 tokens
-    const text = "a".repeat(100);
-    expect(estimateTokens(text)).toBe(25);
-  });
-
-  it("estimates Japanese text tokens", () => {
-    // 100 Japanese chars × 1.5 = 150 tokens
-    const text = "あ".repeat(100);
-    expect(estimateTokens(text)).toBe(150);
-  });
-
-  it("estimates mixed text tokens", () => {
-    // 10 Japanese (15) + 10 ASCII (2.5) = 17.5 → ceil = 18
-    const text = "あ".repeat(10) + "a".repeat(10);
-    expect(estimateTokens(text)).toBe(18);
-  });
-
-  it("returns 0 for empty string", () => {
-    expect(estimateTokens("")).toBe(0);
-  });
-
   it("estimates ASCII text correctly", () => {
     // "hello" = 5 chars × 0.25 = 1.25 → ceil = 2
     expect(estimateTokens("hello")).toBe(2);
-    // 40 ASCII chars → 10 tokens
+    // 40 ASCII chars × 0.25 = 10 tokens
     expect(estimateTokens("a".repeat(40))).toBe(10);
+    // 100 ASCII chars × 0.25 = 25 tokens
+    expect(estimateTokens("a".repeat(100))).toBe(25);
   });
 
   it("estimates Japanese hiragana correctly (1.5x factor)", () => {
     // "あいうえお" = 5 chars × 1.5 = 7.5 → ceil = 8
     expect(estimateTokens("あいうえお")).toBe(8);
+    // 100 Japanese chars × 1.5 = 150 tokens
+    expect(estimateTokens("あ".repeat(100))).toBe(150);
   });
 
   it("estimates Japanese kanji correctly (1.5x factor)", () => {
@@ -773,11 +755,35 @@ describe("estimateTokens", () => {
   it("estimates mixed Japanese+ASCII text correctly", () => {
     // "Hello世界" = 5 ASCII (1.25) + 2 CJK (3.0) = 4.25 → ceil = 5
     expect(estimateTokens("Hello世界")).toBe(5);
+    // 10 Japanese (15) + 10 ASCII (2.5) = 17.5 → ceil = 18
+    expect(estimateTokens("あ".repeat(10) + "a".repeat(10))).toBe(18);
   });
 
-  it("Japanese estimate is higher than old 0.5x estimate", () => {
+  it("estimates Japanese sentence with exact value", () => {
+    // "今日は良い天気ですね。明日も晴れると良いな。" = 22 chars
+    // All CJK/punctuation (U+3000–U+9FFF) × 1.5 = 33 → ceil = 33
     const japaneseText = "今日は良い天気ですね。明日も晴れると良いな。";
-    // Old: 22 chars × 0.5 = 11 tokens. New: should be ~33 tokens (1.5×)
-    expect(estimateTokens(japaneseText)).toBeGreaterThan(25);
+    expect(estimateTokens(japaneseText)).toBe(33);
+  });
+
+  it("estimates fullwidth ASCII correctly (1.0x factor)", () => {
+    // "ａｂｃ" = 3 fullwidth chars (U+FF00–U+FFEF) × 1.0 = 3
+    expect(estimateTokens("ａｂｃ")).toBe(3);
+  });
+
+  it("estimates halfwidth katakana correctly (1.0x factor)", () => {
+    // "ｦｧｨ" = 3 halfwidth katakana (U+FF00–U+FFEF) × 1.0 = 3
+    expect(estimateTokens("ｦｧｨ")).toBe(3);
+  });
+
+  it("estimates emoji/other non-ASCII correctly (1.0x factor)", () => {
+    // "é" (U+00E9) = 1 char × 1.0 = 1
+    expect(estimateTokens("é")).toBe(1);
+    // "ñ" (U+00F1) = 1 char × 1.0 = 1
+    expect(estimateTokens("ñ")).toBe(1);
+  });
+
+  it("returns 0 for empty string", () => {
+    expect(estimateTokens("")).toBe(0);
   });
 });
