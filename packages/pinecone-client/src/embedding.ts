@@ -27,7 +27,7 @@ export class EmbeddingService {
       });
 
       for (const item of response.data) {
-        results.push(item.values as number[]);
+        results.push((item as { values: number[] }).values);
       }
     }
 
