@@ -23,7 +23,12 @@ vi.mock("@pinecone-database/pinecone", () => {
       embed: vi
         .fn()
         .mockImplementation((params: { inputs: string[] }) =>
-          Promise.resolve({ data: params.inputs.map(() => ({ values: Array(1024).fill(0.1) })) }),
+          Promise.resolve({
+            data: params.inputs.map(() => ({
+              vectorType: "dense",
+              values: Array(1024).fill(0.1),
+            })),
+          }),
         ),
     },
   }));
