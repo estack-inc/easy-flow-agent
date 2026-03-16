@@ -20,16 +20,14 @@ vi.mock("@pinecone-database/pinecone", () => {
     listIndexes: vi.fn().mockResolvedValue({ indexes: [{ name: "easy-flow-memory" }] }),
     createIndex: vi.fn().mockResolvedValue(undefined),
     inference: {
-      embed: vi
-        .fn()
-        .mockImplementation((params: { inputs: string[] }) =>
-          Promise.resolve({
-            data: params.inputs.map(() => ({
-              vectorType: "dense",
-              values: Array(1024).fill(0.1),
-            })),
-          }),
-        ),
+      embed: vi.fn().mockImplementation((params: { inputs: string[] }) =>
+        Promise.resolve({
+          data: params.inputs.map(() => ({
+            vectorType: "dense",
+            values: Array(1024).fill(0.1),
+          })),
+        }),
+      ),
     },
   }));
 
