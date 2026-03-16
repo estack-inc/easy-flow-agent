@@ -1,4 +1,5 @@
 import type { BulkMigrateConfig, CommandRunner } from "./bulk-migrator.js";
+import { defaultRunner } from "./bulk-migrator.js";
 
 export interface BulkUpdateOptions {
   configPath: string;
@@ -10,18 +11,6 @@ export interface BulkUpdateResult {
   updated: number;
   failed: number;
 }
-
-import { execSync } from "node:child_process";
-import * as fs from "node:fs";
-
-const defaultRunner: CommandRunner = {
-  exec(cmd: string, options?: { stdio?: "inherit" }): string {
-    return execSync(cmd, options as Parameters<typeof execSync>[1])?.toString() ?? "";
-  },
-  readFile(path: string): string {
-    return fs.readFileSync(path, "utf-8");
-  },
-};
 
 const UPDATE_COMMANDS = [
   "cd /data/easy-flow-agent && git pull --ff-only origin main",
