@@ -27,7 +27,7 @@ export class EmbeddingService {
       });
 
       for (const item of response.data) {
-        if (item.vectorType === 'dense') {
+        if (item.vectorType === "dense") {
           results.push(item.values);
         }
       }
