@@ -28,17 +28,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build -w packages/migrate-memory
-      - name: Run bulk-update
+      - name: Run bulk-update (estack-ai-agent org)
+        env:
+          TARGET: ${{ inputs.target }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          TARGET_FLAG=""
-          if [ -n "${{ inputs.target }}" ]; then
-            TARGET_FLAG="--target=${{ inputs.target }}"
-          fi
           DRY_RUN_FLAG=""
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "$DRY_RUN" = "true" ]; then
             DRY_RUN_FLAG="--dry-run"
           fi
-          node packages/migrate-memory/dist/cli.js bulk-update $TARGET_FLAG $DRY_RUN_FLAG
+          for instance in mell-dev central-hd-osada-agent; do
+            if [ -z "$TARGET" ] || [ "$TARGET" = "$instance" ]; then
+              echo "=== Updating $instance ==="
+              node packages/migrate-memory/dist/cli.js bulk-update --target="$instance" $DRY_RUN_FLAG
+            fi
+          done
 
   bulk-update-estack-inc:
     runs-on: ubuntu-latest
@@ -53,14 +57,18 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build -w packages/migrate-memory
-      - name: Run bulk-update
+      - name: Run bulk-update (estack-inc org)
+        env:
+          TARGET: ${{ inputs.target }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          TARGET_FLAG=""
-          if [ -n "${{ inputs.target }}" ]; then
-            TARGET_FLAG="--target=${{ inputs.target }}"
-          fi
           DRY_RUN_FLAG=""
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "$DRY_RUN" = "true" ]; then
             DRY_RUN_FLAG="--dry-run"
           fi
-          node packages/migrate-memory/dist/cli.js bulk-update $TARGET_FLAG $DRY_RUN_FLAG
+          for instance in mino-openclaw buzz-openclaw umito-openclaw estack-soumu-openclaw; do
+            if [ -z "$TARGET" ] || [ "$TARGET" = "$instance" ]; then
+              echo "=== Updating $instance ==="
+              node packages/migrate-memory/dist/cli.js bulk-update --target="$instance" $DRY_RUN_FLAG
+            fi
+          done
