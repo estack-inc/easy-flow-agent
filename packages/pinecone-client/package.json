@@ -5,7 +5,10 @@
   "description": "Pinecone vector DB client for Easy Flow Agent memory",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    }
   },
   "scripts": {
     "test": "vitest run",

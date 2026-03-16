@@ -27,6 +27,7 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      - run: npm run build -w packages/pinecone-client
       - run: npm run build -w packages/migrate-memory
       - name: Run bulk-update (estack-ai-agent org)
         env:
@@ -56,6 +57,7 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      - run: npm run build -w packages/pinecone-client
       - run: npm run build -w packages/migrate-memory
       - name: Run bulk-update (estack-inc org)
         env:
