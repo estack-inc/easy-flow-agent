@@ -3,6 +3,7 @@
 import { parseArgs } from "node:util";
 import { PineconeClient } from "@easy-flow/pinecone-client";
 import { bulkMigrate } from "./bulk-migrator.js";
+import { bulkUpdate } from "./bulk-updater.js";
 import { MemoryDeleter } from "./deleter.js";
 import { Migrator } from "./migrator.js";
 import { validateExcludePatterns } from "./preflight.js";
@@ -14,6 +15,7 @@ Commands:
   migrate-memory    Migrate markdown files to Pinecone
   memory-delete     Delete memory from Pinecone
   bulk-migrate      Bulk migrate all EasyFlow instances to Pinecone
+  bulk-update       Bulk update easy-flow-agent on all instances
 
 Run 'easy-flow <command> --help' for command-specific options.`);
 }
@@ -240,6 +242,35 @@ async function runBulkMigrate(args: string[]): Promise<void> {
   }
 }
 
+function printBulkUpdateUsage(): void {
+  console.log(`Usage: easy-flow bulk-update [options]
+
+Options:
+  --config=<path>     Config file path (default: ./easy-flow-instances.json)
+  --target=<name>     Process only the specified instance
+  --dry-run           Preview without making changes
+  --help              Show this help message`);
+}
+
+async function runBulkUpdate(args: string[]): Promise<void> {
+  if (args.includes("--help")) {
+    printBulkUpdateUsage();
+    process.exit(0);
+  }
+
+  const configPath =
+    args.find((a) => a.startsWith("--config="))?.split("=")[1] ?? "./easy-flow-instances.json";
+  const dryRun = args.includes("--dry-run");
+  const target = args.find((a) => a.startsWith("--target="))?.split("=")[1];
+
+  console.log(`Bulk update: config=${configPath}, dryRun=${dryRun}, target=${target ?? "all"}`);
+  const result = await bulkUpdate({ configPath, dryRun, targetInstance: target });
+  console.log(`\n=== Summary: ${result.updated} updated, ${result.failed} failed ===`);
+  if (result.failed > 0) {
+    process.exitCode = 1;
+  }
+}
+
 async function main(): Promise<void> {
   const subcommand = process.argv[2];
 
@@ -254,6 +285,8 @@ async function main(): Promise<void> {
     await runDelete(process.argv.slice(3));
   } else if (subcommand === "bulk-migrate") {
     await runBulkMigrate(process.argv.slice(3));
+  } else if (subcommand === "bulk-update") {
+    await runBulkUpdate(process.argv.slice(3));
   } else {
     console.error(`Unknown command: ${subcommand}`);
     printUsage();
