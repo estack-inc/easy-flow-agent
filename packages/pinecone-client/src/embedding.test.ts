@@ -24,7 +24,9 @@ describe("EmbeddingService", () => {
 
   it("calls pinecone.inference.embed with correct parameters", async () => {
     const fakeEmbedding = createFakeEmbedding();
-    const embedFn = vi.fn().mockResolvedValue({ data: [{ values: fakeEmbedding }] });
+    const embedFn = vi
+      .fn()
+      .mockResolvedValue({ data: [{ vectorType: "dense", values: fakeEmbedding }] });
     const mockPinecone = createMockPinecone(embedFn);
     const service = new EmbeddingService(mockPinecone);
 
@@ -42,7 +44,11 @@ describe("EmbeddingService", () => {
   it("handles multiple texts in a single batch", async () => {
     const fakeEmbedding = createFakeEmbedding();
     const embedFn = vi.fn().mockResolvedValue({
-      data: [{ values: fakeEmbedding }, { values: fakeEmbedding }, { values: fakeEmbedding }],
+      data: [
+        { vectorType: "dense", values: fakeEmbedding },
+        { vectorType: "dense", values: fakeEmbedding },
+        { vectorType: "dense", values: fakeEmbedding },
+      ],
     });
     const mockPinecone = createMockPinecone(embedFn);
     const service = new EmbeddingService(mockPinecone);
@@ -55,11 +61,11 @@ describe("EmbeddingService", () => {
 
   it("auto-splits into batches when exceeding BATCH_SIZE", async () => {
     const fakeEmbedding = createFakeEmbedding();
-    const embedFn = vi
-      .fn()
-      .mockImplementation((params: { inputs: string[] }) =>
-        Promise.resolve({ data: params.inputs.map(() => ({ values: fakeEmbedding })) }),
-      );
+    const embedFn = vi.fn().mockImplementation((params: { inputs: string[] }) =>
+      Promise.resolve({
+        data: params.inputs.map(() => ({ vectorType: "dense", values: fakeEmbedding })),
+      }),
+    );
     const mockPinecone = createMockPinecone(embedFn);
     const service = new EmbeddingService(mockPinecone);
 
@@ -78,7 +84,9 @@ describe("EmbeddingService", () => {
 
   it("passes inputType correctly for passage and query", async () => {
     const fakeEmbedding = createFakeEmbedding();
-    const embedFn = vi.fn().mockResolvedValue({ data: [{ values: fakeEmbedding }] });
+    const embedFn = vi
+      .fn()
+      .mockResolvedValue({ data: [{ vectorType: "dense", values: fakeEmbedding }] });
     const mockPinecone = createMockPinecone(embedFn);
     const service = new EmbeddingService(mockPinecone);
 
