@@ -27,7 +27,7 @@ export interface CommandRunner {
   readFile(path: string): string;
 }
 
-const defaultRunner: CommandRunner = {
+export const defaultRunner: CommandRunner = {
   exec(cmd: string, options?: { stdio?: "inherit" }): string {
     return execSync(cmd, options as Parameters<typeof execSync>[1])?.toString() ?? "";
   },
