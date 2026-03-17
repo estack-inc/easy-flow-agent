@@ -7,6 +7,7 @@ import type {
   CreateWorkflowParams,
   WorkflowContextSummary,
   WorkflowState,
+  WorkflowStep,
 } from "./types.js";
 
 /**
@@ -81,6 +82,8 @@ export function createWorkflow(agentDir: string, params: CreateWorkflowParams): 
       id: s.id,
       label: s.label,
       status: i === 0 ? "running" : "pending",
+      ...(s.nextStepId ? { nextStepId: s.nextStepId } : {}),
+      ...(s.conditions?.length ? { conditions: s.conditions } : {}),
     })),
     completedStepIds: [],
     facts: [],
@@ -93,6 +96,37 @@ export function createWorkflow(agentDir: string, params: CreateWorkflowParams): 
 
   saveWorkflow(agentDir, state);
   return state;
+}
+
+/**
+ * 次に進むステップ ID を解決する。
+ *
+ * 優先順位:
+ * 1. conditionLabel が指定されていれば step.conditions から検索
+ * 2. step.nextStepId が設定されていればそれを使用
+ * 3. それ以外は null を返す（呼び出し側で「次の pending」にフォールバック）
+ */
+function resolveNextStepId(
+  step: WorkflowStep,
+  conditionLabel: string | undefined,
+  _allSteps: WorkflowStep[],
+): string | null {
+  // 1. 条件ラベルによる分岐
+  if (conditionLabel && step.conditions && step.conditions.length > 0) {
+    const matched = step.conditions.find((c) => c.label === conditionLabel);
+    if (matched) {
+      return matched.nextStepId;
+    }
+    // 一致なし → エラーにせず fallthrough（nextStepId / 従来動作へ）
+  }
+
+  // 2. デフォルト遷移先
+  if (step.nextStepId) {
+    return step.nextStepId;
+  }
+
+  // 3. フォールバック（呼び出し側で処理）
+  return null;
 }
 
 /** 現在のステップを完了し、次のステップに進む */
@@ -117,11 +151,22 @@ export function advanceStep(agentDir: string, params: AdvanceStepParams): Workfl
     state.completedStepIds.push(targetStepId);
   }
 
-  // Advance to next pending step
-  const nextStep = state.steps.find((s) => s.status === "pending");
-  if (nextStep) {
+  // Advance to next step (with branch support)
+  const nextStepId = resolveNextStepId(step, params.conditionLabel, state.steps);
+  if (nextStepId) {
+    const nextStep = state.steps.find((s) => s.id === nextStepId);
+    if (!nextStep) {
+      throw new Error(`Branch target step not found: ${nextStepId}`);
+    }
     nextStep.status = "running";
     state.currentStepId = nextStep.id;
+  } else {
+    // 従来動作: 次の pending ステップへ
+    const nextStep = state.steps.find((s) => s.status === "pending");
+    if (nextStep) {
+      nextStep.status = "running";
+      state.currentStepId = nextStep.id;
+    }
   }
 
   // Update facts

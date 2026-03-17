@@ -86,6 +86,22 @@ export function toUnifiedAgentState(state: WorkflowState): UnifiedAgentState {
 /** ワークフローのステップ状態 */
 export type WorkflowStepStatus = "pending" | "running" | "completed" | "blocked" | "skipped";
 
+/**
+ * 条件付き分岐の定義
+ *
+ * 例：
+ * {
+ *   label: "承認が必要な場合",
+ *   nextStepId: "approval_step",
+ * }
+ */
+export type WorkflowCondition = {
+  /** 条件の説明ラベル（AI・人間が読む用） */
+  label: string;
+  /** 条件が成立した場合に遷移するステップ ID */
+  nextStepId: string;
+};
+
 /** 個別ステップの定義 */
 export type WorkflowStep = {
   id: string;
@@ -95,6 +111,18 @@ export type WorkflowStep = {
   blockedReasons?: string[];
   /** 完了時のタイムスタンプ */
   completedAt?: number;
+
+  // === 分岐機能 ===
+  /**
+   * 条件なしで進む次のステップ ID（デフォルト遷移）
+   * 未指定の場合は「次の pending ステップ」の従来動作を維持
+   */
+  nextStepId?: string;
+  /**
+   * 条件付き分岐の定義リスト
+   * 複数ある場合は先頭からマッチしたものが採用される（first-match）
+   */
+  conditions?: WorkflowCondition[];
 };
 
 /** ワークフロー全体の状態 */
@@ -130,7 +158,12 @@ export type WorkflowState = {
 /** ワークフロー作成パラメータ */
 export type CreateWorkflowParams = {
   label: string;
-  steps: Array<{ id: string; label: string }>;
+  steps: Array<{
+    id: string;
+    label: string;
+    nextStepId?: string;
+    conditions?: WorkflowCondition[];
+  }>;
   plan?: string;
   sessionId?: string;
 };
@@ -148,6 +181,14 @@ export type AdvanceStepParams = {
   newQuestions?: string[];
   /** 計画の更新 */
   planUpdate?: string;
+
+  // === 分岐機能 ===
+  /**
+   * 分岐先を選ぶ条件ラベル
+   * WorkflowStep.conditions[].label と完全一致で検索する
+   * 指定なし → nextStepId → 従来動作（次の pending）の優先順
+   */
+  conditionLabel?: string;
 };
 
 /** ステップブロックパラメータ */

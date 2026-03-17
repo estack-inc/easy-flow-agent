@@ -74,6 +74,7 @@ const workflowControllerPlugin = {
           "workflow_block",
           "workflow_status",
           "workflow_update_context",
+          "workflow_branch",
         ],
         optional: true,
       },
