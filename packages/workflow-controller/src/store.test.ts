@@ -204,6 +204,120 @@ describe("workflow store", () => {
     });
   });
 
+  describe("branch feature", () => {
+    it("advances to branch target when conditionLabel matches", () => {
+      const state = createWorkflow(tmpDir, {
+        label: "Branch Test",
+        steps: [
+          {
+            id: "step_a",
+            label: "Step A",
+            conditions: [
+              { label: "承認必要", nextStepId: "approval" },
+              { label: "自動処理", nextStepId: "auto" },
+            ],
+          },
+          { id: "approval", label: "Approval" },
+          { id: "auto", label: "Auto" },
+        ],
+      });
+
+      const after = advanceStep(tmpDir, {
+        workflowId: state.workflowId,
+        conditionLabel: "自動処理",
+      });
+
+      expect(after.currentStepId).toBe("auto");
+      expect(after.steps.find((s) => s.id === "step_a")!.status).toBe("completed");
+      expect(after.steps.find((s) => s.id === "auto")!.status).toBe("running");
+      expect(after.steps.find((s) => s.id === "approval")!.status).toBe("pending");
+    });
+
+    it("advances to nextStepId when no conditionLabel is given", () => {
+      const state = createWorkflow(tmpDir, {
+        label: "NextStepId Test",
+        steps: [
+          { id: "step_a", label: "Step A", nextStepId: "step_c" },
+          { id: "step_b", label: "Step B" },
+          { id: "step_c", label: "Step C" },
+        ],
+      });
+
+      const after = advanceStep(tmpDir, {
+        workflowId: state.workflowId,
+      });
+
+      expect(after.currentStepId).toBe("step_c");
+      expect(after.steps.find((s) => s.id === "step_a")!.status).toBe("completed");
+      expect(after.steps.find((s) => s.id === "step_b")!.status).toBe("pending");
+      expect(after.steps.find((s) => s.id === "step_c")!.status).toBe("running");
+    });
+
+    it("falls back to nextStepId when conditionLabel does not match", () => {
+      const state = createWorkflow(tmpDir, {
+        label: "Fallback Test",
+        steps: [
+          {
+            id: "step_a",
+            label: "Step A",
+            conditions: [{ label: "X", nextStepId: "x_step" }],
+            nextStepId: "default_step",
+          },
+          { id: "x_step", label: "X Step" },
+          { id: "default_step", label: "Default Step" },
+        ],
+      });
+
+      const after = advanceStep(tmpDir, {
+        workflowId: state.workflowId,
+        conditionLabel: "存在しないラベル",
+      });
+
+      expect(after.currentStepId).toBe("default_step");
+      expect(after.steps.find((s) => s.id === "default_step")!.status).toBe("running");
+    });
+
+    it("falls back to next pending step when no branch config exists", () => {
+      const state = createWorkflow(tmpDir, {
+        label: "Linear Test",
+        steps: [
+          { id: "step_a", label: "Step A" },
+          { id: "step_b", label: "Step B" },
+          { id: "step_c", label: "Step C" },
+        ],
+      });
+
+      const after = advanceStep(tmpDir, {
+        workflowId: state.workflowId,
+      });
+
+      expect(after.currentStepId).toBe("step_b");
+      expect(after.steps.find((s) => s.id === "step_a")!.status).toBe("completed");
+      expect(after.steps.find((s) => s.id === "step_b")!.status).toBe("running");
+    });
+
+    it("throws when branch target step does not exist", () => {
+      const state = createWorkflow(tmpDir, {
+        label: "Error Test",
+        steps: [
+          {
+            id: "step_a",
+            label: "Step A",
+            conditions: [{ label: "X", nextStepId: "nonexistent" }],
+          },
+          { id: "step_b", label: "Step B" },
+        ],
+      });
+
+      expect(() =>
+        advanceStep(tmpDir, {
+          workflowId: state.workflowId,
+          conditionLabel: "X",
+        }),
+      ).toThrow("Branch target step not found: nonexistent");
+    });
+  });
+
   describe("JSON serialization roundtrip", () => {
     it("survives JSON.stringify/parse without data loss", () => {
       const state = createWorkflow(tmpDir, {

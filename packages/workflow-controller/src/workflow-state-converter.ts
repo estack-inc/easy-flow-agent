@@ -3,6 +3,7 @@ import type {
   BlockStepParams,
   UnifiedAgentState,
   WorkflowState,
+  WorkflowStep,
 } from "./types.js";
 
 /**
@@ -53,11 +54,24 @@ export function advanceWorkflowStep(
     return { ...step };
   });
 
-  // 次の pending ステップを見つけて running にする
-  const nextPending = updatedSteps.find((s) => s.status === "pending");
-  if (nextPending) {
-    nextPending.status = "running";
-    nextStepId = nextPending.id;
+  // 次のステップを解決する（分岐対応）
+  const completedStep = state.steps.find((s) => s.id === targetStepId);
+  const resolvedId = completedStep ? resolveNextStepId(completedStep, params.conditionLabel) : null;
+
+  if (resolvedId) {
+    const target = updatedSteps.find((s) => s.id === resolvedId);
+    if (!target) {
+      throw new Error(`Branch target step not found: ${resolvedId}`);
+    }
+    target.status = "running";
+    nextStepId = target.id;
+  } else {
+    // 従来動作: 次の pending ステップへ
+    const nextPending = updatedSteps.find((s) => s.status === "pending");
+    if (nextPending) {
+      nextPending.status = "running";
+      nextStepId = nextPending.id;
+    }
   }
 
   // completedStepIds に追加（重複排除）
@@ -118,6 +132,29 @@ export function blockWorkflowStep(state: WorkflowState, params: BlockStepParams)
     steps: updatedSteps,
     updatedAt: Date.now(),
   };
+}
+
+/**
+ * 次に進むステップ ID を解決する。
+ *
+ * 優先順位:
+ * 1. conditionLabel が指定されていれば step.conditions から検索
+ * 2. step.nextStepId が設定されていればそれを使用
+ * 3. それ以外は null を返す（呼び出し側で「次の pending」にフォールバック）
+ */
+function resolveNextStepId(step: WorkflowStep, conditionLabel: string | undefined): string | null {
+  if (conditionLabel && step.conditions && step.conditions.length > 0) {
+    const matched = step.conditions.find((c) => c.label === conditionLabel);
+    if (matched) {
+      return matched.nextStepId;
+    }
+  }
+
+  if (step.nextStepId) {
+    return step.nextStepId;
+  }
+
+  return null;
 }
 
 /**

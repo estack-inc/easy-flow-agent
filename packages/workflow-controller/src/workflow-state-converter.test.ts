@@ -224,6 +224,104 @@ describe("advanceWorkflowStep", () => {
     expect(advanced.currentStepId).toBe("step-1");
     expect(advanced.completedStepIds).toEqual(["step-1"]);
   });
+
+  describe("branch feature", () => {
+    it("advances to branch target when conditionLabel matches", () => {
+      const state = createTestState({
+        steps: [
+          {
+            id: "step-1",
+            label: "S1",
+            status: "running",
+            conditions: [
+              { label: "承認必要", nextStepId: "approval" },
+              { label: "自動処理", nextStepId: "auto" },
+            ],
+          },
+          { id: "approval", label: "Approval", status: "pending" },
+          { id: "auto", label: "Auto", status: "pending" },
+        ],
+      });
+
+      const advanced = advanceWorkflowStep(state, {
+        workflowId: "wf-test",
+        conditionLabel: "自動処理",
+      });
+
+      expect(advanced.currentStepId).toBe("auto");
+      expect(advanced.steps.find((s) => s.id === "step-1")!.status).toBe("completed");
+      expect(advanced.steps.find((s) => s.id === "auto")!.status).toBe("running");
+      expect(advanced.steps.find((s) => s.id === "approval")!.status).toBe("pending");
+    });
+
+    it("advances to nextStepId when no conditionLabel is given", () => {
+      const state = createTestState({
+        steps: [
+          { id: "step-1", label: "S1", status: "running", nextStepId: "step-3" },
+          { id: "step-2", label: "S2", status: "pending" },
+          { id: "step-3", label: "S3", status: "pending" },
+        ],
+      });
+
+      const advanced = advanceWorkflowStep(state, { workflowId: "wf-test" });
+
+      expect(advanced.currentStepId).toBe("step-3");
+      expect(advanced.steps.find((s) => s.id === "step-2")!.status).toBe("pending");
+      expect(advanced.steps.find((s) => s.id === "step-3")!.status).toBe("running");
+    });
+
+    it("falls back to nextStepId when conditionLabel does not match", () => {
+      const state = createTestState({
+        steps: [
+          {
+            id: "step-1",
+            label: "S1",
+            status: "running",
+            conditions: [{ label: "X", nextStepId: "x-step" }],
+            nextStepId: "default-step",
+          },
+          { id: "x-step", label: "X Step", status: "pending" },
+          { id: "default-step", label: "Default", status: "pending" },
+        ],
+      });
+
+      const advanced = advanceWorkflowStep(state, {
+        workflowId: "wf-test",
+        conditionLabel: "存在しないラベル",
+      });
+
+      expect(advanced.currentStepId).toBe("default-step");
+    });
+
+    it("falls back to next pending step when no branch config exists", () => {
+      const state = createTestState();
+
+      const advanced = advanceWorkflowStep(state, { workflowId: "wf-test" });
+
+      expect(advanced.currentStepId).toBe("step-2");
+    });
+
+    it("throws when branch target step does not exist", () => {
+      const state = createTestState({
+        steps: [
+          {
+            id: "step-1",
+            label: "S1",
+            status: "running",
+            conditions: [{ label: "X", nextStepId: "nonexistent" }],
+          },
+          { id: "step-2", label: "S2", status: "pending" },
+        ],
+      });
+
+      expect(() =>
+        advanceWorkflowStep(state, {
+          workflowId: "wf-test",
+          conditionLabel: "X",
+        }),
+      ).toThrow("Branch target step not found: nonexistent");
+    });
+  });
 });
 
 // =============================================================================

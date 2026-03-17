@@ -35,6 +35,25 @@ export function createWorkflowTools(params: {
             properties: {
               id: { type: "string", description: "Step identifier (snake_case)" },
               label: { type: "string", description: "Step display name" },
+              nextStepId: {
+                type: "string",
+                description: "Default next step ID (overrides sequential order)",
+              },
+              conditions: {
+                type: "array",
+                description: "Conditional branches from this step",
+                items: {
+                  type: "object",
+                  properties: {
+                    label: { type: "string", description: "Condition label (human-readable)" },
+                    nextStepId: {
+                      type: "string",
+                      description: "Target step ID if this condition matches",
+                    },
+                  },
+                  required: ["label", "nextStepId"],
+                },
+              },
             },
             required: ["id", "label"],
           },
@@ -47,7 +66,12 @@ export function createWorkflowTools(params: {
     execute: async (_callId: string, args: Record<string, unknown>) => {
       const state = createWorkflow(agentDir, {
         label: args.label as string,
-        steps: args.steps as Array<{ id: string; label: string }>,
+        steps: args.steps as Array<{
+          id: string;
+          label: string;
+          nextStepId?: string;
+          conditions?: Array<{ label: string; nextStepId: string }>;
+        }>,
         plan: (args.plan as string) ?? "",
       });
 
@@ -279,11 +303,57 @@ export function createWorkflowTools(params: {
     },
   };
 
+  const workflowBranchTool: AnyAgentTool = {
+    name: "workflow_branch",
+    description:
+      "Complete the current step and advance to a specific branch based on a condition label. " +
+      "Use when the current step has defined conditions and you need to choose a specific path. " +
+      "Example: if step has conditions ['承認が必要', '自動処理'], call with the matching label.",
+    parameters: {
+      type: "object",
+      properties: {
+        workflowId: { type: "string", description: "Workflow ID" },
+        conditionLabel: {
+          type: "string",
+          description:
+            "The condition label to match (must exactly match one of the step's conditions[].label)",
+        },
+        stepId: { type: "string", description: "Step to complete (defaults to current)" },
+        newFacts: {
+          type: "array",
+          items: { type: "string" },
+          description: "New facts discovered",
+        },
+        planUpdate: { type: "string", description: "Updated plan text" },
+      },
+      required: ["workflowId", "conditionLabel"],
+    },
+    execute: async (_callId: string, args: Record<string, unknown>) => {
+      const state = advanceStep(agentDir, {
+        workflowId: args.workflowId as string,
+        stepId: args.stepId as string | undefined,
+        conditionLabel: args.conditionLabel as string,
+        newFacts: args.newFacts as string[] | undefined,
+        planUpdate: args.planUpdate as string | undefined,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Branched to: ${state.currentStepId}\n\n${renderContextMarkdown(state)}`,
+          },
+        ],
+      };
+    },
+  };
+
   return [
     workflowCreateTool,
     workflowAdvanceTool,
     workflowBlockTool,
     workflowStatusTool,
     workflowUpdateContextTool,
+    workflowBranchTool,
   ];
 }
