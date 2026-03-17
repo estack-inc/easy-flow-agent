@@ -41,7 +41,7 @@ jobs:
           for instance in mell-dev central-hd-osada-agent; do
             if [ -z "$TARGET" ] || [ "$TARGET" = "$instance" ]; then
               echo "=== Updating $instance ==="
-              node packages/migrate-memory/dist/cli.js bulk-update --target="$instance" $DRY_RUN_FLAG
+              npx tsx packages/migrate-memory/dist/cli.js bulk-update --target="$instance" $DRY_RUN_FLAG
             fi
           done
 
@@ -71,6 +71,6 @@ jobs:
           for instance in mino-openclaw buzz-openclaw umito-openclaw estack-soumu-openclaw; do
             if [ -z "$TARGET" ] || [ "$TARGET" = "$instance" ]; then
               echo "=== Updating $instance ==="
-              node packages/migrate-memory/dist/cli.js bulk-update --target="$instance" $DRY_RUN_FLAG
+              npx tsx packages/migrate-memory/dist/cli.js bulk-update --target="$instance" $DRY_RUN_FLAG
             fi
           done
