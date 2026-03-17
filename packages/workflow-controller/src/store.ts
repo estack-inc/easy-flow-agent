@@ -106,11 +106,7 @@ export function createWorkflow(agentDir: string, params: CreateWorkflowParams): 
  * 2. step.nextStepId が設定されていればそれを使用
  * 3. それ以外は null を返す（呼び出し側で「次の pending」にフォールバック）
  */
-function resolveNextStepId(
-  step: WorkflowStep,
-  conditionLabel: string | undefined,
-  _allSteps: WorkflowStep[],
-): string | null {
+function resolveNextStepId(step: WorkflowStep, conditionLabel: string | undefined): string | null {
   // 1. 条件ラベルによる分岐
   if (conditionLabel && step.conditions && step.conditions.length > 0) {
     const matched = step.conditions.find((c) => c.label === conditionLabel);
@@ -152,7 +148,7 @@ export function advanceStep(agentDir: string, params: AdvanceStepParams): Workfl
   }
 
   // Advance to next step (with branch support)
-  const nextStepId = resolveNextStepId(step, params.conditionLabel, state.steps);
+  const nextStepId = resolveNextStepId(step, params.conditionLabel);
   if (nextStepId) {
     const nextStep = state.steps.find((s) => s.id === nextStepId);
     if (!nextStep) {

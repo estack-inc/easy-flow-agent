@@ -66,7 +66,12 @@ export function createWorkflowTools(params: {
     execute: async (_callId: string, args: Record<string, unknown>) => {
       const state = createWorkflow(agentDir, {
         label: args.label as string,
-        steps: args.steps as Array<{ id: string; label: string }>,
+        steps: args.steps as Array<{
+          id: string;
+          label: string;
+          nextStepId?: string;
+          conditions?: Array<{ label: string; nextStepId: string }>;
+        }>,
         plan: (args.plan as string) ?? "",
       });
 
