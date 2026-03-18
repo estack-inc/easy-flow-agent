@@ -70,8 +70,12 @@ const workflowControllerPlugin = {
       }) as OpenClawPluginToolFactory,
       {
         names: [
-          "workflow_create", "workflow_advance", "workflow_block",
-          "workflow_status", "workflow_update_context", "workflow_branch",
+          "workflow_create",
+          "workflow_advance",
+          "workflow_block",
+          "workflow_status",
+          "workflow_update_context",
+          "workflow_branch",
         ],
         optional: true,
       },
