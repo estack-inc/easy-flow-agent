@@ -8,7 +8,7 @@
       "label": "Pinecone API Key",
       "sensitive": true,
       "placeholder": "pcsk_...",
-      "help": "Pinecone API key (or use ${PINECONE_API_KEY} env var). Leave empty to use LegacyContextEngine."
+      "help": "Pinecone API key (or use ${PINECONE_API_KEY} env var). Leave empty to disable long-term memory (noop delegate)."
     },
     "agentId": {
       "label": "Agent ID",
