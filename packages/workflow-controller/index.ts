@@ -1,5 +1,5 @@
-import { LegacyContextEngine } from "@mariozechner/pi-agent-core/context-engine";
 import { PineconeClient } from "@easy-flow/pinecone-client";
+import { LegacyContextEngine } from "@mariozechner/pi-agent-core/context-engine";
 import type { OpenClawPluginApi, OpenClawPluginToolFactory } from "openclaw/plugin-sdk/core";
 import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/core";
 import { WorkflowContextEngine } from "./src/context-engine.js";
@@ -32,7 +32,6 @@ const workflowControllerPlugin = {
         const agentId = cfg.agentId ?? process.env.OPENCLAW_AGENT_ID ?? "default";
         const indexName = cfg.indexName ?? "easy-flow-memory";
         const compactAfterDays = cfg.compactAfterDays ?? 7;
-        const pineconeClient = new PineconeClient({ apiKey: pineconeApiKey, indexName });
 
         api.logger.info(
           `workflow-controller: Pinecone delegate enabled (agentId: ${agentId}, index: ${indexName})`,
