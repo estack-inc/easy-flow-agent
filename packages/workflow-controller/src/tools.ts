@@ -3,7 +3,9 @@ import type { WorkflowContextEngine } from "./context-engine.js";
 import {
   advanceStep,
   blockStep,
+  closeWorkflow,
   createWorkflow,
+  findWorkflowByIssue,
   listWorkflows,
   loadWorkflow,
   renderContextMarkdown,
@@ -60,6 +62,14 @@ export function createWorkflowTools(params: {
           description: "Ordered list of steps",
         },
         plan: { type: "string", description: "Initial plan (natural language)" },
+        issueNumber: {
+          type: "number",
+          description: "GitHub Issue number to link with this workflow (for resume/tracking)",
+        },
+        issueRepo: {
+          type: "string",
+          description: "GitHub repository in owner/repo format (e.g. estack-inc/mell-workspace)",
+        },
       },
       required: ["label", "steps"],
     },
@@ -73,6 +83,8 @@ export function createWorkflowTools(params: {
           conditions?: Array<{ label: string; nextStepId: string }>;
         }>,
         plan: (args.plan as string) ?? "",
+        issueNumber: args.issueNumber as number | undefined,
+        issueRepo: args.issueRepo as string | undefined,
       });
 
       // Activate the new workflow in the context engine
@@ -348,6 +360,101 @@ export function createWorkflowTools(params: {
     },
   };
 
+  const workflowResumeTool: AnyAgentTool = {
+    name: "workflow_resume",
+    description:
+      "Resume a previously interrupted workflow by GitHub Issue number. " +
+      "IMPORTANT: Before calling this, check the Issue state with: " +
+      "`gh issue view <issueNumber> -R <repo> --json state -q .state` " +
+      "and pass the result as issueState.",
+    parameters: {
+      type: "object",
+      properties: {
+        issueNumber: {
+          type: "number",
+          description: "GitHub Issue number linked to the workflow",
+        },
+        issueRepo: {
+          type: "string",
+          description: "GitHub repository in owner/repo format (e.g. estack-inc/mell-workspace)",
+        },
+        issueState: {
+          type: "string",
+          enum: ["open", "closed"],
+          description:
+            "Current state of the GitHub Issue. Check via gh CLI before calling this tool.",
+        },
+      },
+      required: ["issueNumber"],
+    },
+    execute: async (_callId: string, args: Record<string, unknown>) => {
+      const issueNumber = args.issueNumber as number;
+      const issueRepo = args.issueRepo as string | undefined;
+      const issueState = (args.issueState as string) ?? "open";
+
+      const state = findWorkflowByIssue(agentDir, issueNumber, issueRepo);
+      if (!state) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                found: false,
+                message: `Issue #${issueNumber} に紐づくワークフローが見つかりません`,
+              }),
+            },
+          ],
+        };
+      }
+
+      // すでにアーカイブ済みの場合
+      if (state.closedAt) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                found: true,
+                archived: true,
+                workflowId: state.workflowId,
+                message: `Issue #${issueNumber} のワークフローはすでにクローズ済みです（${new Date(state.closedAt).toISOString()}）`,
+              }),
+            },
+          ],
+        };
+      }
+
+      // Issue がクローズ済みの場合は自動アーカイブ
+      if (issueState === "closed") {
+        closeWorkflow(agentDir, state.workflowId);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                found: true,
+                archived: true,
+                workflowId: state.workflowId,
+                message: `Issue #${issueNumber} がクローズされているため、ワークフローを自動アーカイブしました`,
+              }),
+            },
+          ],
+        };
+      }
+
+      // 通常の復帰
+      contextEngine.setActiveWorkflow(state.workflowId);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Workflow resumed: ${state.workflowId}\n\n${renderContextMarkdown(state)}`,
+          },
+        ],
+      };
+    },
+  };
+
   return [
     workflowCreateTool,
     workflowAdvanceTool,
@@ -355,5 +462,6 @@ export function createWorkflowTools(params: {
     workflowStatusTool,
     workflowUpdateContextTool,
     workflowBranchTool,
+    workflowResumeTool,
   ];
 }

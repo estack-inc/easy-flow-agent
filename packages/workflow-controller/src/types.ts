@@ -153,6 +153,23 @@ export type WorkflowState = {
   updatedAt: number;
   /** 対応する OpenClaw セッション ID */
   sessionId?: string;
+
+  // === Issue 連携 ===
+  /**
+   * 紐づく GitHub Issue 番号（復帰・管理用）
+   * 例: 31
+   */
+  issueNumber?: number;
+  /**
+   * 紐づく GitHub リポジトリ（owner/repo 形式）
+   * 例: "estack-inc/mell-workspace"
+   */
+  issueRepo?: string;
+  /**
+   * WF をアーカイブ（クローズ）した日時。
+   * Issue が手動クローズされた場合も含む。
+   */
+  closedAt?: number;
 };
 
 /** ワークフロー作成パラメータ */
@@ -166,6 +183,8 @@ export type CreateWorkflowParams = {
   }>;
   plan?: string;
   sessionId?: string;
+  issueNumber?: number;
+  issueRepo?: string;
 };
 
 /** ステップ進行パラメータ */
