@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { IPineconeClient } from "@easy-flow/pinecone-client";
+import type { IPineconeClient, QueryResult } from "@easy-flow/pinecone-client";
 import { TextChunker } from "@easy-flow/pinecone-client";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type {
@@ -28,14 +28,27 @@ import {
 } from "./shared.js";
 import type { PineconeContextEngineParams } from "./types.js";
 
-// Re-export for backward compatibility
-export { buildEnrichedQuery, isQueryThin } from "./shared.js";
+/**
+ * ParallelAssembleResult extends standard AssembleResult with lazy context loading.
+ *
+ * NOTE: `contextPromise` is a custom extension field not part of the OpenClaw
+ * `AssembleResult` interface. The OpenClaw runtime will NOT consume this field
+ * unless explicitly updated to support it. Until then, `systemPromptAddition`
+ * will not be injected into the LLM prompt via this parallel path.
+ * This implementation is prepared for OpenClaw SDK integration (Phase 2).
+ */
+interface ParallelAssembleResult extends AssembleResult {
+  contextPromise?: Promise<{
+    systemPromptAddition?: string;
+    estimatedTokens: number;
+  }>;
+}
 
-export class PineconeContextEngine implements ContextEngine {
+export class PineconeContextEngineParallel implements ContextEngine {
   readonly info: ContextEngineInfo = {
-    id: "pinecone",
-    name: "Pinecone Context Engine",
-    version: "1.0.0",
+    id: "pinecone-parallel",
+    name: "Pinecone Context Engine (Parallel)",
+    version: "1.0.0-parallel",
   };
 
   private readonly client: IPineconeClient;
@@ -71,7 +84,7 @@ export class PineconeContextEngine implements ContextEngine {
       await withRetry(() => this.client.ensureIndex());
       return { bootstrapped: true };
     } catch (err) {
-      console.error("[PineconeContextEngine] bootstrap failed:", err);
+      console.error("[PineconeContextEngineParallel] bootstrap failed:", err);
       return {
         bootstrapped: false,
         reason: `bootstrap failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -127,64 +140,87 @@ export class PineconeContextEngine implements ContextEngine {
       }
 
       await withRetry(() => this.client.upsert(chunks));
-
       return { ingested: true };
     } catch (err) {
-      console.error("[PineconeContextEngine] ingest failed:", err);
+      console.error("[PineconeContextEngineParallel] ingest failed:", err);
       return { ingested: false };
     }
   }
 
+  /**
+   * PARALLEL IMPLEMENTATION: Start Pinecone query immediately, return Promise for lazy loading.
+   */
   async assemble(params: {
     sessionId: string;
     messages: AgentMessage[];
     tokenBudget?: number;
-  }): Promise<AssembleResult> {
-    try {
-      const baseQuery = buildQueryFromRecentTurns(params.messages);
+  }): Promise<ParallelAssembleResult> {
+    const baseQuery = buildQueryFromRecentTurns(params.messages);
 
-      if (!baseQuery) {
-        return {
-          messages: params.messages,
-          estimatedTokens: 0,
-        };
-      }
-
-      const queryText = this.enrichQuery(baseQuery);
-
-      const results = await Promise.race([
-        withRetry(() =>
-          this.client.query({
-            text: queryText,
-            agentId: this.agentId,
-            topK: DEFAULT_TOP_K,
-            minScore: DEFAULT_MIN_SCORE,
-          }),
-        ),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("assemble timeout")), ASSEMBLE_TIMEOUT_MS),
-        ),
-      ]);
-
-      if (results.length === 0) {
-        return {
-          messages: params.messages,
-          estimatedTokens: 0,
-        };
-      }
-
-      const budget = params.tokenBudget ?? this.tokenBudget;
-      const { markdown, tokenCount } = buildSystemPromptAddition(results, budget);
-
+    if (!baseQuery) {
       return {
         messages: params.messages,
-        estimatedTokens: tokenCount,
-        systemPromptAddition: markdown || undefined,
+        estimatedTokens: 0,
       };
-    } catch (err) {
-      console.error("[PineconeContextEngine] assemble failed, using fallback:", err);
-      return this.fallback.assemble(params);
     }
+
+    const queryText = buildEnrichedQuery(baseQuery, this.memoryHint, this.minQueryTokens);
+    const budget = params.tokenBudget ?? this.tokenBudget;
+
+    // START PINECONE QUERY IMMEDIATELY - DO NOT AWAIT
+    let timeoutHandle!: ReturnType<typeof setTimeout>;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error("assemble timeout")), ASSEMBLE_TIMEOUT_MS);
+    });
+
+    const contextPromise = Promise.race([
+      withRetry(() =>
+        this.client.query({
+          text: queryText,
+          agentId: this.agentId,
+          topK: DEFAULT_TOP_K,
+          minScore: DEFAULT_MIN_SCORE,
+        }),
+      ),
+      timeoutPromise,
+    ])
+      .then((results: QueryResult[]) => {
+        clearTimeout(timeoutHandle);
+        if (results.length === 0) {
+          return {
+            systemPromptAddition: undefined,
+            estimatedTokens: 0,
+          };
+        }
+        const { markdown, tokenCount } = buildSystemPromptAddition(results, budget);
+        return {
+          systemPromptAddition: markdown || undefined,
+          estimatedTokens: tokenCount,
+        };
+      })
+      .catch(async (err) => {
+        clearTimeout(timeoutHandle);
+        console.error("[PineconeContextEngineParallel] assemble failed, using fallback:", err);
+        try {
+          const fallbackResult = await this.fallback.assemble(params);
+          return {
+            systemPromptAddition: fallbackResult.systemPromptAddition,
+            estimatedTokens: fallbackResult.estimatedTokens,
+          };
+        } catch {
+          return {
+            systemPromptAddition: undefined,
+            estimatedTokens: 0,
+          };
+        }
+      });
+
+    // RETURN IMMEDIATELY WITH PROMISE - OpenClaw can start LLM request in parallel
+    return {
+      messages: params.messages,
+      estimatedTokens: 0, // Will be updated when contextPromise resolves
+      contextPromise,
+    };
   }
 
   async compact(params: {
@@ -209,7 +245,6 @@ export class PineconeContextEngine implements ContextEngine {
       }
 
       // Upsert all old turns to Pinecone (idempotent)
-      // Use content hash (same as ingest()) to avoid duplicate entries
       const allChunks = oldMessages.flatMap((msg) => {
         const text = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
 
@@ -217,7 +252,6 @@ export class PineconeContextEngine implements ContextEngine {
           return [];
         }
 
-        // Skip messages containing skip patterns (same logic as ingest())
         const lowerText = text.toLowerCase();
         if (this.skipPatterns.some((p) => lowerText.includes(p.toLowerCase()))) {
           return [];
@@ -243,11 +277,9 @@ export class PineconeContextEngine implements ContextEngine {
         await withRetry(() => this.client.upsert(allChunks));
       }
 
-      // All upserts succeeded — signal OpenClaw runtime to delete old turns
       return { ok: true, compacted: true };
     } catch (err) {
-      // Upsert failed — do NOT delete session file turns
-      console.error("[PineconeContextEngine] compact failed:", err);
+      console.error("[PineconeContextEngineParallel] compact failed:", err);
       return {
         ok: false,
         compacted: false,
@@ -258,9 +290,5 @@ export class PineconeContextEngine implements ContextEngine {
 
   async dispose(): Promise<void> {
     // No resources to release
-  }
-
-  private enrichQuery(baseQuery: string): string {
-    return buildEnrichedQuery(baseQuery, this.memoryHint, this.minQueryTokens);
   }
 }
