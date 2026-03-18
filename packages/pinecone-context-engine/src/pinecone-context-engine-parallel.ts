@@ -10,6 +10,7 @@ import type {
   ContextEngineInfo,
   IngestResult,
 } from "openclaw/plugin-sdk";
+import { EmptyFallbackContextEngine, FallbackContextEngine } from "./fallback-adapter.js";
 import {
   ASSEMBLE_TIMEOUT_MS,
   buildEnrichedQuery,
@@ -55,6 +56,7 @@ export class PineconeContextEngineParallel implements ContextEngine {
   private readonly tokenBudget: number;
   private readonly ingestRoles: ("user" | "assistant")[];
   private readonly compactAfterDays: number;
+  private readonly fallback: ContextEngine;
   private readonly chunker: TextChunker;
   private readonly skipPatterns: string[];
   private readonly defaultCategory: string;
@@ -67,6 +69,9 @@ export class PineconeContextEngineParallel implements ContextEngine {
     this.tokenBudget = params.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
     this.ingestRoles = params.ingestRoles ?? DEFAULT_INGEST_ROLES;
     this.compactAfterDays = params.compactAfterDays ?? DEFAULT_COMPACT_AFTER_DAYS;
+    this.fallback = params.fallbackAdapter
+      ? new FallbackContextEngine(params.fallbackAdapter)
+      : new EmptyFallbackContextEngine();
     this.chunker = new TextChunker();
     this.skipPatterns = params.skipPatterns ?? DEFAULT_SKIP_PATTERNS;
     this.defaultCategory = params.defaultCategory ?? "conversation";
@@ -193,13 +198,21 @@ export class PineconeContextEngineParallel implements ContextEngine {
           estimatedTokens: tokenCount,
         };
       })
-      .catch((err) => {
+      .catch(async (err) => {
         clearTimeout(timeoutHandle);
         console.error("[PineconeContextEngineParallel] assemble failed, using fallback:", err);
-        return {
-          systemPromptAddition: undefined,
-          estimatedTokens: 0,
-        };
+        try {
+          const fallbackResult = await this.fallback.assemble(params);
+          return {
+            systemPromptAddition: fallbackResult.systemPromptAddition,
+            estimatedTokens: fallbackResult.estimatedTokens,
+          };
+        } catch {
+          return {
+            systemPromptAddition: undefined,
+            estimatedTokens: 0,
+          };
+        }
       });
 
     // RETURN IMMEDIATELY WITH PROMISE - OpenClaw can start LLM request in parallel

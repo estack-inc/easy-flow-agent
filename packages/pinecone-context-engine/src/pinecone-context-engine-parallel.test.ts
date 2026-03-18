@@ -1,6 +1,9 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { IPineconeClient, QueryResult, TextChunk } from "@easy-flow/pinecone-client";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PineconeContextEngineParallel } from "./pinecone-context-engine-parallel.js";
 
 // Mock Pinecone client
@@ -20,6 +23,7 @@ const mockChunk: TextChunk = {
 
 describe("PineconeContextEngineParallel", () => {
   let engine: PineconeContextEngineParallel;
+  let tmpDir: string;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -27,6 +31,11 @@ describe("PineconeContextEngineParallel", () => {
       pineconeClient: mockPineconeClient,
       agentId: "test-agent",
     });
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "parallel-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   describe("assemble - parallel execution", () => {
@@ -104,6 +113,76 @@ describe("PineconeContextEngineParallel", () => {
       expect(result.messages).toEqual([]);
       expect(result.estimatedTokens).toBe(0);
       expect(result.contextPromise).toBeUndefined();
+    });
+  });
+
+  describe("compact", () => {
+    function writeSessionFile(
+      filePath: string,
+      entries: Array<{
+        timestamp: number;
+        message: { role: string; content: string };
+      }>,
+    ) {
+      const content = entries.map((e) => JSON.stringify(e)).join("\n");
+      fs.writeFileSync(filePath, content, "utf-8");
+    }
+
+    it("upserts old turns to Pinecone and returns compacted: true", async () => {
+      const compactEngine = new PineconeContextEngineParallel({
+        pineconeClient: mockPineconeClient,
+        agentId: "test-agent",
+        compactAfterDays: 7,
+      });
+
+      const sessionFile = path.join(tmpDir, "session.jsonl");
+      const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+      writeSessionFile(sessionFile, [
+        { timestamp: eightDaysAgo, message: { role: "user", content: "old message" } },
+        { timestamp: Date.now(), message: { role: "user", content: "recent message" } },
+      ]);
+
+      const result = await compactEngine.compact({ sessionId: "s1", sessionFile });
+
+      expect(result.ok).toBe(true);
+      expect(result.compacted).toBe(true);
+      expect(mockPineconeClient.upsert).toHaveBeenCalledOnce();
+    });
+
+    it("returns compacted: false when no old turns exist", async () => {
+      const sessionFile = path.join(tmpDir, "session.jsonl");
+      writeSessionFile(sessionFile, [
+        { timestamp: Date.now(), message: { role: "user", content: "recent" } },
+      ]);
+
+      const result = await engine.compact({ sessionId: "s1", sessionFile });
+
+      expect(result.ok).toBe(true);
+      expect(result.compacted).toBe(false);
+      expect(mockPineconeClient.upsert).not.toHaveBeenCalled();
+    });
+
+    it("returns ok: false when upsert fails", async () => {
+      (mockPineconeClient.upsert as any).mockRejectedValueOnce(new Error("upsert failed"));
+
+      const compactEngine = new PineconeContextEngineParallel({
+        pineconeClient: mockPineconeClient,
+        agentId: "test-agent",
+        compactAfterDays: 7,
+      });
+
+      const sessionFile = path.join(tmpDir, "session.jsonl");
+      const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+      writeSessionFile(sessionFile, [
+        { timestamp: eightDaysAgo, message: { role: "user", content: "old message" } },
+      ]);
+
+      vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const result = await compactEngine.compact({ sessionId: "s1", sessionFile });
+
+      expect(result.ok).toBe(false);
+      expect(result.compacted).toBe(false);
     });
   });
 });
