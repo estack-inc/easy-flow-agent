@@ -46,10 +46,12 @@ export const bugFlow: TaskFlowDefinition = {
     {
       id: "complete",
       label: "修正完了・Issue クローズ",
+      nextStepId: "complete",
     },
     {
       id: "close_no_fix",
       label: "対応不要の理由を記載 → Issue クローズ",
+      nextStepId: "close_no_fix",
     },
   ],
 };

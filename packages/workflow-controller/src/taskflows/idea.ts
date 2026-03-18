@@ -22,10 +22,12 @@ export const ideaFlow: TaskFlowDefinition = {
     {
       id: "task_spawn",
       label: "📋 タスク依頼フローを新規起動",
+      nextStepId: "task_spawn",
     },
     {
       id: "close_rejected",
       label: "却下理由を記載 → Issue クローズ",
+      nextStepId: "close_rejected",
     },
   ],
 };

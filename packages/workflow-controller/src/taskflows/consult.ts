@@ -21,10 +21,12 @@ export const consultFlow: TaskFlowDefinition = {
     {
       id: "task_spawn",
       label: "📋 タスク依頼フローを新規起動",
+      nextStepId: "task_spawn",
     },
     {
       id: "complete",
       label: "回答完了・Issue クローズ",
+      nextStepId: "complete",
     },
   ],
 };
