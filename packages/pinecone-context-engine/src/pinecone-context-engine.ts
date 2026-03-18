@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { IPineconeClient } from "@easy-flow/pinecone-client";
 import { TextChunker } from "@easy-flow/pinecone-client";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type {
