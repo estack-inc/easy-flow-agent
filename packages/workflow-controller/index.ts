@@ -1,66 +1,79 @@
+import { PineconeClient } from "@easy-flow/pinecone-client";
+import { LegacyContextEngine } from "@mariozechner/pi-agent-core/context-engine";
 import type { OpenClawPluginApi, OpenClawPluginToolFactory } from "openclaw/plugin-sdk/core";
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/core";
 import { WorkflowContextEngine } from "./src/context-engine.js";
 import { createNoopDelegate } from "./src/noop-delegate.js";
 import { createWorkflowTools } from "./src/tools.js";
 
-/**
- * Workflow Controller プラグイン
- *
- * ステップベースのワークフロー実行制御と、
- * facts/openQuestions/plan によるコンテキスト最適化を提供する。
- *
- * 統合ポイント:
- * - api.registerTool() — ワークフロー操作ツール群
- * - api.registerContextEngine() — systemPromptAddition 経由でワークフロー状態を注入
- */
+type PluginConfig = {
+  pineconeApiKey?: string;
+  agentId?: string;
+  indexName?: string;
+  compactAfterDays?: number;
+};
+
 const workflowControllerPlugin = {
   id: "workflow-controller",
   name: "Workflow Controller",
   description:
-    "Step-based workflow execution control with context optimization (facts, questions, plan)",
+    "Step-based workflow execution control with context optimization (facts, questions, plan). Wraps Pinecone as delegate when configured.",
   kind: "context-engine" as const,
-  configSchema: emptyPluginConfigSchema(),
+  configSchema: {
+    type: "object" as const,
+    additionalProperties: false,
+    properties: {
+      pineconeApiKey: { type: "string" as const },
+      agentId: { type: "string" as const },
+      indexName: { type: "string" as const },
+      compactAfterDays: { type: "number" as const, minimum: 1, maximum: 90 },
+    },
+  },
 
   register(api: OpenClawPluginApi) {
-    // Shared context engine instance (set up when factory is called)
     let sharedEngine: WorkflowContextEngine | undefined;
 
-    // Register as a context engine (exclusive slot — replaces legacy engine).
-    // The factory is called once by resolveContextEngine() during gateway boot.
     api.registerContextEngine("workflow", async () => {
-      // Dynamically import LegacyContextEngine from the internal module.
-      // This avoids a static dependency on a non-exported class.
-      const { LegacyContextEngine } = await import(
-        /* webpackIgnore: true */ "../../src/context-engine/legacy.js"
-      );
-      const delegate = new LegacyContextEngine();
+      const cfg = (api.pluginConfig ?? {}) as PluginConfig;
+      const pineconeApiKey = cfg.pineconeApiKey ?? process.env.PINECONE_API_KEY;
 
-      sharedEngine = new WorkflowContextEngine({ delegate });
+      if (pineconeApiKey) {
+        const agentId = cfg.agentId ?? process.env.OPENCLAW_AGENT_ID ?? "default";
+        const indexName = cfg.indexName ?? "easy-flow-memory";
+        const compactAfterDays = cfg.compactAfterDays ?? 7;
+
+        api.logger.info(
+          `workflow-controller: Pinecone delegate enabled (agentId: ${agentId}, index: ${indexName})`,
+        );
+
+        const pineconeClient = new PineconeClient({
+          apiKey: pineconeApiKey,
+          indexName,
+        });
+
+        sharedEngine = new WorkflowContextEngine({
+          delegate: createNoopDelegate(),
+          pinecone: { client: pineconeClient, agentId, compactAfterDays },
+        });
+      } else {
+        const delegate = new LegacyContextEngine();
+        api.logger.info("workflow-controller: using LegacyContextEngine as delegate (no Pinecone)");
+        sharedEngine = new WorkflowContextEngine({ delegate });
+      }
+
       return sharedEngine;
     });
 
-    // Register workflow tools as a factory (receives per-session context).
     api.registerTool(
       ((ctx) => {
-        if (ctx.sandboxed) {
-          return null;
-        }
-
+        if (ctx.sandboxed) return null;
         const agentDir = ctx.agentDir;
-        if (!agentDir) {
-          return null;
-        }
+        if (!agentDir) return null;
 
-        // Update agentDir on the shared engine if available
         if (sharedEngine) {
           sharedEngine.setAgentDir(agentDir);
           return createWorkflowTools({ agentDir, contextEngine: sharedEngine });
         }
 
-        // Engine not yet initialized — create tools with a standalone engine
-        // (tools still work for CRUD; context injection activates once the
-        //  context engine slot is resolved)
         const standalone = new WorkflowContextEngine({
           delegate: createNoopDelegate(),
           agentDir,

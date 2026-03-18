@@ -8,6 +8,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@easy-flow/pinecone-client": "*",
     "@easy-flow/pinecone-context-engine": "*"
   },
   "peerDependencies": {
