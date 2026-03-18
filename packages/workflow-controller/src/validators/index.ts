@@ -1,8 +1,8 @@
-export * from "./types.js";
-
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+export * from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
