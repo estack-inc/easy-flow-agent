@@ -83,8 +83,8 @@ export function createWorkflowTools(params: {
           conditions?: Array<{ label: string; nextStepId: string }>;
         }>,
         plan: (args.plan as string) ?? "",
-        issueNumber: (args.issueNumber as number) ?? undefined,
-        issueRepo: (args.issueRepo as string) ?? undefined,
+        issueNumber: args.issueNumber as number | undefined,
+        issueRepo: args.issueRepo as string | undefined,
       });
 
       // Activate the new workflow in the context engine
@@ -389,24 +389,38 @@ export function createWorkflowTools(params: {
     },
     execute: async (_callId: string, args: Record<string, unknown>) => {
       const issueNumber = args.issueNumber as number;
-      const issueRepo = (args.issueRepo as string) ?? undefined;
+      const issueRepo = args.issueRepo as string | undefined;
       const issueState = (args.issueState as string) ?? "open";
 
       const state = findWorkflowByIssue(agentDir, issueNumber, issueRepo);
       if (!state) {
         return {
-          found: false,
-          message: `Issue #${issueNumber} に紐づくワークフローが見つかりません`,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                found: false,
+                message: `Issue #${issueNumber} に紐づくワークフローが見つかりません`,
+              }),
+            },
+          ],
         };
       }
 
       // すでにアーカイブ済みの場合
       if (state.closedAt) {
         return {
-          found: true,
-          archived: true,
-          workflowId: state.workflowId,
-          message: `Issue #${issueNumber} のワークフローはすでにクローズ済みです（${new Date(state.closedAt).toISOString()}）`,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                found: true,
+                archived: true,
+                workflowId: state.workflowId,
+                message: `Issue #${issueNumber} のワークフローはすでにクローズ済みです（${new Date(state.closedAt).toISOString()}）`,
+              }),
+            },
+          ],
         };
       }
 
@@ -414,22 +428,29 @@ export function createWorkflowTools(params: {
       if (issueState === "closed") {
         closeWorkflow(agentDir, state.workflowId);
         return {
-          found: true,
-          archived: true,
-          workflowId: state.workflowId,
-          message: `Issue #${issueNumber} がクローズされているため、ワークフローを自動アーカイブしました`,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                found: true,
+                archived: true,
+                workflowId: state.workflowId,
+                message: `Issue #${issueNumber} がクローズされているため、ワークフローを自動アーカイブしました`,
+              }),
+            },
+          ],
         };
       }
 
       // 通常の復帰
       contextEngine.setActiveWorkflow(state.workflowId);
       return {
-        found: true,
-        archived: false,
-        workflowId: state.workflowId,
-        label: state.label,
-        currentStepId: state.currentStepId,
-        message: `ワークフロー「${state.label}」を再開しました（現在のステップ: ${state.currentStepId}）`,
+        content: [
+          {
+            type: "text" as const,
+            text: `Workflow resumed: ${state.workflowId}\n\n${renderContextMarkdown(state)}`,
+          },
+        ],
       };
     },
   };

@@ -69,6 +69,10 @@ export function listWorkflows(agentDir: string): string[] {
  * GitHub Issue 番号で対応するワークフローを検索する。
  * 中断復帰シナリオで使用。
  * issueRepo が指定された場合はリポジトリも一致確認する。
+ *
+ * 注意: 同一 issueNumber のワークフローが複数存在する場合、
+ * 最初に見つかったもの（ファイルシステム順序依存）を返す。
+ * createWorkflow 側で重複防止を行う場合は呼び出し元で対処すること。
  */
 export function findWorkflowByIssue(
   agentDir: string,

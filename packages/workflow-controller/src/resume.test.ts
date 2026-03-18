@@ -143,6 +143,10 @@ describe("Issue resume feature", () => {
       return { resumeTool, mockContextEngine };
     }
 
+    function parseToolResult(result: { content: Array<{ type: string; text: string }> }) {
+      return JSON.parse(result.content[0].text);
+    }
+
     it("resumes an open workflow (issueState: open)", async () => {
       const created = createWorkflow(tmpDir, {
         label: "Resume WF",
@@ -161,10 +165,11 @@ describe("Issue resume feature", () => {
         issueState: "open",
       });
 
-      expect(result.found).toBe(true);
-      expect(result.archived).toBe(false);
-      expect(result.workflowId).toBe(created.workflowId);
-      expect(result.label).toBe("Resume WF");
+      // OpenClaw standard format: { content: [{ type: "text", text: string }] }
+      expect(result.content).toBeDefined();
+      expect(result.content[0].type).toBe("text");
+      expect(result.content[0].text).toContain("Workflow resumed");
+      expect(result.content[0].text).toContain(created.workflowId);
       expect(mockContextEngine.setActiveWorkflow).toHaveBeenCalledWith(created.workflowId);
     });
 
@@ -181,9 +186,10 @@ describe("Issue resume feature", () => {
         issueState: "closed",
       });
 
-      expect(result.found).toBe(true);
-      expect(result.archived).toBe(true);
-      expect(result.workflowId).toBe(created.workflowId);
+      const parsed = parseToolResult(result);
+      expect(parsed.found).toBe(true);
+      expect(parsed.archived).toBe(true);
+      expect(parsed.workflowId).toBe(created.workflowId);
 
       // Verify closedAt was persisted
       const loaded = loadWorkflow(tmpDir, created.workflowId);
@@ -205,9 +211,10 @@ describe("Issue resume feature", () => {
         issueState: "open",
       });
 
-      expect(result.found).toBe(true);
-      expect(result.archived).toBe(true);
-      expect(result.workflowId).toBe(created.workflowId);
+      const parsed = parseToolResult(result);
+      expect(parsed.found).toBe(true);
+      expect(parsed.archived).toBe(true);
+      expect(parsed.workflowId).toBe(created.workflowId);
     });
 
     it("returns found: false for non-existent issue", async () => {
@@ -216,7 +223,8 @@ describe("Issue resume feature", () => {
         issueNumber: 9999,
       });
 
-      expect(result.found).toBe(false);
+      const parsed = parseToolResult(result);
+      expect(parsed.found).toBe(false);
     });
   });
 });
