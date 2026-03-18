@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IPineconeClient, QueryResult, TextChunk } from "@easy-flow/pinecone-client";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PineconeContextEngineParallel } from "./pinecone-context-engine-parallel.js";
 
 // Mock Pinecone client
@@ -16,7 +16,7 @@ const mockChunk: TextChunk = {
   agentId: "test-agent",
   sourceFile: "test-file",
   sourceType: "memory_file",
-}
+};
 
 describe("PineconeContextEngineParallel", () => {
   let engine: PineconeContextEngineParallel;
@@ -32,12 +32,10 @@ describe("PineconeContextEngineParallel", () => {
   describe("assemble - parallel execution", () => {
     it("should return immediately without waiting for Pinecone query", async () => {
       // Setup: Mock slow Pinecone query (500ms delay)
-      const mockResults: QueryResult[] = [
-        { id: "test-1", score: 0.95, chunk: mockChunk },
-      ];
+      const mockResults: QueryResult[] = [{ id: "test-1", score: 0.95, chunk: mockChunk }];
 
       (mockPineconeClient.query as any).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(mockResults), 500))
+        () => new Promise((resolve) => setTimeout(() => resolve(mockResults), 500)),
       );
 
       const messages: AgentMessage[] = [
@@ -57,7 +55,14 @@ describe("PineconeContextEngineParallel", () => {
 
     it("should resolve contextPromise with proper memory content", async () => {
       const mockResults: QueryResult[] = [
-        { id: "test-1", score: 0.85, chunk: { ...mockChunk, text: "Important memory: Easy Flow pricing is 50,000 yen per agent" } },
+        {
+          id: "test-1",
+          score: 0.85,
+          chunk: {
+            ...mockChunk,
+            text: "Important memory: Easy Flow pricing is 50,000 yen per agent",
+          },
+        },
       ];
       (mockPineconeClient.query as any).mockResolvedValue(mockResults);
 
@@ -76,7 +81,7 @@ describe("PineconeContextEngineParallel", () => {
     it("should handle Pinecone query timeout gracefully", async () => {
       // Setup: Mock timeout (longer than 3s timeout)
       (mockPineconeClient.query as any).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve([]), 5000))
+        () => new Promise((resolve) => setTimeout(() => resolve([]), 5000)),
       );
 
       const messages: AgentMessage[] = [

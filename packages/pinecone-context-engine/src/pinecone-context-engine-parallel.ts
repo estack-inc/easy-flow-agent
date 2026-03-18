@@ -32,7 +32,6 @@ const DEFAULT_MIN_SCORE = 0.7;
 const DEFAULT_TOKEN_BUDGET = 16000;
 const DEFAULT_MIN_QUERY_TOKENS = 20;
 const DEFAULT_INGEST_ROLES: ("user" | "assistant")[] = ["user", "assistant"];
-const DEFAULT_COMPACT_AFTER_DAYS = 7;
 const RETRY_BASE_MS = 100;
 const MAX_RETRIES = 3;
 const ASSEMBLE_TIMEOUT_MS = 3000;
@@ -123,7 +122,7 @@ export class PineconeContextEngineParallel implements ContextEngine {
     this.minQueryTokens = params.minQueryTokens ?? DEFAULT_MIN_QUERY_TOKENS;
   }
 
-  async bootstrap(params: { sessionId: string; sessionFile: string }): Promise<BootstrapResult> {
+  async bootstrap(_params: { sessionId: string; sessionFile: string }): Promise<BootstrapResult> {
     try {
       await withRetry(() => this.client.ensureIndex());
       return { bootstrapped: true };
