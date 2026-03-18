@@ -1,9 +1,20 @@
 import { PineconeClient } from "@easy-flow/pinecone-client";
-import { LegacyContextEngine } from "openclaw/plugin-sdk/context-engine/legacy.js";
 import type { OpenClawPluginApi, OpenClawPluginToolFactory } from "openclaw/plugin-sdk/core";
+import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/core";
 import { WorkflowContextEngine } from "./src/context-engine.js";
 import { createNoopDelegate } from "./src/noop-delegate.js";
 import { createWorkflowTools } from "./src/tools.js";
+
+/**
+ * Workflow Controller プラグイン（Pinecone ラップ対応版）
+ *
+ * Pinecone 設定がある場合: WorkflowContextEngine → PineconeContextEngine（長期記憶 + WC制御）
+ * Pinecone 設定がない場合: WorkflowContextEngine → NoopDelegate（WC制御のみ）
+ *
+ * 注意: openclaw 内部モジュール（LegacyContextEngine）はプラグインからは参照不可のため、
+ * Pinecone なしの場合はノープOPデリゲートを使用する。
+ * Fly.io 環境では PINECONE_API_KEY が常に設定されているため実用上の問題はない。
+ */
 
 type PluginConfig = {
   pineconeApiKey?: string;
@@ -18,16 +29,7 @@ const workflowControllerPlugin = {
   description:
     "Step-based workflow execution control with context optimization (facts, questions, plan). Wraps Pinecone as delegate when configured.",
   kind: "context-engine" as const,
-  configSchema: {
-    type: "object" as const,
-    additionalProperties: false,
-    properties: {
-      pineconeApiKey: { type: "string" as const },
-      agentId: { type: "string" as const },
-      indexName: { type: "string" as const },
-      compactAfterDays: { type: "number" as const, minimum: 1, maximum: 90 },
-    },
-  },
+  configSchema: emptyPluginConfigSchema(),
 
   register(api: OpenClawPluginApi) {
     let sharedEngine: WorkflowContextEngine | undefined;
@@ -40,24 +42,23 @@ const workflowControllerPlugin = {
         const agentId = cfg.agentId ?? process.env.OPENCLAW_AGENT_ID ?? "default";
         const indexName = cfg.indexName ?? "easy-flow-memory";
         const compactAfterDays = cfg.compactAfterDays ?? 7;
+        const pineconeClient = new PineconeClient({ apiKey: pineconeApiKey, indexName });
 
         api.logger.info(
           `workflow-controller: Pinecone delegate enabled (agentId: ${agentId}, index: ${indexName})`,
         );
-
-        const pineconeClient = new PineconeClient({
-          apiKey: pineconeApiKey,
-          indexName,
-        });
 
         sharedEngine = new WorkflowContextEngine({
           delegate: createNoopDelegate(),
           pinecone: { client: pineconeClient, agentId, compactAfterDays },
         });
       } else {
-        const delegate = new LegacyContextEngine();
-        api.logger.info("workflow-controller: using LegacyContextEngine as delegate (no Pinecone)");
-        sharedEngine = new WorkflowContextEngine({ delegate });
+        // Pinecone なし — NoopDelegate を使用（WC制御のみ有効）
+        // LegacyContextEngine はプラグインからは参照不可のためこの設計とする
+        api.logger.warn(
+          "workflow-controller: PINECONE_API_KEY not set — using noop delegate (no long-term memory)",
+        );
+        sharedEngine = new WorkflowContextEngine({ delegate: createNoopDelegate() });
       }
 
       return sharedEngine;
