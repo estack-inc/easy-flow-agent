@@ -23,6 +23,7 @@ import {
   DEFAULT_SKIP_PATTERNS,
   DEFAULT_TOKEN_BUDGET,
   DEFAULT_TOP_K,
+  readOldTurns,
   withRetry,
 } from "./shared.js";
 import type { PineconeContextEngineParams } from "./types.js";
@@ -201,7 +202,7 @@ export class PineconeContextEngine implements ContextEngine {
 
       const cutoff = Date.now() - this.compactAfterDays * 24 * 60 * 60 * 1000;
 
-      const oldMessages = await this.readOldTurns(sessionFile, cutoff);
+      const oldMessages = await readOldTurns(sessionFile, cutoff);
 
       if (oldMessages.length === 0) {
         return { ok: true, compacted: false, reason: "no old turns to compact" };
@@ -261,38 +262,5 @@ export class PineconeContextEngine implements ContextEngine {
 
   private enrichQuery(baseQuery: string): string {
     return buildEnrichedQuery(baseQuery, this.memoryHint, this.minQueryTokens);
-  }
-
-  private async readOldTurns(
-    sessionFile: string,
-    cutoffTimestamp: number,
-  ): Promise<AgentMessage[]> {
-    try {
-      const { readFile } = await import("node:fs/promises");
-      const content = await readFile(sessionFile, "utf-8");
-      const lines = content.split("\n").filter((l) => l.trim().length > 0);
-
-      const oldMessages: AgentMessage[] = [];
-      for (const line of lines) {
-        try {
-          const entry = JSON.parse(line);
-          // Session entries have a timestamp field
-          if (
-            entry.timestamp &&
-            entry.timestamp < cutoffTimestamp &&
-            entry.message &&
-            typeof entry.message.role === "string" &&
-            entry.message.content !== undefined
-          ) {
-            oldMessages.push(entry.message);
-          }
-        } catch {
-          // Skip malformed lines
-        }
-      }
-      return oldMessages;
-    } catch {
-      return [];
-    }
   }
 }

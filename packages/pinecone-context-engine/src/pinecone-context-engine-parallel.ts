@@ -10,18 +10,19 @@ import type {
   ContextEngineInfo,
   IngestResult,
 } from "openclaw/plugin-sdk";
-import { EmptyFallbackContextEngine, FallbackContextEngine } from "./fallback-adapter.js";
 import {
   ASSEMBLE_TIMEOUT_MS,
   buildEnrichedQuery,
   buildQueryFromRecentTurns,
   buildSystemPromptAddition,
+  DEFAULT_COMPACT_AFTER_DAYS,
   DEFAULT_INGEST_ROLES,
   DEFAULT_MIN_QUERY_TOKENS,
   DEFAULT_MIN_SCORE,
   DEFAULT_SKIP_PATTERNS,
   DEFAULT_TOKEN_BUDGET,
   DEFAULT_TOP_K,
+  readOldTurns,
   withRetry,
 } from "./shared.js";
 import type { PineconeContextEngineParams } from "./types.js";
@@ -53,7 +54,7 @@ export class PineconeContextEngineParallel implements ContextEngine {
   private readonly agentId: string;
   private readonly tokenBudget: number;
   private readonly ingestRoles: ("user" | "assistant")[];
-  private readonly fallback: ContextEngine;
+  private readonly compactAfterDays: number;
   private readonly chunker: TextChunker;
   private readonly skipPatterns: string[];
   private readonly defaultCategory: string;
@@ -65,9 +66,7 @@ export class PineconeContextEngineParallel implements ContextEngine {
     this.agentId = params.agentId;
     this.tokenBudget = params.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
     this.ingestRoles = params.ingestRoles ?? DEFAULT_INGEST_ROLES;
-    this.fallback = params.fallbackAdapter
-      ? new FallbackContextEngine(params.fallbackAdapter)
-      : new EmptyFallbackContextEngine();
+    this.compactAfterDays = params.compactAfterDays ?? DEFAULT_COMPACT_AFTER_DAYS;
     this.chunker = new TextChunker();
     this.skipPatterns = params.skipPatterns ?? DEFAULT_SKIP_PATTERNS;
     this.defaultCategory = params.defaultCategory ?? "conversation";
@@ -164,7 +163,7 @@ export class PineconeContextEngineParallel implements ContextEngine {
     const budget = params.tokenBudget ?? this.tokenBudget;
 
     // START PINECONE QUERY IMMEDIATELY - DO NOT AWAIT
-    let timeoutHandle: ReturnType<typeof setTimeout>;
+    let timeoutHandle!: ReturnType<typeof setTimeout>;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(() => reject(new Error("assemble timeout")), ASSEMBLE_TIMEOUT_MS);
     });
@@ -221,8 +220,59 @@ export class PineconeContextEngineParallel implements ContextEngine {
     customInstructions?: string;
     runtimeContext?: Record<string, unknown>;
   }): Promise<CompactResult> {
-    // For now, delegate to fallback for compact operations
-    return this.fallback.compact(params);
+    try {
+      const { sessionId, sessionFile } = params;
+
+      const cutoff = Date.now() - this.compactAfterDays * 24 * 60 * 60 * 1000;
+
+      const oldMessages = await readOldTurns(sessionFile, cutoff);
+
+      if (oldMessages.length === 0) {
+        return { ok: true, compacted: false, reason: "no old turns to compact" };
+      }
+
+      // Upsert all old turns to Pinecone (idempotent)
+      const allChunks = oldMessages.flatMap((msg) => {
+        const text = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+
+        if (!text || text.length === 0) {
+          return [];
+        }
+
+        const lowerText = text.toLowerCase();
+        if (this.skipPatterns.some((p) => lowerText.includes(p.toLowerCase()))) {
+          return [];
+        }
+
+        const contentHash = createHash("sha256")
+          .update(`${sessionId}:${msg.role}:${text}`)
+          .digest("hex")
+          .slice(0, 16);
+
+        return this.chunker.chunk({
+          text,
+          agentId: this.agentId,
+          sourceFile: `session:${sessionId}:${contentHash}`,
+          sourceType: "session_turn",
+          turnId: `${sessionId}:${contentHash}`,
+          role: msg.role as "user" | "assistant",
+          category: this.defaultCategory,
+        });
+      });
+
+      if (allChunks.length > 0) {
+        await withRetry(() => this.client.upsert(allChunks));
+      }
+
+      return { ok: true, compacted: true };
+    } catch (err) {
+      console.error("[PineconeContextEngineParallel] compact failed:", err);
+      return {
+        ok: false,
+        compacted: false,
+        reason: `compact failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
   }
 
   async dispose(): Promise<void> {

@@ -100,6 +100,39 @@ export function buildQueryFromRecentTurns(messages: AgentMessage[]): string {
   return texts.join("\n");
 }
 
+export async function readOldTurns(
+  sessionFile: string,
+  cutoffTimestamp: number,
+): Promise<AgentMessage[]> {
+  try {
+    const { readFile } = await import("node:fs/promises");
+    const content = await readFile(sessionFile, "utf-8");
+    const lines = content.split("\n").filter((l) => l.trim().length > 0);
+
+    const oldMessages: AgentMessage[] = [];
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        // Session entries have a timestamp field
+        if (
+          entry.timestamp &&
+          entry.timestamp < cutoffTimestamp &&
+          entry.message &&
+          typeof entry.message.role === "string" &&
+          entry.message.content !== undefined
+        ) {
+          oldMessages.push(entry.message);
+        }
+      } catch {
+        // Skip malformed lines
+      }
+    }
+    return oldMessages;
+  } catch {
+    return [];
+  }
+}
+
 export function buildSystemPromptAddition(
   results: QueryResult[],
   budget: number,
