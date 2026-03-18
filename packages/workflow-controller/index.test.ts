@@ -23,12 +23,16 @@ vi.mock("@easy-flow/pinecone-context-engine", () => ({
   })),
 }));
 
-vi.mock("@mariozechner/pi-agent-core/context-engine", () => ({
-  LegacyContextEngine: vi.fn().mockImplementation(() => ({
-    info: { id: "legacy", name: "Legacy", version: "0.0.0" },
-    ingest: vi.fn().mockResolvedValue({ ingested: false }),
-    assemble: vi.fn().mockResolvedValue({ messages: [], estimatedTokens: 0 }),
-    compact: vi.fn().mockResolvedValue({ ok: true, compacted: false }),
+vi.mock("openclaw/plugin-sdk/core", () => ({
+  emptyPluginConfigSchema: vi.fn(() => ({
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      pineconeApiKey: { type: "string" },
+      agentId: { type: "string" },
+      indexName: { type: "string" },
+      compactAfterDays: { type: "number", minimum: 1, maximum: 90 },
+    },
   })),
 }));
 
@@ -153,10 +157,8 @@ describe("workflowControllerPlugin", () => {
       });
     });
 
-    describe("LegacyContextEngine fallback path", () => {
-      it("uses LegacyContextEngine when no Pinecone config", async () => {
-        const { LegacyContextEngine } = await import("@mariozechner/pi-agent-core/context-engine");
-
+    describe("Noop delegate fallback path (no Pinecone)", () => {
+      it("uses noop delegate and logs warning when no Pinecone config", async () => {
         delete process.env.PINECONE_API_KEY;
         const api = createMockApi({});
         workflowControllerPlugin.register(api as any);
@@ -164,9 +166,8 @@ describe("workflowControllerPlugin", () => {
         const factory = api._contextEngineFactories.get("workflow")!;
         const engine = await factory();
 
-        expect(LegacyContextEngine).toHaveBeenCalled();
-        expect(api.logger.info).toHaveBeenCalledWith(
-          expect.stringContaining("LegacyContextEngine"),
+        expect(api.logger.warn).toHaveBeenCalledWith(
+          expect.stringContaining("PINECONE_API_KEY not set"),
         );
         expect(engine).toBeDefined();
       });
