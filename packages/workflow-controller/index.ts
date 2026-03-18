@@ -1,7 +1,6 @@
 import { PineconeClient } from "@easy-flow/pinecone-client";
 import { LegacyContextEngine } from "@mariozechner/pi-agent-core/context-engine";
 import type { OpenClawPluginApi, OpenClawPluginToolFactory } from "openclaw/plugin-sdk/core";
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/core";
 import { WorkflowContextEngine } from "./src/context-engine.js";
 import { createNoopDelegate } from "./src/noop-delegate.js";
 import { createWorkflowTools } from "./src/tools.js";
@@ -19,7 +18,16 @@ const workflowControllerPlugin = {
   description:
     "Step-based workflow execution control with context optimization (facts, questions, plan). Wraps Pinecone as delegate when configured.",
   kind: "context-engine" as const,
-  configSchema: emptyPluginConfigSchema(),
+  configSchema: {
+    type: "object" as const,
+    additionalProperties: false,
+    properties: {
+      pineconeApiKey: { type: "string" as const },
+      agentId: { type: "string" as const },
+      indexName: { type: "string" as const },
+      compactAfterDays: { type: "number" as const, minimum: 1, maximum: 90 },
+    },
+  },
 
   register(api: OpenClawPluginApi) {
     let sharedEngine: WorkflowContextEngine | undefined;
@@ -36,6 +44,11 @@ const workflowControllerPlugin = {
         api.logger.info(
           `workflow-controller: Pinecone delegate enabled (agentId: ${agentId}, index: ${indexName})`,
         );
+
+        const pineconeClient = new PineconeClient({
+          apiKey: pineconeApiKey,
+          indexName,
+        });
 
         sharedEngine = new WorkflowContextEngine({
           delegate: createNoopDelegate(),
