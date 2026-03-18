@@ -78,7 +78,7 @@ describe("PineconeContextEngineParallel", () => {
       expect(context.estimatedTokens).toBeGreaterThan(0);
     });
 
-    it("should handle Pinecone query timeout gracefully", async () => {
+    it("should handle Pinecone query timeout gracefully", { timeout: 10000 }, async () => {
       // Setup: Mock timeout (longer than 3s timeout)
       (mockPineconeClient.query as any).mockImplementation(
         () => new Promise((resolve) => setTimeout(() => resolve([]), 5000)),

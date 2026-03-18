@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import type { IPineconeClient, QueryResult } from "@easy-flow/pinecone-client";
 import { TextChunker } from "@easy-flow/pinecone-client";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type {
@@ -11,98 +10,24 @@ import type {
   IngestResult,
 } from "openclaw/plugin-sdk";
 import { EmptyFallbackContextEngine, FallbackContextEngine } from "./fallback-adapter.js";
-import { estimateTokens } from "./token-estimator.js";
+import {
+  ASSEMBLE_TIMEOUT_MS,
+  buildEnrichedQuery,
+  buildQueryFromRecentTurns,
+  buildSystemPromptAddition,
+  DEFAULT_COMPACT_AFTER_DAYS,
+  DEFAULT_INGEST_ROLES,
+  DEFAULT_MIN_QUERY_TOKENS,
+  DEFAULT_MIN_SCORE,
+  DEFAULT_SKIP_PATTERNS,
+  DEFAULT_TOKEN_BUDGET,
+  DEFAULT_TOP_K,
+  withRetry,
+} from "./shared.js";
 import type { PineconeContextEngineParams } from "./types.js";
 
-const DEFAULT_SKIP_PATTERNS = [
-  "記憶しないで",
-  "覚えなくていい",
-  "覚えないで",
-  "no memory",
-  "skip memory",
-  "dont remember",
-  "don't remember",
-  "skip ingest",
-];
-
-const RECENT_TURNS_FOR_QUERY = 3;
-const DEFAULT_TOP_K = 20;
-const DEFAULT_MIN_SCORE = 0.7;
-/**
- * Default token budget for Pinecone memory injection.
- * Set to 16000 to accommodate Japanese/CJK conversations, which use
- * ~1.5 tokens/char (after PR #16 fix). This allows ~10,000 Japanese
- * characters per context injection (comparable to pre-fix behavior).
- */
-const DEFAULT_TOKEN_BUDGET = 16000;
-const DEFAULT_MIN_QUERY_TOKENS = 20;
-const DEFAULT_INGEST_ROLES: ("user" | "assistant")[] = ["user", "assistant"];
-const DEFAULT_COMPACT_AFTER_DAYS = 7;
-
-/**
- * Determine if a query is "thin" — too short or lacking proper nouns to
- * produce good Pinecone vector-search results.
- */
-export function isQueryThin(query: string, minTokens: number = DEFAULT_MIN_QUERY_TOKENS): boolean {
-  const tokens = estimateTokens(query);
-  const hasProperNoun = /[A-Z\u4E00-\u9FFF\u30A0-\u30FF]/.test(query);
-  return tokens < minTokens || !hasProperNoun;
-}
-
-/**
- * Enrich a thin query by appending a memoryHint suffix.
- * Returns the original query unchanged if it is already rich enough.
- */
-export function buildEnrichedQuery(
-  baseQuery: string,
-  memoryHint?: string,
-  minTokens: number = DEFAULT_MIN_QUERY_TOKENS,
-): string {
-  if (!isQueryThin(baseQuery, minTokens) || !memoryHint) {
-    return baseQuery;
-  }
-  return `${baseQuery}\n${memoryHint.slice(0, 200)}`;
-}
-
-const RETRY_BASE_MS = 100;
-const MAX_RETRIES = 3;
-const ASSEMBLE_TIMEOUT_MS = 3000;
-
-function isRateLimitError(err: unknown): boolean {
-  if (err && typeof err === "object") {
-    if ("status" in err && (err as { status: number }).status === 429) return true;
-    if (
-      "message" in err &&
-      typeof (err as { message: string }).message === "string" &&
-      (err as { message: string }).message.includes("429")
-    )
-      return true;
-  }
-  return false;
-}
-
-/**
- * Retry with exponential backoff on 429 rate limit errors.
- * Initial attempt + up to MAX_RETRIES retries = MAX_RETRIES + 1 total attempts.
- * Backoff: 100ms → 200ms → 400ms.
- */
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
-  let lastError: unknown;
-  const maxAttempts = MAX_RETRIES + 1; // initial + 3 retries = 4 attempts
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err;
-      if (!isRateLimitError(err) || attempt === maxAttempts - 1) {
-        throw err;
-      }
-      const delay = RETRY_BASE_MS * 2 ** attempt;
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-  throw lastError;
-}
+// Re-export for backward compatibility
+export { buildEnrichedQuery, isQueryThin } from "./shared.js";
 
 export class PineconeContextEngine implements ContextEngine {
   readonly info: ContextEngineInfo = {
@@ -214,7 +139,7 @@ export class PineconeContextEngine implements ContextEngine {
     tokenBudget?: number;
   }): Promise<AssembleResult> {
     try {
-      const baseQuery = this.buildQueryFromRecentTurns(params.messages);
+      const baseQuery = buildQueryFromRecentTurns(params.messages);
 
       if (!baseQuery) {
         return {
@@ -247,7 +172,7 @@ export class PineconeContextEngine implements ContextEngine {
       }
 
       const budget = params.tokenBudget ?? this.tokenBudget;
-      const { markdown, tokenCount } = this.buildSystemPromptAddition(results, budget);
+      const { markdown, tokenCount } = buildSystemPromptAddition(results, budget);
 
       return {
         messages: params.messages,
@@ -335,43 +260,6 @@ export class PineconeContextEngine implements ContextEngine {
 
   private enrichQuery(baseQuery: string): string {
     return buildEnrichedQuery(baseQuery, this.memoryHint, this.minQueryTokens);
-  }
-
-  private buildQueryFromRecentTurns(messages: AgentMessage[]): string {
-    const recent = messages.slice(-RECENT_TURNS_FOR_QUERY);
-    const texts = recent
-      .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)))
-      .filter((t) => t.length > 0);
-    return texts.join("\n");
-  }
-
-  private buildSystemPromptAddition(
-    results: QueryResult[],
-    budget: number,
-  ): { markdown: string; tokenCount: number } {
-    // Sort by score descending
-    const sorted = [...results].sort((a, b) => b.score - a.score);
-
-    const selectedTexts: string[] = [];
-    let totalTokens = 0;
-
-    for (const result of sorted) {
-      const text = result.chunk.text;
-      const tokens = estimateTokens(text);
-      if (totalTokens + tokens > budget) {
-        break;
-      }
-      selectedTexts.push(text);
-      totalTokens += tokens;
-    }
-
-    if (selectedTexts.length === 0) {
-      return { markdown: "", tokenCount: 0 };
-    }
-
-    const markdown = `## Relevant Memory\n\n${selectedTexts.map((t) => `- ${t}`).join("\n")}`;
-
-    return { markdown, tokenCount: totalTokens };
   }
 
   private async readOldTurns(
