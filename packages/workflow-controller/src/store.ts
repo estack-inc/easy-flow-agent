@@ -65,6 +65,43 @@ export function listWorkflows(agentDir: string): string[] {
   }
 }
 
+/**
+ * GitHub Issue 番号で対応するワークフローを検索する。
+ * 中断復帰シナリオで使用。
+ * issueRepo が指定された場合はリポジトリも一致確認する。
+ */
+export function findWorkflowByIssue(
+  agentDir: string,
+  issueNumber: number,
+  issueRepo?: string,
+): WorkflowState | null {
+  const ids = listWorkflows(agentDir);
+  for (const id of ids) {
+    const state = loadWorkflow(agentDir, id);
+    if (!state) continue;
+    if (state.issueNumber !== issueNumber) continue;
+    if (issueRepo && state.issueRepo !== issueRepo) continue;
+    return state;
+  }
+  return null;
+}
+
+/**
+ * ワークフローをアーカイブ（クローズ）する。
+ * Issue の手動クローズ検知時・WF 完了時に呼ぶ。
+ */
+export function closeWorkflow(agentDir: string, workflowId: string): WorkflowState | null {
+  const state = loadWorkflow(agentDir, workflowId);
+  if (!state) return null;
+  const updated: WorkflowState = {
+    ...state,
+    closedAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  saveWorkflow(agentDir, updated);
+  return updated;
+}
+
 /** 新しいワークフローを作成する */
 export function createWorkflow(agentDir: string, params: CreateWorkflowParams): WorkflowState {
   const now = Date.now();
@@ -92,6 +129,8 @@ export function createWorkflow(agentDir: string, params: CreateWorkflowParams): 
     createdAt: now,
     updatedAt: now,
     sessionId: params.sessionId,
+    issueNumber: params.issueNumber,
+    issueRepo: params.issueRepo,
   };
 
   saveWorkflow(agentDir, state);
