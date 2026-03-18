@@ -1,5 +1,5 @@
 import { PineconeClient } from "@easy-flow/pinecone-client";
-import { LegacyContextEngine } from "@mariozechner/pi-agent-core/context-engine";
+import { LegacyContextEngine } from "openclaw/plugin-sdk/context-engine/legacy.js";
 import type { OpenClawPluginApi, OpenClawPluginToolFactory } from "openclaw/plugin-sdk/core";
 import { WorkflowContextEngine } from "./src/context-engine.js";
 import { createNoopDelegate } from "./src/noop-delegate.js";
