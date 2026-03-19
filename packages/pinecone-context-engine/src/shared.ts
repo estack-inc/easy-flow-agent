@@ -14,8 +14,8 @@ export const DEFAULT_SKIP_PATTERNS = [
 ];
 
 export const RECENT_TURNS_FOR_QUERY = 3;
-export const DEFAULT_TOP_K = 20;
-export const DEFAULT_MIN_SCORE = 0.7;
+export const DEFAULT_TOP_K = 10;
+export const DEFAULT_MIN_SCORE = 0.75;
 /**
  * Default token budget for Pinecone memory injection.
  * Set to 16000 to accommodate Japanese/CJK conversations, which use
