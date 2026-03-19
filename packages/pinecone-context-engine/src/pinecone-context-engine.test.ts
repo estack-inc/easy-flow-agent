@@ -313,8 +313,8 @@ describe("PineconeContextEngine", () => {
 
       expect(client.query).toHaveBeenCalledOnce();
       const queryParams = client.query.mock.calls[0][0] as QueryParams;
-      expect(queryParams.topK).toBe(20);
-      expect(queryParams.minScore).toBe(0.7);
+      expect(queryParams.topK).toBe(10);
+      expect(queryParams.minScore).toBe(0.75);
       expect(queryParams.agentId).toBe("test-agent");
       expect(result.systemPromptAddition).toContain("Relevant Memory");
       expect(result.systemPromptAddition).toContain("Previous conversation about testing");
