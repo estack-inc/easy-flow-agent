@@ -16,5 +16,8 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.7",
     "tsx": "^4.21.0"
+  },
+  "dependencies": {
+    "@pinecone-database/pinecone": "^7.1.0"
   }
 }
