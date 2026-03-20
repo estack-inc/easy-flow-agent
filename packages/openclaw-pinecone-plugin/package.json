@@ -13,10 +13,10 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "openclaw.plugin.json"
+    "src/openclaw.plugin.json"
   ],
   "scripts": {
-    "build": "tsc && cp openclaw.plugin.json dist/openclaw.plugin.json",
+    "build": "tsc && cp src/openclaw.plugin.json dist/openclaw.plugin.json",
     "test": "vitest run"
   },
   "dependencies": {
