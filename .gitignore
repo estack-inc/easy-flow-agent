@@ -10,6 +10,8 @@ node_modules/
 
 # Build outputs
 dist/
+!packages/workflow-controller/dist/
+!packages/openclaw-pinecone-plugin/dist/
 build/
 *.js.map
 *.d.ts.map
