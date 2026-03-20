@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import workflowControllerPlugin from "./index.js";
+import workflowControllerPlugin from "./src/index.js";
 
 vi.mock("@easy-flow/pinecone-client", () => ({
   PineconeClient: vi.fn().mockImplementation((config: { apiKey: string; indexName?: string }) => ({

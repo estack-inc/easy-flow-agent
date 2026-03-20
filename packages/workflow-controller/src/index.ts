@@ -1,9 +1,9 @@
 import { PineconeClient } from "@easy-flow/pinecone-client";
 import type { OpenClawPluginApi, OpenClawPluginToolFactory } from "openclaw/plugin-sdk/core";
 import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/core";
-import { WorkflowContextEngine } from "./src/context-engine.js";
-import { createNoopDelegate } from "./src/noop-delegate.js";
-import { createWorkflowTools } from "./src/tools.js";
+import { WorkflowContextEngine } from "./context-engine.js";
+import { createNoopDelegate } from "./noop-delegate.js";
+import { createWorkflowTools } from "./tools.js";
 
 /**
  * Workflow Controller プラグイン（Pinecone ラップ対応版）

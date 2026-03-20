@@ -1,0 +1,40 @@
+{
+  "id": "workflow-controller",
+  "kind": "context-engine",
+  "name": "Workflow Controller",
+  "description": "Step-based workflow execution control with context optimization (facts, questions, plan). Wraps Pinecone as delegate when configured.",
+  "uiHints": {
+    "pineconeApiKey": {
+      "label": "Pinecone API Key",
+      "sensitive": true,
+      "placeholder": "pcsk_...",
+      "help": "Pinecone API key (or use ${PINECONE_API_KEY} env var). Leave empty to disable long-term memory (noop delegate)."
+    },
+    "agentId": {
+      "label": "Agent ID",
+      "placeholder": "mell",
+      "help": "Unique identifier for this agent (used as Pinecone namespace prefix). Falls back to OPENCLAW_AGENT_ID env var."
+    },
+    "indexName": {
+      "label": "Index Name",
+      "placeholder": "easy-flow-memory",
+      "help": "Pinecone index name (default: easy-flow-memory)"
+    },
+    "compactAfterDays": {
+      "label": "Compact After Days",
+      "placeholder": "7",
+      "help": "Days after which old turns are compacted into Pinecone",
+      "advanced": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "pineconeApiKey": { "type": "string" },
+      "agentId": { "type": "string" },
+      "indexName": { "type": "string" },
+      "compactAfterDays": { "type": "number", "minimum": 1, "maximum": 90 }
+    }
+  }
+}
