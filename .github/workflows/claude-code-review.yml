@@ -87,6 +87,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run Claude Code Review
+        id: claude_review
         if: steps.check_files.outputs.skip != 'true'
         uses: anthropics/claude-code-action@v1
         with:
@@ -215,7 +216,10 @@ jobs:
           gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file /tmp/review-result.md
 
       - name: Submit review verdict
-        if: steps.check_files.outputs.skip != 'true' && success()
+        if: >
+          !cancelled() &&
+          steps.check_files.outputs.skip != 'true' &&
+          steps.claude_review.conclusion == 'success'
         env:
           GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
