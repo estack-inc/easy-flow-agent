@@ -20,7 +20,7 @@ npm run format       # コードフォーマットのみ
 テストフレームワークは **vitest**（各パッケージの `devDependencies` で管理）。
 Lint / Format は **Biome**（ルートの `biome.json` で統一設定）。
 ビルドは不要（ソース直接参照パターン: `exports` → `./src/index.ts`）。
-`migrate-memory` のみ `dist/` へのビルドあり（CLI バイナリ提供のため）。
+`openclaw-pinecone-plugin` と `migrate-memory` の 2 パッケージのみビルドあり（プラグインデプロイ / CLI バイナリ提供のため）。
 
 ## リポジトリ構成
 
@@ -83,7 +83,7 @@ MEMORY.md ファイルを Pinecone ベクトル DB へ移行する CLI ツール
 - `Migrator` クラス — マークダウンをチャンク分割して Pinecone に upsert
 - CLI: `npx easy-flow migrate` で実行
 - 依存: `@easy-flow/pinecone-client`
-- このパッケージのみ `dist/` ビルドあり（CLI バイナリ提供のため）
+- `dist/` へのビルドあり（CLI バイナリ提供のため）
 
 ### specs/
 

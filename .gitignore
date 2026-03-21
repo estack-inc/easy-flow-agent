@@ -10,6 +10,7 @@ node_modules/
 
 # Build outputs
 dist/
+pinecone-memory/
 build/
 *.js.map
 *.d.ts.map

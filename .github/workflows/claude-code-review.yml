@@ -87,17 +87,26 @@ jobs:
           fetch-depth: 0
 
       - name: Run Claude Code Review
+        id: claude_review
         if: steps.check_files.outputs.skip != 'true'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
-          track_progress: true
+          track_progress: false
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
             あなたは Easy Flow Agent プロジェクトのシニアコードレビュアーです。
+
+            ## 出力ルール（最重要）
+
+            **レビュー中に GitHub へコメントを投稿してはならない。**
+            `gh pr comment` やインラインコメント等、GitHub への直接投稿は一切禁止。
+
+            全ての分析が完了した後、レビュー結果を `/tmp/review-result.md` に Write ツールで書き出すこと。
+            後続ステップがこのファイルを読み取り、一括で PR コメントとして投稿する。
 
             ## レビュー手順
 
@@ -140,23 +149,49 @@ jobs:
             レビュー完了時、以下のルールに従って判定すること:
 
             **🔴 または 🟡 の指摘が1件でもある場合:**
-            → `CHANGES_REQUESTED` で提出する
-            ```
-            レビュー結果セクションに `### レビュー結果: ❌ Changes Requested` と記載する
-            ```
+            → `### レビュー結果: ❌ Changes Requested` と記載する
 
             **🔵 のみ、または指摘なしの場合:**
-            → `APPROVE` で提出する（🔵の指摘はコメントとして残してよい）
-            ```
-            レビュー結果セクションに `### レビュー結果: ✅ Approved` と記載する
-            ```
+            → `### レビュー結果: ✅ Approved` と記載する
 
             **重要: `gh pr review` コマンドは実行しないこと。** レビュー判定の提出は後続ステップが自動で行う。
+
+            ## `/tmp/review-result.md` の出力フォーマット
+
+            以下のテンプレートに従って記載すること:
+
+            ```markdown
+            ### 変更の概要
+
+            （変更内容の要約を1〜3文で記載）
+
+            ### チェック結果
+
+            （各ファイルの確認結果を記載。問題がなければその旨を簡潔に）
+
+            **`path/to/file.ts`**
+            - 確認内容と結果
+
+            ### 指摘事項
+
+            （指摘がない場合は「指摘事項なし。」と記載）
+
+            🔴 **重大: タイトル** (`path/to/file.ts:行番号`)
+            > 説明と修正案
+
+            🟡 **要修正: タイトル** (`path/to/file.ts:行番号`)
+            > 説明と修正案
+
+            🔵 **情報提供: タイトル** (`path/to/file.ts:行番号`)
+            > 説明
+
+            ### レビュー結果: ✅ Approved / ❌ Changes Requested
+            ```
 
             ## レビュー方針
             - 確信がない指摘は避け、確実な問題のみ指摘する
             - 修正漏れの検出を最優先で行う
-            - インラインコメントで具体的な箇所を指摘する
+            - 指摘にはファイルパスと行番号を必ず含める（`path/to/file.ts:42` 形式）
             - **網羅性の確保**: 全ファイルのレビューを完了した後、以下のチェックリストで見落としがないか自己検証すること:
               1. 全ての変更ファイルに目を通したか？
               2. 各ファイルのインポート先・呼び出し元を確認したか？
@@ -165,39 +200,47 @@ jobs:
 
           claude_args: |
             --model ${{ vars.AI_REVIEW_MODEL || 'sonnet' }}
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(grep:*),Bash(find:*),Bash(rg:*),Bash(cat:*),Bash(wc:*),Read"
+            --allowedTools "Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(grep:*),Bash(find:*),Bash(rg:*),Bash(cat:*),Bash(wc:*),Read,Glob,Grep"
 
-      - name: Submit review verdict
+      - name: Post review comment
         if: steps.check_files.outputs.skip != 'true' && success()
         env:
           GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          # Issue コメントから検索
-          VERDICT=$(gh api repos/$REPO/issues/$PR_NUMBER/comments \
-            --paginate \
-            --jq '[.[] | select(.user.type=="Bot" or (.user.login | test("bot|ai|claude|github-actions"; "i")))] | last | .body // ""' | \
-            grep -E '^### (判定|レビュー結果):' | head -1 | \
-            sed 's/.*: //' | cut -c1-50)
-
-          # Issue コメントで見つからなければ PR レビューから検索
-          if [ -z "$VERDICT" ]; then
-            VERDICT=$(gh api repos/$REPO/pulls/$PR_NUMBER/reviews \
-              --paginate \
-              --jq '[.[] | select(.user.type=="Bot" or (.user.login | test("bot|ai|claude|github-actions"; "i")))] | last | .body // ""' | \
-              grep -E '^### (判定|レビュー結果):' | head -1 | \
-              sed 's/.*: //' | cut -c1-50)
+          if [ ! -f /tmp/review-result.md ]; then
+            echo "::warning::Review result file not found"
+            exit 1
           fi
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file /tmp/review-result.md
+
+      - name: Submit review verdict
+        if: >
+          !cancelled() &&
+          steps.check_files.outputs.skip != 'true' &&
+          steps.claude_review.conclusion == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ ! -f /tmp/review-result.md ]; then
+            echo "::warning::Review result file not found — skipping verdict submission"
+            exit 0
+          fi
+
+          VERDICT=$(grep -E '^### (判定|レビュー結果):' /tmp/review-result.md | head -1 | \
+            sed 's/.*: //' | cut -c1-50)
 
           echo "Verdict line: $VERDICT"
           if echo "$VERDICT" | grep -qiE 'CHANGES_REQUESTED|Changes Requested|要修正'; then
             echo "Submitting CHANGES_REQUESTED review"
-            gh pr review $PR_NUMBER --repo $REPO --request-changes \
+            gh pr review "$PR_NUMBER" --repo "$REPO" --request-changes \
               --body "🤖 AIレビュー判定: CHANGES_REQUESTED — 詳細はレビューコメントを確認してください。"
           elif echo "$VERDICT" | grep -qiE 'APPROVED|APPROVE|Approved'; then
             echo "Submitting APPROVED review"
-            gh pr review $PR_NUMBER --repo $REPO --approve \
+            gh pr review "$PR_NUMBER" --repo "$REPO" --approve \
               --body "🤖 AIレビュー判定: APPROVED ✅"
           else
             echo "Could not determine verdict from: $VERDICT"
