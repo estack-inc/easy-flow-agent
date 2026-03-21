@@ -4,19 +4,18 @@
   "type": "module",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": "./pinecone-memory/index.js",
+      "types": "./pinecone-memory/index.d.ts",
+      "default": "./pinecone-memory/index.js"
     }
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./pinecone-memory/index.js",
+  "types": "./pinecone-memory/index.d.ts",
   "files": [
-    "dist",
-    "src/openclaw.plugin.json"
+    "pinecone-memory"
   ],
   "scripts": {
-    "build": "tsc && cp src/openclaw.plugin.json dist/openclaw.plugin.json",
+    "build": "tsc && cp src/openclaw.plugin.json pinecone-memory/openclaw.plugin.json",
     "test": "vitest run"
   },
   "dependencies": {
