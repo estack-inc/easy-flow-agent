@@ -61,3 +61,8 @@ Closes #XX
 - [ ] テスト通過
 - [ ] 型エラーなし
 - [ ] CLAUDE.md / specs/ の更新（必要な場合）
+
+<!-- n8n Slack通知連携: 以下は自動通知用メタデータ。slack_channel はデフォルト通知先。slack_thread_ts と slack_agent_mention は PR 作成時にエージェントが設定する -->
+<!-- slack_channel: C0ALHTE50Q5 -->
+<!-- slack_thread_ts: -->
+<!-- slack_agent_mention: -->
