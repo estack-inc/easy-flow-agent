@@ -61,6 +61,7 @@ Closes #XX
 - [ ] テスト通過
 - [ ] 型エラーなし
 - [ ] CLAUDE.md / specs/ の更新（必要な場合）
+
 <!-- slack_channel: C0ALHTE50Q5 -->
 <!-- slack_thread_ts: -->
 <!-- slack_agent_mention: -->
