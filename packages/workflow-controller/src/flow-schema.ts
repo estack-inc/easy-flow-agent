@@ -114,12 +114,11 @@ export function validateFlowDefinition(data: unknown): ValidationResult {
   // V3: steps が 1 つ以上
   if (steps.length === 0) {
     errors.push("'steps' は 1 つ以上のステップが必要です");
-    return { valid: errors.length === 0, errors, warnings };
+    return { valid: false, errors, warnings };
   }
 
   // steps の各要素をバリデーション
   const stepIds = new Set<string>();
-  const stepIdList: string[] = [];
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
@@ -152,7 +151,6 @@ export function validateFlowDefinition(data: unknown): ValidationResult {
         errors.push(`steps[${i}].id '${stepId}' はフロー内で重複しています`);
       } else {
         stepIds.add(stepId);
-        stepIdList.push(stepId);
       }
     }
 
