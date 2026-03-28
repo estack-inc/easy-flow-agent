@@ -116,6 +116,14 @@ export function createWorkflowTools(params: {
         };
       }
 
+      if (!label) {
+        return {
+          content: [
+            { type: "text" as const, text: "label is required (provide label directly or via flowId)" },
+          ],
+        };
+      }
+
       // 3. ワークフロー作成（既存ロジック）
       const state = createWorkflow(agentDir, {
         flowId,
