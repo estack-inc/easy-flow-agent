@@ -99,7 +99,7 @@ export function validateFlowDefinition(data: unknown): ValidationResult {
   // V10: flowId が snake_case
   if (!SNAKE_CASE_RE.test(flowId)) {
     errors.push(
-      `'flowId' の値 '${flowId}' は snake_case ではありません（/^[a-z][a-z0-9_]*$/ に一致する必要があります）`,
+      `'flowId' の値 '${flowId}' は snake_case ではありません（${SNAKE_CASE_RE} に一致する必要があります）`,
     );
   }
 
