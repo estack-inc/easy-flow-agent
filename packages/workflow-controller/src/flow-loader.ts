@@ -122,7 +122,7 @@ export function loadFlowDefinitions(
   return [...validFlows];
 }
 
-/** trigger で完全一致検索。キャッシュから取得。 */
+/** trigger で完全一致検索。キャッシュから取得。トリガーベース自動実行用（将来利用）。 */
 export function getFlowByTrigger(trigger: string): FlowDefinition | undefined {
   return cachedFlows.find((f) => f.trigger === trigger);
 }
