@@ -132,7 +132,7 @@ export function getFlowById(flowId: string): FlowDefinition | undefined {
   return cachedFlows.find((f) => f.flowId === flowId);
 }
 
-/** 読み込み済みの全フロー定義を返す */
+/** @internal 読み込み済みの全フロー定義を返す */
 export function listFlows(): FlowDefinition[] {
   return [...cachedFlows];
 }
