@@ -1,15 +1,21 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   agentStateToUnified,
   formatAgentContextForLLM,
   unifiedToAgentState,
   updateAgentContext,
 } from "./agent-state-converter.js";
+import type { WorkflowContextEngine } from "./context-engine.js";
+import { _resetCache, loadFlowDefinitions } from "./flow-loader.js";
 import {
   createMockAgentState,
   createMockUnifiedAgentState,
   createMockWorkflowState,
 } from "./test-fixtures.js";
+import { createWorkflowTools } from "./tools.js";
 import type { UnifiedAgentState } from "./types.js";
 import { toUnifiedAgentState } from "./types.js";
 import {
@@ -421,5 +427,134 @@ describe("Type safety", () => {
     expect(Array.isArray(unified.blockedReasons)).toBe(true);
     expect(Array.isArray(unified.facts)).toBe(true);
     expect(Array.isArray(unified.openQuestions)).toBe(true);
+  });
+});
+
+// =============================================================================
+// 外部フロー定義の統合テスト
+// =============================================================================
+describe("外部フロー定義の統合テスト", () => {
+  let tmpDir: string;
+  let flowsDir: string;
+
+  function createTools() {
+    const mockContextEngine = {
+      setActiveWorkflow: vi.fn(),
+    } as unknown as WorkflowContextEngine;
+
+    const tools = createWorkflowTools({
+      agentDir: tmpDir,
+      contextEngine: mockContextEngine,
+    });
+
+    const createTool = tools.find((t) => t.name === "workflow_create")!;
+    return { createTool, mockContextEngine };
+  }
+
+  function getResultText(result: { content: Array<{ type: string; text: string }> }): string {
+    return result.content[0].text;
+  }
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "wf-ext-flow-test-"));
+    flowsDir = path.join(tmpDir, "workflows");
+    fs.mkdirSync(flowsDir, { recursive: true });
+
+    // テスト用フロー定義を作成
+    const testFlow = {
+      version: 1,
+      flowId: "test_task_flow",
+      trigger: "📋",
+      label: "📋 テストタスクフロー",
+      steps: [
+        { id: "requirements", label: "要件深掘り", nextStepId: "implementation" },
+        { id: "implementation", label: "実装" },
+      ],
+    };
+    fs.writeFileSync(path.join(flowsDir, "test-flow.json"), JSON.stringify(testFlow));
+
+    // キャッシュをリセットしてテスト用定義をロード
+    _resetCache();
+    loadFlowDefinitions(flowsDir);
+  });
+
+  afterEach(() => {
+    _resetCache();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("flowId を指定して execute → 外部定義から steps/label を自動取得", async () => {
+    const { createTool } = createTools();
+    const result = await createTool.execute("call-1", {
+      flowId: "test_task_flow",
+    });
+    const text = getResultText(result);
+    expect(text).toContain("Workflow created:");
+    expect(text).toContain("要件深掘り");
+    expect(text).toContain("実装");
+  });
+
+  it("存在しない flowId を指定した場合エラーが返される", async () => {
+    const { createTool } = createTools();
+    const result = await createTool.execute("call-2", {
+      flowId: "nonexistent_flow",
+    });
+    const text = getResultText(result);
+    expect(text).toBe("Flow definition not found: nonexistent_flow");
+  });
+
+  it("flowId と steps が両方指定された場合、steps が優先される", async () => {
+    const { createTool } = createTools();
+    const result = await createTool.execute("call-3", {
+      flowId: "test_task_flow",
+      label: "カスタムラベル",
+      steps: [{ id: "custom_step", label: "カスタムステップ" }],
+    });
+    const text = getResultText(result);
+    expect(text).toContain("Workflow created:");
+    expect(text).toContain("カスタムステップ");
+    expect(text).not.toContain("要件深掘り");
+  });
+
+  it("steps のみ指定（label なし・flowId なし）で label バリデーションエラー", async () => {
+    const { createTool } = createTools();
+    const result = await createTool.execute("call-4", {
+      steps: [{ id: "s1", label: "ステップ1" }],
+    });
+    const text = getResultText(result);
+    expect(text).toBe("label is required (provide label directly or via flowId)");
+  });
+
+  it("flowId も steps も指定しない場合、steps バリデーションエラー", async () => {
+    const { createTool } = createTools();
+    const result = await createTool.execute("call-5", {
+      label: "ラベルだけ",
+    });
+    const text = getResultText(result);
+    expect(text).toBe("Either flowId or steps is required");
+  });
+
+  it("後方互換性: 既存の workflow_create({ label, steps }) が変更なく動作", async () => {
+    const { createTool, mockContextEngine } = createTools();
+    const result = await createTool.execute("call-6", {
+      label: "既存ワークフロー",
+      steps: [{ id: "step1", label: "ステップ1" }],
+      plan: "計画",
+    });
+    const text = getResultText(result);
+    expect(text).toContain("Workflow created:");
+    expect(text).toContain("ステップ1");
+    expect(mockContextEngine.setActiveWorkflow).toHaveBeenCalled();
+  });
+
+  it("flowId 指定時に label だけ上書きできる（steps は外部定義から取得）", async () => {
+    const { createTool } = createTools();
+    const result = await createTool.execute("call-7", {
+      flowId: "test_task_flow",
+      label: "カスタムラベル",
+    });
+    const text = getResultText(result);
+    expect(text).toContain("Workflow created:");
+    expect(text).toContain("要件深掘り"); // steps は外部定義から
   });
 });

@@ -59,6 +59,16 @@ describe("workflow store", () => {
       expect(loaded!.workflowId).toBe(state.workflowId);
     });
 
+    it("flowId を指定した場合、永続化後にも保持される", () => {
+      const state = createWorkflow(tmpDir, {
+        flowId: "my_flow",
+        label: "Flow Test",
+        steps: [{ id: "s1", label: "Step 1" }],
+      });
+      const loaded = loadWorkflow(tmpDir, state.workflowId);
+      expect(loaded!.flowId).toBe("my_flow");
+    });
+
     it("throws when no steps provided", () => {
       expect(() => createWorkflow(tmpDir, { label: "Empty", steps: [] })).toThrow(
         "at least one step",

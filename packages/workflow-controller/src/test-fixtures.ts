@@ -7,6 +7,7 @@ import type { UnifiedAgentState, WorkflowState } from "./types.js";
 export function createMockWorkflowState(overrides?: Partial<WorkflowState>): WorkflowState {
   return {
     workflowId: "wf-test-001",
+    flowId: "taskflow_test",
     label: "Test Workflow",
     currentStepId: "step-2",
     steps: [
