@@ -41,7 +41,7 @@ const ALLOWED_TOP_LEVEL = new Set([
 ]);
 const ALLOWED_STEP_KEYS = new Set(["id", "label", "nextStepId", "conditions"]);
 const ALLOWED_CONDITION_KEYS = new Set(["label", "nextStepId"]);
-const SNAKE_CASE_RE = /^[a-z][a-z0-9_]*$/;
+const SNAKE_CASE_RE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 
 /**
  * 単一のフロー定義 JSON をバリデーションする。

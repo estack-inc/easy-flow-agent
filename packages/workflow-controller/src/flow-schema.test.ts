@@ -148,6 +148,12 @@ describe("validateFlowDefinition", () => {
       expect(result.valid).toBe(false);
       expect(result.errors.some((e) => e.includes("flowId"))).toBe(true);
     });
+
+    it("'my_flow_' は invalid（末尾アンダースコア）", () => {
+      const result = validateFlowDefinition({ ...minimalFlow, flowId: "my_flow_" });
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("flowId"))).toBe(true);
+    });
   });
 
   // ===========================================================================
