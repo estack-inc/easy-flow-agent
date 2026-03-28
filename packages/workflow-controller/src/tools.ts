@@ -119,7 +119,10 @@ export function createWorkflowTools(params: {
       if (!label) {
         return {
           content: [
-            { type: "text" as const, text: "label is required (provide label directly or via flowId)" },
+            {
+              type: "text" as const,
+              text: "label is required (provide label directly or via flowId)",
+            },
           ],
         };
       }
