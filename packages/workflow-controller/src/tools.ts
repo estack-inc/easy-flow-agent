@@ -1,5 +1,6 @@
 import type { AnyAgentTool } from "openclaw/plugin-sdk";
 import type { WorkflowContextEngine } from "./context-engine.js";
+import { getFlowById } from "./flow-loader.js";
 import {
   advanceStep,
   blockStep,
@@ -10,7 +11,6 @@ import {
   loadWorkflow,
   renderContextMarkdown,
 } from "./store.js";
-import { getFlowById } from "./flow-loader.js";
 
 /**
  * ワークフロー管理ツール群を生成する。
@@ -83,12 +83,14 @@ export function createWorkflowTools(params: {
     execute: async (_callId: string, args: Record<string, unknown>) => {
       const flowId = args.flowId as string | undefined;
       let label = args.label as string | undefined;
-      let steps = args.steps as Array<{
-        id: string;
-        label: string;
-        nextStepId?: string;
-        conditions?: Array<{ label: string; nextStepId: string }>;
-      }> | undefined;
+      let steps = args.steps as
+        | Array<{
+            id: string;
+            label: string;
+            nextStepId?: string;
+            conditions?: Array<{ label: string; nextStepId: string }>;
+          }>
+        | undefined;
 
       // 1. flowId が指定されている場合、外部定義から取得
       if (flowId) {
@@ -110,9 +112,7 @@ export function createWorkflowTools(params: {
       // 2. ランタイムバリデーション
       if (!steps) {
         return {
-          content: [
-            { type: "text" as const, text: "Either flowId or steps is required" },
-          ],
+          content: [{ type: "text" as const, text: "Either flowId or steps is required" }],
         };
       }
 

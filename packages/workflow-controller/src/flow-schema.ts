@@ -30,7 +30,15 @@ export interface ValidationResult {
   warnings: string[];
 }
 
-const ALLOWED_TOP_LEVEL = new Set(["$schema", "version", "flowId", "trigger", "label", "description", "steps"]);
+const ALLOWED_TOP_LEVEL = new Set([
+  "$schema",
+  "version",
+  "flowId",
+  "trigger",
+  "label",
+  "description",
+  "steps",
+]);
 const ALLOWED_STEP_KEYS = new Set(["id", "label", "nextStepId", "conditions"]);
 const ALLOWED_CONDITION_KEYS = new Set(["label", "nextStepId"]);
 const SNAKE_CASE_RE = /^[a-z][a-z0-9_]*$/;
@@ -90,7 +98,9 @@ export function validateFlowDefinition(data: unknown): ValidationResult {
 
   // V10: flowId が snake_case
   if (!SNAKE_CASE_RE.test(flowId)) {
-    errors.push(`'flowId' の値 '${flowId}' は snake_case ではありません（/^[a-z][a-z0-9_]*$/ に一致する必要があります）`);
+    errors.push(
+      `'flowId' の値 '${flowId}' は snake_case ではありません（/^[a-z][a-z0-9_]*$/ に一致する必要があります）`,
+    );
   }
 
   // V12: trigger・label が空文字列でないこと
@@ -185,7 +195,9 @@ export function validateFlowDefinition(data: unknown): ValidationResult {
           }
 
           if (!("nextStepId" in c) || typeof c.nextStepId !== "string") {
-            errors.push(`steps[${i}].conditions[${j}].nextStepId が存在しないか文字列ではありません`);
+            errors.push(
+              `steps[${i}].conditions[${j}].nextStepId が存在しないか文字列ではありません`,
+            );
           }
           // V6 は stepIds 確定後に後でチェック
         }
@@ -204,7 +216,9 @@ export function validateFlowDefinition(data: unknown): ValidationResult {
     // V7
     if ("nextStepId" in s && typeof s.nextStepId === "string") {
       if (!stepIds.has(s.nextStepId as string)) {
-        errors.push(`steps[${i}].nextStepId '${s.nextStepId}' はフロー内に存在しない id を参照しています`);
+        errors.push(
+          `steps[${i}].nextStepId '${s.nextStepId}' はフロー内に存在しない id を参照しています`,
+        );
       }
     }
 
@@ -217,7 +231,9 @@ export function validateFlowDefinition(data: unknown): ValidationResult {
         const c = cond as Record<string, unknown>;
         if ("nextStepId" in c && typeof c.nextStepId === "string") {
           if (!stepIds.has(c.nextStepId as string)) {
-            errors.push(`steps[${i}].conditions[${j}].nextStepId '${c.nextStepId}' はフロー内に存在しない id を参照しています`);
+            errors.push(
+              `steps[${i}].conditions[${j}].nextStepId '${c.nextStepId}' はフロー内に存在しない id を参照しています`,
+            );
           }
         }
       }

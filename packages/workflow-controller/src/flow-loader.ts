@@ -18,7 +18,6 @@ export interface FlowLoaderLogger {
 
 // モジュールレベルキャッシュ
 let cachedFlows: FlowDefinition[] = [];
-let cacheInitialized = false;
 
 /**
  * 指定ディレクトリ内の .json ファイルをアルファベット昇順で読み込む。
@@ -33,7 +32,7 @@ export function loadFlowDefinitions(
   // ディレクトリが不在の場合は空配列
   if (!fs.existsSync(workflowsDir)) {
     cachedFlows = [];
-    cacheInitialized = true;
+
     return [];
   }
 
@@ -46,7 +45,7 @@ export function loadFlowDefinitions(
   } catch (err) {
     logger?.warn(`workflow-controller: ディレクトリ読み込み失敗: ${workflowsDir}: ${err}`);
     cachedFlows = [];
-    cacheInitialized = true;
+
     return [];
   }
 
@@ -120,7 +119,6 @@ export function loadFlowDefinitions(
   }
 
   cachedFlows = validFlows;
-  cacheInitialized = true;
   return validFlows;
 }
 
@@ -142,5 +140,4 @@ export function listFlows(): FlowDefinition[] {
 /** テスト用: キャッシュをクリアする */
 export function _resetCache(): void {
   cachedFlows = [];
-  cacheInitialized = false;
 }
