@@ -16,8 +16,8 @@ export interface FlowLoaderLogger {
   info(message: string): void;
 }
 
-// モジュールレベルキャッシュ
-let cachedFlows: FlowDefinition[] = [];
+// モジュールレベルキャッシュ（要素は Object.freeze 済み）
+let cachedFlows: ReadonlyArray<Readonly<FlowDefinition>> = [];
 
 /**
  * 指定ディレクトリ内の .json ファイルをアルファベット昇順で読み込む。

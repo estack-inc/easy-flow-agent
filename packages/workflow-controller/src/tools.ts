@@ -26,6 +26,7 @@ export function createWorkflowTools(params: {
     name: "workflow_create",
     description:
       "Create a new workflow from an external flow definition (flowId) or inline steps. " +
+      "Either flowId or steps is required. " +
       "Use this when you need to track multi-step tasks with progress, facts, and open questions.",
     parameters: {
       type: "object",
@@ -127,7 +128,8 @@ export function createWorkflowTools(params: {
         };
       }
 
-      // 3. ワークフロー作成（既存ロジック）
+      // 3. ワークフロー作成
+      // flowId は steps 優先時でも元の定義 ID として記録する（トレーサビリティ用）
       const state = createWorkflow(agentDir, {
         flowId,
         label: label as string,
