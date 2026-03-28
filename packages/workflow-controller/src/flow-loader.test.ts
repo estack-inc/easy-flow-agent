@@ -2,7 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { _resetCache, getFlowById, getFlowByTrigger, listFlows, loadFlowDefinitions } from "./flow-loader.js";
+import {
+  _resetCache,
+  getFlowById,
+  getFlowByTrigger,
+  listFlows,
+  loadFlowDefinitions,
+} from "./flow-loader.js";
 
 // テスト用の有効なフロー定義
 const validFlow1 = {
@@ -91,9 +97,7 @@ describe("flow-loader", () => {
       const flows = loadFlowDefinitions(tmpDir, logger);
       expect(flows).toHaveLength(1);
       expect(flows[0].flowId).toBe("flow_alpha");
-      expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("JSON パースエラー"),
-      );
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("JSON パースエラー"));
     });
 
     it("BOM 付き UTF-8 ファイルは BOM 除去後にパース成功", () => {
@@ -113,9 +117,7 @@ describe("flow-loader", () => {
       const flows = loadFlowDefinitions(tmpDir, logger);
       expect(flows).toHaveLength(1);
       expect(flows[0].trigger).toBe("📋"); // a-first.json のもの
-      expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("flowId"),
-      );
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("flowId"));
     });
 
     it("trigger 重複: アルファベット順で先のファイルが有効", () => {
@@ -126,9 +128,7 @@ describe("flow-loader", () => {
       const flows = loadFlowDefinitions(tmpDir, logger);
       expect(flows).toHaveLength(1);
       expect(flows[0].flowId).toBe("flow_alpha"); // a-first.json のもの
-      expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("trigger"),
-      );
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("trigger"));
     });
 
     it("ディレクトリが不在の場合は空配列を返す", () => {
@@ -146,7 +146,10 @@ describe("flow-loader", () => {
     });
 
     it("不正ファイルが他の正常ファイルの読み込みを阻害しない", () => {
-      fs.writeFileSync(path.join(tmpDir, "a-invalid.json"), JSON.stringify({ flowId: "InvalidId", trigger: "x", label: "test", steps: [] }));
+      fs.writeFileSync(
+        path.join(tmpDir, "a-invalid.json"),
+        JSON.stringify({ flowId: "InvalidId", trigger: "x", label: "test", steps: [] }),
+      );
       fs.writeFileSync(path.join(tmpDir, "b-valid.json"), JSON.stringify(validFlow1));
 
       const flows = loadFlowDefinitions(tmpDir, logger);

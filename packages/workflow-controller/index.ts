@@ -1,12 +1,12 @@
+import os from "node:os";
+import path from "node:path";
 import { PineconeClient } from "@easy-flow/pinecone-client";
 import type { OpenClawPluginApi, OpenClawPluginToolFactory } from "openclaw/plugin-sdk/core";
 import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/core";
-import os from "node:os";
-import path from "node:path";
 import { WorkflowContextEngine } from "./src/context-engine.js";
+import { loadFlowDefinitions } from "./src/flow-loader.js";
 import { createNoopDelegate } from "./src/noop-delegate.js";
 import { createWorkflowTools } from "./src/tools.js";
-import { loadFlowDefinitions } from "./src/flow-loader.js";
 
 /**
  * Workflow Controller プラグイン（Pinecone ラップ対応版）
@@ -41,9 +41,13 @@ const workflowControllerPlugin = {
     const workflowsDir = path.join(os.homedir(), ".openclaw", "workflows");
     const loadedFlows = loadFlowDefinitions(workflowsDir, api.logger);
     if (loadedFlows.length > 0) {
-      api.logger.info(`workflow-controller: ${loadedFlows.length} flow definitions loaded from ${workflowsDir}`);
+      api.logger.info(
+        `workflow-controller: ${loadedFlows.length} flow definitions loaded from ${workflowsDir}`,
+      );
     } else {
-      api.logger.info(`workflow-controller: No external flow definitions found, using built-in fallback`);
+      api.logger.info(
+        `workflow-controller: No external flow definitions found, using built-in fallback`,
+      );
     }
 
     api.registerContextEngine("workflow", async () => {
