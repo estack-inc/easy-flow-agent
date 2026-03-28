@@ -16,7 +16,7 @@ export interface FlowLoaderLogger {
   info(message: string): void;
 }
 
-// モジュールレベルキャッシュ（要素は Object.freeze 済み）
+// モジュールレベルキャッシュ（要素はトップレベルのみ Object.freeze 済み）
 let cachedFlows: ReadonlyArray<Readonly<FlowDefinition>> = [];
 
 /**
