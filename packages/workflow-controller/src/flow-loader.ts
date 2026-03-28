@@ -137,7 +137,7 @@ export function listFlows(): FlowDefinition[] {
   return [...cachedFlows];
 }
 
-/** テスト用: キャッシュをクリアする */
+/** @internal テスト用: キャッシュをクリアする */
 export function _resetCache(): void {
   cachedFlows = [];
 }

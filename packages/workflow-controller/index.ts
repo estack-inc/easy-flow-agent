@@ -46,7 +46,7 @@ const workflowControllerPlugin = {
       );
     } else {
       api.logger.info(
-        `workflow-controller: No external flow definitions found, using built-in fallback`,
+        `workflow-controller: No external flow definitions found (steps must be provided directly)`,
       );
     }
 
