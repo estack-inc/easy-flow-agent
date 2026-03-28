@@ -181,4 +181,20 @@ describe("flow-loader", () => {
       expect(flows1).toEqual(flows2); // 内容は同じ
     });
   });
+
+  // ===========================================================================
+  // 二重呼び出し時のキャッシュ上書き
+  // ===========================================================================
+  describe("キャッシュ上書き", () => {
+    it("_resetCache なしに loadFlowDefinitions を再呼び出しするとキャッシュが上書きされる", () => {
+      fs.writeFileSync(path.join(tmpDir, "a.json"), JSON.stringify(validFlow1));
+      loadFlowDefinitions(tmpDir, logger);
+      expect(listFlows()).toHaveLength(1);
+
+      // 2 つ目のファイルを追加して再読み込み
+      fs.writeFileSync(path.join(tmpDir, "b.json"), JSON.stringify(validFlow2));
+      loadFlowDefinitions(tmpDir, logger);
+      expect(listFlows()).toHaveLength(2);
+    });
+  });
 });

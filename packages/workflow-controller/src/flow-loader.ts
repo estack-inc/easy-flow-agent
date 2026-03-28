@@ -119,7 +119,7 @@ export function loadFlowDefinitions(
   }
 
   cachedFlows = validFlows;
-  return validFlows;
+  return [...validFlows];
 }
 
 /** trigger で完全一致検索。キャッシュから取得。 */
