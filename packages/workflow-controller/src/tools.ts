@@ -25,8 +25,8 @@ export function createWorkflowTools(params: {
   const workflowCreateTool: AnyAgentTool = {
     name: "workflow_create",
     description:
-      "Create a new workflow from an external flow definition (flowId) or inline steps. " +
       "Either flowId or steps is required. " +
+      "Create a new workflow from an external flow definition (flowId) or inline steps. " +
       "Use this when you need to track multi-step tasks with progress, facts, and open questions.",
     parameters: {
       type: "object",
