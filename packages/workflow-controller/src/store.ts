@@ -117,6 +117,7 @@ export function createWorkflow(agentDir: string, params: CreateWorkflowParams): 
 
   const state: WorkflowState = {
     workflowId,
+    flowId: params.flowId,
     label: params.label,
     currentStepId: firstStepId,
     steps: params.steps.map((s, i) => ({

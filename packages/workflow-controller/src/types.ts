@@ -129,6 +129,8 @@ export type WorkflowStep = {
 export type WorkflowState = {
   /** ワークフロー識別子 */
   workflowId: string;
+  /** 元のフロー定義の識別子（トレーサビリティ用） */
+  flowId?: string;
   /** ワークフローの表示名 */
   label: string;
   /** 現在実行中のステップ ID */
@@ -174,6 +176,7 @@ export type WorkflowState = {
 
 /** ワークフロー作成パラメータ */
 export type CreateWorkflowParams = {
+  flowId?: string;
   label: string;
   steps: Array<{
     id: string;

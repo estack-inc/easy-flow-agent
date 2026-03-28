@@ -10,6 +10,7 @@ import {
   loadWorkflow,
   renderContextMarkdown,
 } from "./store.js";
+import { getFlowById } from "./flow-loader.js";
 
 /**
  * ワークフロー管理ツール群を生成する。
@@ -29,6 +30,12 @@ export function createWorkflowTools(params: {
     parameters: {
       type: "object",
       properties: {
+        flowId: {
+          type: "string",
+          description:
+            "Flow definition ID. Loads steps/label/description from external JSON definition. " +
+            "If both flowId and steps are provided, steps takes precedence.",
+        },
         label: { type: "string", description: "Workflow display name" },
         steps: {
           type: "array",
@@ -71,17 +78,49 @@ export function createWorkflowTools(params: {
           description: "GitHub repository in owner/repo format (e.g. estack-inc/mell-workspace)",
         },
       },
-      required: ["label", "steps"],
+      required: [],
     },
     execute: async (_callId: string, args: Record<string, unknown>) => {
+      const flowId = args.flowId as string | undefined;
+      let label = args.label as string | undefined;
+      let steps = args.steps as Array<{
+        id: string;
+        label: string;
+        nextStepId?: string;
+        conditions?: Array<{ label: string; nextStepId: string }>;
+      }> | undefined;
+
+      // 1. flowId が指定されている場合、外部定義から取得
+      if (flowId) {
+        const flowDef = getFlowById(flowId);
+        if (!flowDef) {
+          return {
+            content: [{ type: "text" as const, text: `Flow definition not found: ${flowId}` }],
+          };
+        }
+        // 明示的に渡された引数が優先（外部定義はデフォルト値）
+        if (!steps) {
+          steps = flowDef.steps;
+        }
+        if (!label) {
+          label = flowDef.label;
+        }
+      }
+
+      // 2. ランタイムバリデーション
+      if (!steps) {
+        return {
+          content: [
+            { type: "text" as const, text: "Either flowId or steps is required" },
+          ],
+        };
+      }
+
+      // 3. ワークフロー作成（既存ロジック）
       const state = createWorkflow(agentDir, {
-        label: args.label as string,
-        steps: args.steps as Array<{
-          id: string;
-          label: string;
-          nextStepId?: string;
-          conditions?: Array<{ label: string; nextStepId: string }>;
-        }>,
+        flowId,
+        label: label as string,
+        steps,
         plan: (args.plan as string) ?? "",
         issueNumber: args.issueNumber as number | undefined,
         issueRepo: args.issueRepo as string | undefined,
