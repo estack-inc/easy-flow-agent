@@ -37,7 +37,11 @@ export function createWorkflowTools(params: {
             "Flow definition ID. Loads steps and label from external JSON definition. " +
             "If both flowId and steps are provided, steps takes precedence.",
         },
-        label: { type: "string", description: "Workflow display name" },
+        label: {
+          type: "string",
+          description:
+            "Workflow display name (required when providing inline steps without flowId)",
+        },
         steps: {
           type: "array",
           items: {
