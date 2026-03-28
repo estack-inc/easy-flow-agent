@@ -115,7 +115,7 @@ export function loadFlowDefinitions(
 
     seenFlowIds.set(flow.flowId, fileName);
     seenTriggers.set(flow.trigger, fileName);
-    validFlows.push(flow);
+    validFlows.push(Object.freeze(flow));
   }
 
   cachedFlows = validFlows;
