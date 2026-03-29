@@ -102,6 +102,7 @@ const workflowControllerPlugin = {
           "workflow_create",
           "workflow_advance",
           "workflow_block",
+          "workflow_resume",
           "workflow_status",
           "workflow_update_context",
           "workflow_branch",
