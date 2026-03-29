@@ -11,6 +11,9 @@
   },
   "main": "./pinecone-memory/index.js",
   "types": "./pinecone-memory/index.d.ts",
+  "openclaw": {
+    "extensions": ["./pinecone-memory/index.js"]
+  },
   "files": [
     "pinecone-memory"
   ],
