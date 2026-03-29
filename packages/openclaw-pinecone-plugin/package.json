@@ -18,7 +18,7 @@
     "pinecone-memory"
   ],
   "scripts": {
-    "build": "tsc && cp src/openclaw.plugin.json pinecone-memory/openclaw.plugin.json && cp src/openclaw.plugin.json openclaw.plugin.json",
+    "build": "tsc && cp openclaw.plugin.json pinecone-memory/openclaw.plugin.json",
     "test": "vitest run"
   },
   "dependencies": {
