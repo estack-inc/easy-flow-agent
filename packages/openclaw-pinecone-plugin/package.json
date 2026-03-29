@@ -1,5 +1,5 @@
 {
-  "name": "@easy-flow/openclaw-pinecone-plugin",
+  "name": "pinecone-memory",
   "version": "0.1.0",
   "type": "module",
   "exports": {
