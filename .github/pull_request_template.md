@@ -30,7 +30,7 @@ Closes #XX
 
 - [ ] pinecone-client
 - [ ] pinecone-context-engine
-- [ ] openclaw-pinecone-plugin
+- [ ] pinecone-memory
 - [ ] workflow-controller
 - [ ] migrate-memory
 - [ ] なし（ルート設定・CI のみ）

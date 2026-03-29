@@ -12,7 +12,7 @@ Pinecone ベクトル DB の低レベルクライアントラッパー。upsert 
 
 Pinecone を使った OpenClaw ContextEngine 実装。セマンティック検索による長期記憶の取得・蓄積を行い、`assemble()` で関連記憶をプロンプトに注入する。
 
-### openclaw-pinecone-plugin
+### pinecone-memory
 
 PineconeContextEngine を OpenClaw の context-engine プラグインスロットに登録する薄いラッパー。`api.registerContextEngine("pinecone-memory", factory)` で統合。
 

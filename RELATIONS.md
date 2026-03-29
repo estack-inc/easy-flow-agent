@@ -2,7 +2,7 @@
 
 ## 概要
 
-OpenClaw 向けプラグイン monorepo。Pinecone ベクトル DB によるメモリ管理（pinecone-client / pinecone-context-engine / openclaw-pinecone-plugin）とワークフロー実行制御（workflow-controller）を提供。
+OpenClaw 向けプラグイン monorepo。Pinecone ベクトル DB によるメモリ管理（pinecone-client / pinecone-context-engine / pinecone-memory）とワークフロー実行制御（workflow-controller）を提供。
 
 ## 依存先
 

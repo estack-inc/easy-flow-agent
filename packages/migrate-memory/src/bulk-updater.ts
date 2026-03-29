@@ -15,7 +15,7 @@ export interface BulkUpdateResult {
 const UPDATE_COMMANDS = [
   "cd /data/easy-flow-agent && git pull --ff-only origin main",
   "cd /data/easy-flow-agent && npm install --omit=dev --ignore-scripts",
-  "cd /data/easy-flow-agent && npm run build --workspace=packages/openclaw-pinecone-plugin",
+  "cd /data/easy-flow-agent && npm run build --workspace=packages/pinecone-memory",
 ];
 
 export async function bulkUpdate(
