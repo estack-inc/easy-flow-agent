@@ -6,7 +6,8 @@ export type TaskFlowId =
   | "taskflow_consult"
   | "taskflow_bug"
   | "taskflow_report"
-  | "taskflow_idea";
+  | "taskflow_idea"
+  | "pipeline_implement";
 
 export type TaskFlowDefinition = CreateWorkflowParams & {
   /** フロー識別子 */

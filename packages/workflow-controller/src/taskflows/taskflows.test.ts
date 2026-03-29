@@ -9,11 +9,12 @@ const FLOW_IDS: TaskFlowId[] = [
   "taskflow_bug",
   "taskflow_report",
   "taskflow_idea",
+  "pipeline_implement",
 ];
 
 describe("TaskFlow definitions", () => {
-  it("all 6 flows are registered", () => {
-    expect(listTaskFlows()).toHaveLength(6);
+  it("all 7 flows are registered", () => {
+    expect(listTaskFlows()).toHaveLength(7);
   });
 
   it.each(FLOW_IDS)("%s: has required fields", (flowId) => {
@@ -55,5 +56,25 @@ describe("TaskFlow definitions", () => {
     expect(ids).toContain("execution");
     expect(ids).toContain("review");
     expect(ids).toContain("acceptance");
+  });
+
+  it("pipeline_implement has 8 steps with unique ids", () => {
+    const flow = getTaskFlow("pipeline_implement");
+    expect(flow.steps).toHaveLength(8);
+    const ids = flow.steps.map((s) => s.id);
+    expect(new Set(ids).size).toBe(8);
+  });
+
+  it("pipeline_implement has all required steps", () => {
+    const flow = getTaskFlow("pipeline_implement");
+    const ids = flow.steps.map((s) => s.id);
+    expect(ids).toContain("design_instruction");
+    expect(ids).toContain("transfer_instruction");
+    expect(ids).toContain("dispatch_agent");
+    expect(ids).toContain("wait_implementation");
+    expect(ids).toContain("l2_quality_gate");
+    expect(ids).toContain("l3_review");
+    expect(ids).toContain("l4_approval");
+    expect(ids).toContain("close");
   });
 });
