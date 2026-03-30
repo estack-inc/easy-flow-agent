@@ -9,15 +9,17 @@ import { FILE_SERVE_DIR, readMeta } from "./storage.js";
 
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const EXPIRED_HTML = `<!DOCTYPE html>
+function buildExpiredHtml(ttlDays: number): string {
+  return `<!DOCTYPE html>
 <html lang="ja">
 <head><meta charset="UTF-8"><title>ファイルの有効期限切れ</title></head>
 <body style="font-family:sans-serif;text-align:center;padding:40px;">
   <h1>このファイルの有効期限が切れました</h1>
-  <p>ファイルの保持期限（7日間）が過ぎたため、ダウンロードできません。</p>
+  <p>ファイルの保持期限（${ttlDays}日間）が過ぎたため、ダウンロードできません。</p>
   <p>エージェントに再度ファイル生成を依頼してください。</p>
 </body>
 </html>`;
+}
 
 export function createHttpHandler(config: FileServeConfig, logger: PluginLogger) {
   const rateLimiter = new RateLimiter(config.rateLimit);
@@ -85,12 +87,18 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
       return;
     }
 
+    if (meta.filename !== filename) {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Not Found");
+      return;
+    }
+
     if (!isWithinTtl(meta)) {
       res.writeHead(410, {
         "Content-Type": "text/html; charset=UTF-8",
         "Content-Security-Policy": "default-src 'none'",
       });
-      res.end(EXPIRED_HTML);
+      res.end(buildExpiredHtml(config.ttlDays));
       return;
     }
 
@@ -118,12 +126,7 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
     const stream = fs.createReadStream(filePath);
     stream.on("error", (err) => {
       logger.error(`ファイル読み込みエラー: ${err.message}`);
-      if (!res.headersSent) {
-        res.writeHead(500, { "Content-Type": "text/plain" });
-        res.end("Internal Server Error");
-      } else {
-        res.destroy();
-      }
+      res.destroy();
     });
     stream.pipe(res);
   };

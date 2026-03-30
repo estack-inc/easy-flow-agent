@@ -225,5 +225,65 @@ describe("createHttpHandler", () => {
 
       expect(state.statusCode).toBe(405);
     });
+
+    it("URL のファイル名が meta.filename と不一致 → 404", async () => {
+      (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+        makeValidMeta({ filename: "test.pdf" }),
+      );
+
+      const handler = createHttpHandler(baseConfig, mockLogger);
+      // URL に meta.json を指定しても取得できないことを確認
+      const req = createMockReq({ url: `/files/${VALID_UUID}/meta.json` });
+      const { res, state } = createMockRes();
+
+      await handler(req, res);
+
+      expect(state.statusCode).toBe(404);
+    });
+
+    it("ストリームエラー発生時 → res.destroy() が呼ばれる", async () => {
+      (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(makeValidMeta());
+      (fs.promises.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+      let errorHandler: ((err: Error) => void) | undefined;
+      const mockStream = {
+        on: vi.fn((event: string, handler: (err: Error) => void) => {
+          if (event === "error") errorHandler = handler;
+          return mockStream;
+        }),
+        pipe: vi.fn(),
+      };
+      (fs.createReadStream as ReturnType<typeof vi.fn>).mockReturnValue(mockStream);
+
+      const handler = createHttpHandler(baseConfig, mockLogger);
+      const req = createMockReq({ url: `/files/${VALID_UUID}/test.pdf` });
+      const { res } = createMockRes();
+
+      await handler(req, res);
+
+      // ストリームエラーを発火
+      errorHandler?.(new Error("read error"));
+
+      expect(res.destroy).toHaveBeenCalled();
+    });
+  });
+
+  describe("TTL 動的反映", () => {
+    it("ttlDays=14 の設定で 410 レスポンスの HTML に 14 日間と表示される", async () => {
+      const expiredDate = new Date(Date.now() - 15 * 86400000).toISOString();
+      (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+        makeValidMeta({ createdAt: expiredDate, ttlDays: 14 }),
+      );
+
+      const config14 = { ...baseConfig, ttlDays: 14 };
+      const handler = createHttpHandler(config14, mockLogger);
+      const req = createMockReq({ url: `/files/${VALID_UUID}/test.pdf` });
+      const { res, state } = createMockRes();
+
+      await handler(req, res);
+
+      expect(state.statusCode).toBe(410);
+      expect(state.body).toContain("14日間");
+    });
   });
 });

@@ -130,4 +130,35 @@ describe("createBeforeToolCallHook", () => {
     expect(result).toBeUndefined();
     expect(saveFile).not.toHaveBeenCalled();
   });
+
+  it("saveFile 失敗時 → logger.error を呼び出し undefined を返す", async () => {
+    (saveFile as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("disk full"));
+
+    const hook = createBeforeToolCallHook(baseConfig, mockLogger);
+    const result = await hook(
+      makeEvent({ params: { filePath: "/tmp/report.png" } }),
+      makeCtx({ sessionKey: "line:user123" }),
+    );
+
+    expect(result).toBeUndefined();
+    expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining("ファイル保存失敗"));
+  });
+
+  it("filePath の代わりに media を入力ソースとして渡した場合 → params.media が配信 URL に書き換わる", async () => {
+    const servedUrl = "https://example.fly.dev/files/uuid-3/banner.png";
+    (saveFile as ReturnType<typeof vi.fn>).mockResolvedValue({
+      uuid: "uuid-3",
+      servedUrl,
+    });
+
+    const hook = createBeforeToolCallHook(baseConfig, mockLogger);
+    const result = await hook(
+      makeEvent({ params: { media: "/tmp/banner.png" } }),
+      makeCtx({ sessionKey: "line:user123" }),
+    );
+
+    expect(result).toBeDefined();
+    expect(result?.params?.media).toBe(servedUrl);
+    expect(result?.params?.filePath).toBeUndefined();
+  });
 });
