@@ -11,10 +11,9 @@ vi.mock("node:fs", () => {
   return {
     default: {
       promises: {
-        access: vi.fn().mockResolvedValue(undefined),
+        stat: vi.fn().mockResolvedValue({ size: 1024 }),
         readFile: vi.fn(),
       },
-      constants: { R_OK: 4 },
       createReadStream: vi.fn().mockReturnValue(mockStream),
     },
   };
@@ -106,7 +105,7 @@ describe("createHttpHandler", () => {
   describe("正常系", () => {
     it("有効な UUID + TTL 内ファイル → 200、正しい Content-Type と Content-Disposition", async () => {
       (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(makeValidMeta());
-      (fs.promises.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (fs.promises.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ size: 1024 });
 
       const handler = createHttpHandler(baseConfig, mockLogger);
       const req = createMockReq({ url: `/files/${VALID_UUID}/test.pdf` });
@@ -128,7 +127,7 @@ describe("createHttpHandler", () => {
 
     it("X-Forwarded-For を偽装しても別の IP として Rate Limit が適用される", async () => {
       (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(makeValidMeta());
-      (fs.promises.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (fs.promises.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ size: 1024 });
 
       const handler = createHttpHandler(baseConfig, mockLogger);
       const socketIp = "10.0.0.1";
@@ -160,7 +159,7 @@ describe("createHttpHandler", () => {
       (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
         makeValidMeta({ mimeType: "text/html" }),
       );
-      (fs.promises.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (fs.promises.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ size: 1024 });
 
       const handler = createHttpHandler(baseConfig, mockLogger);
       const req = createMockReq({ url: `/files/${VALID_UUID}/test.pdf` });
@@ -175,7 +174,7 @@ describe("createHttpHandler", () => {
 
     it("ストリーミング配信: fs.createReadStream が呼ばれる", async () => {
       (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(makeValidMeta());
-      (fs.promises.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (fs.promises.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ size: 1024 });
 
       const handler = createHttpHandler(baseConfig, mockLogger);
       const req = createMockReq({ url: `/files/${VALID_UUID}/test.pdf` });
@@ -230,7 +229,7 @@ describe("createHttpHandler", () => {
 
     it("meta はあるがファイル実体が消えている → 404 かつ logger.warn が呼ばれる", async () => {
       (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(makeValidMeta());
-      (fs.promises.access as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("ENOENT"));
+      (fs.promises.stat as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("ENOENT"));
 
       const handler = createHttpHandler(baseConfig, mockLogger);
       const req = createMockReq({ url: `/files/${VALID_UUID}/test.pdf` });
@@ -278,7 +277,7 @@ describe("createHttpHandler", () => {
 
     it("同一 IP（remoteAddress）から 31 回アクセス → 31 回目に 429 + Retry-After ヘッダ", async () => {
       (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(makeValidMeta());
-      (fs.promises.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (fs.promises.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ size: 1024 });
 
       const handler = createHttpHandler(baseConfig, mockLogger);
       const ip = "192.168.1.1";
@@ -307,7 +306,7 @@ describe("createHttpHandler", () => {
 
     it("fly-client-ip ヘッダが存在する場合はそのヘッダ値で Rate Limit がカウントされる", async () => {
       (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(makeValidMeta());
-      (fs.promises.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (fs.promises.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ size: 1024 });
 
       const handler = createHttpHandler(baseConfig, mockLogger);
       const flyIp = "203.0.113.1";
@@ -362,7 +361,7 @@ describe("createHttpHandler", () => {
 
     it("ストリームエラー発生時 → res.destroy() が呼ばれる", async () => {
       (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(makeValidMeta());
-      (fs.promises.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (fs.promises.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ size: 1024 });
 
       let errorHandler: ((err: Error) => void) | undefined;
       const mockStream = {

@@ -98,7 +98,8 @@ export function createBeforeToolCallHook(config: FileServeConfig, logger: Plugin
       });
     } catch (err) {
       logger.error(`ファイル保存失敗: ${err instanceof Error ? err.message : String(err)}`);
-      return undefined;
+      // ローカルパスが LINE 等の外部サービスに漏洩しないようツール呼び出しをブロック
+      return { block: true };
     }
 
     logger.info(`ファイル保存完了: uuid=${saveResult.uuid} url=${saveResult.servedUrl}`);

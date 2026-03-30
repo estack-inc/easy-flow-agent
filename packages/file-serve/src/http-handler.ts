@@ -138,8 +138,9 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
       return;
     }
 
+    let fileStat: { size: number };
     try {
-      await fs.promises.access(filePath, fs.constants.R_OK);
+      fileStat = await fs.promises.stat(filePath);
     } catch {
       logger.warn(`ファイルが見つかりません: ${filePath}`);
       res.writeHead(404, { "Content-Type": "text/plain" });
@@ -159,7 +160,8 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
     res.setHeader("Content-Security-Policy", "default-src 'none'");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "no-store");
-    res.setHeader("Content-Length", String(meta.sizeBytes));
+    // 保存時のサイズではなく実際のファイルサイズを使用（ファイル破損時の不一致を防ぐ）
+    res.setHeader("Content-Length", String(fileStat.size));
     res.writeHead(200);
 
     const stream = fs.createReadStream(filePath);

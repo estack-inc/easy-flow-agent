@@ -124,7 +124,7 @@ describe("createBeforeToolCallHook", () => {
     expect(saveFile).not.toHaveBeenCalled();
   });
 
-  it("saveFile 失敗時 → logger.error を呼び出し undefined を返す", async () => {
+  it("saveFile 失敗時 → logger.error を呼び出し block: true を返す（ローカルパス漏洩防止）", async () => {
     (saveFile as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("disk full"));
 
     const hook = createBeforeToolCallHook(baseConfig, mockLogger);
@@ -133,7 +133,7 @@ describe("createBeforeToolCallHook", () => {
       makeCtx({ sessionKey: "line:user123" }),
     );
 
-    expect(result).toBeUndefined();
+    expect(result).toEqual({ block: true });
     expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining("ファイル保存失敗"));
   });
 
