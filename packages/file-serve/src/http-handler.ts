@@ -23,6 +23,9 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
   const rateLimiter = new RateLimiter(config.rateLimit);
   const storageDir = config.storageDir ?? FILE_SERVE_DIR;
 
+  // 期限切れバケットを定期削除してメモリリークを防ぐ
+  setInterval(() => rateLimiter.cleanup(), config.rateLimit.windowMs).unref();
+
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (req.method !== "GET") {
       res.writeHead(405, { "Content-Type": "text/plain" });
@@ -47,8 +50,8 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
       return;
     }
 
-    // URL パース: /files/:uuid/:filename
-    const urlPath = req.url ?? "";
+    // URL パース: /files/:uuid/:filename（クエリ文字列を除去してからパース）
+    const urlPath = (req.url ?? "").split("?")[0];
     const withoutPrefix = urlPath.replace(/^\/files\/?/, "");
     const slashIdx = withoutPrefix.indexOf("/");
 
@@ -103,7 +106,11 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
     }
 
     res.setHeader("Content-Type", meta.mimeType);
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+    // RFC 6266 / RFC 5987 準拠: ASCII フォールバック + UTF-8 エンコード名
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    );
     res.setHeader("Content-Security-Policy", "default-src 'none'");
     res.setHeader("Content-Length", String(meta.sizeBytes));
     res.writeHead(200);
