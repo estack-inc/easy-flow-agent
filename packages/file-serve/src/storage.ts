@@ -18,7 +18,7 @@ export type SaveFileInput = {
 };
 
 // allowedSourceDir 未設定時にブロックする危険なシステムパス
-const BLOCKED_SOURCE_PREFIXES = ["/etc/", "/proc/", "/sys/", "/root/", "/boot/", "/dev/"];
+const BLOCKED_SOURCE_PREFIXES = ["/etc/", "/proc/", "/sys/", "/root/", "/home/", "/boot/", "/dev/"];
 
 function validateSourceFilePath(filePath: string, allowedSourceDir?: string): void {
   const resolved = path.resolve(filePath);
