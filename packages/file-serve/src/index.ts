@@ -13,6 +13,8 @@ export type PluginLogger = {
 /** OpenClaw プラグイン API の最小インターフェース定義 */
 type PluginApi = {
   pluginConfig: unknown;
+  /** OpenClaw がホスト設定（publicUrl 等）を公開する場合に利用 */
+  config?: Record<string, unknown>;
   logger: PluginLogger;
   registerHook: (event: string, handler: unknown) => void;
   registerHttpRoute: (opts: {
@@ -31,7 +33,7 @@ const fileServePlugin = {
     "LINE チャネル向けファイル配信プラグイン。エージェント生成ファイルに 7 日間有効な配信 URL を発行する。",
 
   register(api: PluginApi) {
-    const config = loadConfig(api.pluginConfig as Record<string, unknown> | undefined, undefined);
+    const config = loadConfig(api.pluginConfig as Record<string, unknown> | undefined, api.config);
 
     // 1. HTTP ルート: GET /files/:uuid/:filename
     api.registerHttpRoute({

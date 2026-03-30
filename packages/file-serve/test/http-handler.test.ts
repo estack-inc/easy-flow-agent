@@ -118,7 +118,7 @@ describe("createHttpHandler", () => {
       expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "application/pdf");
       expect(res.setHeader).toHaveBeenCalledWith(
         "Content-Disposition",
-        `attachment; filename="${encodeURIComponent("test.pdf")}"`,
+        `attachment; filename="${encodeURIComponent("test.pdf")}"; filename*=UTF-8''${encodeURIComponent("test.pdf")}`,
       );
     });
 

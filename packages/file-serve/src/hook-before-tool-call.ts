@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import mime from "mime-types";
 import type { FileServeConfig } from "./config.js";
@@ -110,10 +111,9 @@ export function createBeforeToolCallHook(config: FileServeConfig, logger: Plugin
       delete updatedParams.filePath;
     } else {
       // PDF/Excel 等: Flex Message に変換
-      const fsModule = await import("node:fs");
       let sizeBytes = 0;
       try {
-        const stat = await fsModule.promises.stat(sourceFilePath);
+        const stat = await fs.promises.stat(sourceFilePath);
         sizeBytes = stat.size;
       } catch {
         sizeBytes = 0;
