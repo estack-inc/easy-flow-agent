@@ -61,7 +61,14 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
     }
 
     const uuid = withoutPrefix.slice(0, slashIdx);
-    const rawFilename = decodeURIComponent(withoutPrefix.slice(slashIdx + 1));
+    let rawFilename: string;
+    try {
+      rawFilename = decodeURIComponent(withoutPrefix.slice(slashIdx + 1));
+    } catch {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("Bad Request: Invalid URL encoding");
+      return;
+    }
     const filename = path.basename(rawFilename);
 
     // パストラバーサル検出: rawFilename にパス区切り文字や ".." が含まれる場合は 400

@@ -197,6 +197,18 @@ describe("createHttpHandler", () => {
       expect(state.body).toContain("有効期限が切れました");
     });
 
+    it("malformed percent-encoding（%GG 等）→ 400", async () => {
+      const handler = createHttpHandler(baseConfig, mockLogger);
+      // %GG は不正なパーセントエンコードで decodeURIComponent が URIError をスローする
+      const req = createMockReq({ url: `/files/${VALID_UUID}/%GGinvalid` });
+      const { res, state } = createMockRes();
+
+      await handler(req, res);
+
+      expect(state.statusCode).toBe(400);
+      expect(state.body).toBe("Bad Request: Invalid URL encoding");
+    });
+
     it("UUID 形式不正 → 400", async () => {
       const handler = createHttpHandler(baseConfig, mockLogger);
       const req = createMockReq({ url: "/files/invalid-uuid/test.pdf" });
