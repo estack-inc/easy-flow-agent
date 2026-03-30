@@ -95,6 +95,7 @@ export function createBeforeToolCallHook(config: FileServeConfig, logger: Plugin
         ttlDays: config.ttlDays,
         storageDir: config.storageDir,
         baseUrl: config.baseUrl,
+        allowedSourceDir: config.allowedSourceDir,
       });
     } catch (err) {
       logger.error(`ファイル保存失敗: ${err instanceof Error ? err.message : String(err)}`);

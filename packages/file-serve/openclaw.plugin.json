@@ -23,6 +23,10 @@
           "windowMs": { "type": "number", "default": 60000 },
           "maxRequests": { "type": "number", "default": 30 }
         }
+      },
+      "allowedSourceDir": {
+        "type": "string",
+        "description": "ソースファイルの許可ディレクトリ（省略時はシステムパスのみブロック）"
       }
     },
     "additionalProperties": false

@@ -8,6 +8,9 @@ export type RateLimiterConfig = {
   maxRequests: number;
 };
 
+// 大量ユニーク IP によるメモリ枯渇（DoS）を防ぐエントリ数上限
+const MAX_RATE_LIMIT_ENTRIES = 100_000;
+
 export class RateLimiter {
   private readonly buckets = new Map<string, BucketEntry>();
   private readonly windowMs: number;
@@ -23,6 +26,10 @@ export class RateLimiter {
     let entry = this.buckets.get(ip);
 
     if (!entry || now >= entry.resetAt) {
+      // 新規 IP: エントリ上限に達している場合はブロック（メモリ枯渇防止）
+      if (!entry && this.buckets.size >= MAX_RATE_LIMIT_ENTRIES) {
+        return { allowed: false, retryAfterMs: this.windowMs };
+      }
       entry = { count: 1, resetAt: now + this.windowMs };
       this.buckets.set(ip, entry);
       return { allowed: true };

@@ -156,6 +156,23 @@ describe("createHttpHandler", () => {
       expect(state31.statusCode).toBe(429);
     });
 
+    it("meta.mimeType が許可外（text/html）→ Content-Type が application/octet-stream に正規化される", async () => {
+      (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+        makeValidMeta({ mimeType: "text/html" }),
+      );
+      (fs.promises.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+      const handler = createHttpHandler(baseConfig, mockLogger);
+      const req = createMockReq({ url: `/files/${VALID_UUID}/test.pdf` });
+      const { res, state } = createMockRes();
+
+      await handler(req, res);
+
+      expect(state.statusCode).toBe(200);
+      expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "application/octet-stream");
+      expect(res.setHeader).not.toHaveBeenCalledWith("Content-Type", "text/html");
+    });
+
     it("ストリーミング配信: fs.createReadStream が呼ばれる", async () => {
       (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(makeValidMeta());
       (fs.promises.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);

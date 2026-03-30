@@ -9,6 +9,27 @@ import { FILE_SERVE_DIR, readMeta } from "./storage.js";
 
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// 配信時に許可する MIME タイプ。未知の型は application/octet-stream に正規化して XSS を防ぐ
+const ALLOWED_SERVE_MIME_TYPES = new Set([
+  "application/octet-stream",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.ms-excel",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/zip",
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "text/plain",
+  "text/csv",
+  "audio/mpeg",
+  "video/mp4",
+]);
+
 function buildExpiredHtml(ttlDays: number): string {
   return `<!DOCTYPE html>
 <html lang="ja">
@@ -117,7 +138,10 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
       return;
     }
 
-    res.setHeader("Content-Type", meta.mimeType);
+    const safeMimeType = ALLOWED_SERVE_MIME_TYPES.has(meta.mimeType)
+      ? meta.mimeType
+      : "application/octet-stream";
+    res.setHeader("Content-Type", safeMimeType);
     // RFC 6266 / RFC 5987 準拠: ASCII フォールバック + UTF-8 エンコード名
     res.setHeader(
       "Content-Disposition",

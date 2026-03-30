@@ -6,6 +6,8 @@ export type FileServeConfig = {
     windowMs: number;
     maxRequests: number;
   };
+  /** ソースファイルの許可ディレクトリ。設定時はこのディレクトリ外のファイルを拒否する。 */
+  allowedSourceDir?: string;
 };
 
 /**
@@ -33,13 +35,31 @@ export function loadConfig(
 
   baseUrl = baseUrl.replace(/\/$/, "");
 
+  const rawTtlDays = pluginConfig?.ttlDays;
+  const ttlDays =
+    typeof rawTtlDays === "number" && rawTtlDays > 0 && rawTtlDays <= 3650 ? rawTtlDays : 7;
+
+  const rawWindowMs = (pluginConfig?.rateLimit as { windowMs?: number } | undefined)?.windowMs;
+  const windowMs = typeof rawWindowMs === "number" && rawWindowMs >= 1000 ? rawWindowMs : 60000;
+
+  const rawMaxRequests = (pluginConfig?.rateLimit as { maxRequests?: number } | undefined)
+    ?.maxRequests;
+  const maxRequests =
+    typeof rawMaxRequests === "number" && rawMaxRequests >= 1 && rawMaxRequests <= 10000
+      ? rawMaxRequests
+      : 30;
+
+  const rawAllowedSourceDir = pluginConfig?.allowedSourceDir;
+  const allowedSourceDir =
+    typeof rawAllowedSourceDir === "string" && rawAllowedSourceDir
+      ? rawAllowedSourceDir
+      : undefined;
+
   return {
     storageDir: (pluginConfig?.storageDir as string) ?? "/data/file-serve",
     baseUrl,
-    ttlDays: (pluginConfig?.ttlDays as number) ?? 7,
-    rateLimit: {
-      windowMs: (pluginConfig?.rateLimit as { windowMs?: number })?.windowMs ?? 60000,
-      maxRequests: (pluginConfig?.rateLimit as { maxRequests?: number })?.maxRequests ?? 30,
-    },
+    ttlDays,
+    rateLimit: { windowMs, maxRequests },
+    allowedSourceDir,
   };
 }

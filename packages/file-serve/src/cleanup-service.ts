@@ -2,9 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import type { FileServeConfig } from "./config.js";
 import type { PluginLogger } from "./index.js";
-import type { FileMeta } from "./meta.js";
+import { parseMetaSafe } from "./meta.js";
 
 const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 時間
+const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function createCleanupService(fileServeConfig: FileServeConfig, logger: PluginLogger) {
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -23,12 +24,22 @@ export function createCleanupService(fileServeConfig: FileServeConfig, logger: P
     }
 
     for (const entry of entries) {
+      // UUID v4 形式でないエントリ（.DS_Store 等）はスキップして誤削除を防ぐ
+      if (!UUID_V4_REGEX.test(entry)) {
+        logger.warn(`非 UUID エントリをスキップ: ${entry}`);
+        continue;
+      }
+
       const entryDir = path.join(storageDir, entry);
       const metaPath = path.join(entryDir, "meta.json");
 
       try {
         const raw = await fs.promises.readFile(metaPath, "utf-8");
-        const meta = JSON.parse(raw) as FileMeta;
+        const meta = parseMetaSafe(raw);
+        if (!meta) {
+          logger.warn(`meta.json の検証失敗、スキップ: ${entry}`);
+          continue;
+        }
         const expiresAt = new Date(meta.createdAt).getTime() + meta.ttlDays * 86400000;
 
         if (Date.now() > expiresAt) {
@@ -37,7 +48,7 @@ export function createCleanupService(fileServeConfig: FileServeConfig, logger: P
           logger.info(`削除完了: ${entry}`);
         }
       } catch {
-        // meta.json が読めないディレクトリはスキップ
+        // meta.json が読み込めないディレクトリはスキップ
         logger.warn(`meta.json 読み込み失敗、スキップ: ${entry}`);
       }
     }
