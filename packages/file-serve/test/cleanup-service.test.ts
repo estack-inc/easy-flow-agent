@@ -98,6 +98,21 @@ describe("createCleanupService", () => {
     expect(mockLogger.warn).toHaveBeenCalled();
   });
 
+  it("setInterval に .unref() が呼ばれること（プロセス正常終了のブロック防止）", async () => {
+    const unrefMock = vi.fn();
+    vi.spyOn(global, "setInterval").mockReturnValueOnce({
+      unref: unrefMock,
+    } as unknown as ReturnType<typeof setInterval>);
+
+    (fs.promises.readdir as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const service = createCleanupService(baseConfig, mockLogger);
+    await service.start();
+    service.stop();
+
+    expect(unrefMock).toHaveBeenCalled();
+  });
+
   it("UUID 形式でないエントリ（.DS_Store 等）はスキップされる", async () => {
     (fs.promises.readdir as ReturnType<typeof vi.fn>).mockResolvedValue([
       ".DS_Store",

@@ -129,6 +129,15 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
 
     const filePath = path.join(storageDir, uuid, filename);
 
+    // Defense in Depth: 構築したパスが storageDir 配下であることを明示的に検証
+    const resolvedFilePath = path.resolve(filePath);
+    const resolvedStorageDir = path.resolve(storageDir);
+    if (!resolvedFilePath.startsWith(resolvedStorageDir + path.sep)) {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("Bad Request: Invalid path");
+      return;
+    }
+
     try {
       await fs.promises.access(filePath, fs.constants.R_OK);
     } catch {

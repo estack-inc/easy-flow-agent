@@ -61,28 +61,34 @@ export async function saveFile(input: SaveFileInput): Promise<SaveFileResult> {
 
   await fs.promises.mkdir(destDir, { recursive: true });
 
-  const safeFilename = path.basename(filename);
-  const destFilePath = path.join(destDir, safeFilename);
-  await fs.promises.copyFile(sourceFilePath, destFilePath);
+  try {
+    const safeFilename = path.basename(filename);
+    const destFilePath = path.join(destDir, safeFilename);
+    await fs.promises.copyFile(sourceFilePath, destFilePath);
 
-  const stat = await fs.promises.stat(destFilePath);
+    const stat = await fs.promises.stat(destFilePath);
 
-  const meta: FileMeta = {
-    filename: safeFilename,
-    mimeType,
-    createdAt: new Date().toISOString(),
-    ttlDays,
-    sizeBytes: stat.size,
-  };
+    const meta: FileMeta = {
+      filename: safeFilename,
+      mimeType,
+      createdAt: new Date().toISOString(),
+      ttlDays,
+      sizeBytes: stat.size,
+    };
 
-  await fs.promises.writeFile(
-    path.join(destDir, "meta.json"),
-    JSON.stringify(meta, null, 2),
-    "utf-8",
-  );
+    await fs.promises.writeFile(
+      path.join(destDir, "meta.json"),
+      JSON.stringify(meta, null, 2),
+      "utf-8",
+    );
 
-  const servedUrl = `${baseUrl}/files/${uuid}/${encodeURIComponent(safeFilename)}`;
-  return { uuid, servedUrl };
+    const servedUrl = `${baseUrl}/files/${uuid}/${encodeURIComponent(safeFilename)}`;
+    return { uuid, servedUrl };
+  } catch (err) {
+    // コピーや meta.json 書き込みが失敗した場合、作成したディレクトリを削除してロールバック
+    await fs.promises.rm(destDir, { recursive: true, force: true }).catch(() => {});
+    throw err;
+  }
 }
 
 /** meta.json を読み込む（存在しない場合・検証失敗の場合は null） */
