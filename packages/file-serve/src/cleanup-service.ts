@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { FileServeConfig } from "./config.js";
 import type { PluginLogger } from "./index.js";
-import { parseMetaSafe } from "./meta.js";
+import { isWithinTtl, parseMetaSafe } from "./meta.js";
 
 const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 時間
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -40,9 +40,7 @@ export function createCleanupService(fileServeConfig: FileServeConfig, logger: P
           logger.warn(`meta.json の検証失敗、スキップ: ${entry}`);
           continue;
         }
-        const expiresAt = new Date(meta.createdAt).getTime() + meta.ttlDays * 86400000;
-
-        if (Date.now() > expiresAt) {
+        if (!isWithinTtl(meta)) {
           await fs.promises.rm(entryDir, { recursive: true, force: true });
           deletedCount++;
           logger.info(`削除完了: ${entry}`);

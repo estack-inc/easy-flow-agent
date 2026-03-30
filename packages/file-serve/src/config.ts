@@ -34,6 +34,11 @@ export function loadConfig(
   }
 
   baseUrl = baseUrl.replace(/\/$/, "");
+  try {
+    new URL(baseUrl);
+  } catch {
+    throw new Error(`baseUrl が不正な URL です: ${baseUrl}`);
+  }
 
   const rawTtlDays = pluginConfig?.ttlDays;
   const ttlDays =
