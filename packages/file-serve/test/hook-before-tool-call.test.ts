@@ -5,15 +5,6 @@ vi.mock("../src/storage.js", () => ({
   saveFile: vi.fn(),
 }));
 
-// node:fs をモック（PDF サイズ取得用）
-vi.mock("node:fs", () => ({
-  default: {
-    promises: {
-      stat: vi.fn().mockResolvedValue({ size: 2048 }),
-    },
-  },
-}));
-
 import type { FileServeConfig } from "../src/config.js";
 import type {
   PluginHookBeforeToolCallEvent,
@@ -64,6 +55,7 @@ describe("createBeforeToolCallHook", () => {
     (saveFile as ReturnType<typeof vi.fn>).mockResolvedValue({
       uuid: "uuid-1",
       servedUrl,
+      sizeBytes: 2048,
     });
 
     const hook = createBeforeToolCallHook(baseConfig, mockLogger);
@@ -82,6 +74,7 @@ describe("createBeforeToolCallHook", () => {
     (saveFile as ReturnType<typeof vi.fn>).mockResolvedValue({
       uuid: "uuid-2",
       servedUrl,
+      sizeBytes: 2048,
     });
 
     const hook = createBeforeToolCallHook(baseConfig, mockLogger);
@@ -149,6 +142,7 @@ describe("createBeforeToolCallHook", () => {
     (saveFile as ReturnType<typeof vi.fn>).mockResolvedValue({
       uuid: "uuid-3",
       servedUrl,
+      sizeBytes: 2048,
     });
 
     const hook = createBeforeToolCallHook(baseConfig, mockLogger);

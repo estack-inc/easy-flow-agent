@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import mime from "mime-types";
 import type { FileServeConfig } from "./config.js";
@@ -78,7 +77,7 @@ export function createBeforeToolCallHook(config: FileServeConfig, logger: Plugin
     if (!sourceFilePath) return undefined;
 
     // LINE チャネルのみ処理
-    if (!ctx.sessionKey?.includes("line:")) {
+    if (!ctx.sessionKey?.startsWith("line:")) {
       logger.debug?.(`LINE 以外のチャネルはスキップ: ${ctx.sessionKey}`);
       return undefined;
     }
@@ -86,7 +85,7 @@ export function createBeforeToolCallHook(config: FileServeConfig, logger: Plugin
     const filename = path.basename(sourceFilePath);
     const detectedMime = (mime.lookup(filename) as string | false) || "application/octet-stream";
 
-    let saveResult: { uuid: string; servedUrl: string };
+    let saveResult: Awaited<ReturnType<typeof saveFile>>;
     try {
       saveResult = await saveFile({
         sourceFilePath,
@@ -111,17 +110,9 @@ export function createBeforeToolCallHook(config: FileServeConfig, logger: Plugin
       updatedParams.media = saveResult.servedUrl;
       delete updatedParams.filePath;
     } else {
-      // PDF/Excel 等: Flex Message に変換
-      let sizeBytes = 0;
-      try {
-        const stat = await fs.promises.stat(sourceFilePath);
-        sizeBytes = stat.size;
-      } catch {
-        sizeBytes = 0;
-      }
-
+      // PDF/Excel 等: Flex Message に変換（sizeBytes は saveFile が stat 済みの値を使用）
       updatedParams.message = JSON.stringify(
-        buildFlexMessage(filename, sizeBytes, saveResult.servedUrl),
+        buildFlexMessage(filename, saveResult.sizeBytes, saveResult.servedUrl),
       );
       delete updatedParams.filePath;
       delete updatedParams.media;

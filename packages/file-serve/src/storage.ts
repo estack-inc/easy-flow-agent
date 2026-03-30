@@ -40,6 +40,7 @@ function validateSourceFilePath(filePath: string, allowedSourceDir?: string): vo
 export type SaveFileResult = {
   uuid: string;
   servedUrl: string;
+  sizeBytes: number;
 };
 
 /** ファイルをボリュームにコピーし、meta.json を生成 */
@@ -83,7 +84,7 @@ export async function saveFile(input: SaveFileInput): Promise<SaveFileResult> {
     );
 
     const servedUrl = `${baseUrl}/files/${uuid}/${encodeURIComponent(safeFilename)}`;
-    return { uuid, servedUrl };
+    return { uuid, servedUrl, sizeBytes: stat.size };
   } catch (err) {
     // コピーや meta.json 書き込みが失敗した場合、作成したディレクトリを削除してロールバック
     await fs.promises.rm(destDir, { recursive: true, force: true }).catch(() => {});
