@@ -18,7 +18,21 @@ export type SaveFileInput = {
 };
 
 // allowedSourceDir 未設定時にブロックする危険なシステムパス
-const BLOCKED_SOURCE_PREFIXES = ["/etc/", "/proc/", "/sys/", "/root/", "/home/", "/boot/", "/dev/"];
+// NOTE: ブロックリスト方式は最低限の防御。allowedSourceDir を明示設定することを強く推奨する。
+const BLOCKED_SOURCE_PREFIXES = [
+  "/etc/",
+  "/proc/",
+  "/sys/",
+  "/root/",
+  "/home/",
+  "/boot/",
+  "/dev/",
+  "/app/", // アプリソースコード・.env 等の漏洩防止
+  "/data/", // アプリデータ（ストレージ自体も /data/file-serve/ 配下）
+  "/var/", // ログ・データベース等
+  "/opt/", // オプションパッケージ
+  "/usr/", // システムユーティリティ
+];
 
 function validateSourceFilePath(filePath: string, allowedSourceDir?: string): void {
   const resolved = path.resolve(filePath);

@@ -115,9 +115,10 @@ describe("createHttpHandler", () => {
 
       expect(state.statusCode).toBe(200);
       expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "application/pdf");
+      // filename= は ASCII 安全値（RFC 6266/8187 準拠）、filename*= で完全 UTF-8 名を提供
       expect(res.setHeader).toHaveBeenCalledWith(
         "Content-Disposition",
-        `attachment; filename="${encodeURIComponent("test.pdf")}"; filename*=UTF-8''${encodeURIComponent("test.pdf")}`,
+        `attachment; filename="test.pdf"; filename*=UTF-8''test.pdf`,
       );
       expect(res.setHeader).toHaveBeenCalledWith("Content-Security-Policy", "default-src 'none'");
       expect(res.setHeader).toHaveBeenCalledWith("X-Content-Type-Options", "nosniff");

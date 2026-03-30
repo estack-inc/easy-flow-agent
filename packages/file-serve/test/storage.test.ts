@@ -117,6 +117,42 @@ describe("saveFile / validateSourceFilePath", () => {
       ).rejects.toThrow("許可されていないソースパス");
     });
 
+    it("/app/ のパスをブロックする（ソースコード・.env 漏洩防止）", async () => {
+      await expect(
+        saveFile({
+          sourceFilePath: "/app/.env",
+          filename: ".env",
+          mimeType: "text/plain",
+          storageDir: STORAGE_DIR,
+          baseUrl: BASE_URL,
+        }),
+      ).rejects.toThrow("許可されていないソースパス");
+    });
+
+    it("/data/ のパスをブロックする（アプリデータ漏洩防止）", async () => {
+      await expect(
+        saveFile({
+          sourceFilePath: "/data/secrets/key.pem",
+          filename: "key.pem",
+          mimeType: "text/plain",
+          storageDir: STORAGE_DIR,
+          baseUrl: BASE_URL,
+        }),
+      ).rejects.toThrow("許可されていないソースパス");
+    });
+
+    it("/var/ のパスをブロックする", async () => {
+      await expect(
+        saveFile({
+          sourceFilePath: "/var/lib/database.db",
+          filename: "database.db",
+          mimeType: "application/octet-stream",
+          storageDir: STORAGE_DIR,
+          baseUrl: BASE_URL,
+        }),
+      ).rejects.toThrow("許可されていないソースパス");
+    });
+
     it("/tmp/ のパスは通過する", async () => {
       await expect(
         saveFile({

@@ -2,6 +2,9 @@
   "name": "@estack/openclaw-file-serve",
   "version": "1.0.0",
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "openclaw": {
     "extensions": ["./src/index.ts"]
   },

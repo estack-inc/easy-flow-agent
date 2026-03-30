@@ -26,8 +26,8 @@ export class RateLimiter {
     let entry = this.buckets.get(ip);
 
     if (!entry || now >= entry.resetAt) {
-      // 新規 IP: エントリ上限に達している場合は最古のエントリを evict して収容
-      // （永続的にブロックされる IP が生まれないよう LRU 的に削除）
+      // 新規 IP: エントリ上限に達している場合は FIFO で最古挿入エントリを evict して収容
+      // （Map は挿入順でイテレートされるため先頭 = 最古。永続的にブロックされる IP を防ぐ）
       if (!entry && this.buckets.size >= MAX_RATE_LIMIT_ENTRIES) {
         const firstKey = this.buckets.keys().next().value;
         if (firstKey !== undefined) this.buckets.delete(firstKey);
