@@ -371,21 +371,24 @@ describe("createHttpHandler", () => {
   });
 
   describe("TTL 動的反映", () => {
-    it("ttlDays=14 の設定で 410 レスポンスの HTML に 14 日間と表示される", async () => {
+    it("410 レスポンスの HTML には config.ttlDays ではなく meta.ttlDays が表示される", async () => {
+      // meta.ttlDays=14、config.ttlDays=7 で意図的に乖離させる。
+      // HTML には meta.ttlDays=14 が表示されることを検証する。
       const expiredDate = new Date(Date.now() - 15 * 86400000).toISOString();
       (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
         makeValidMeta({ createdAt: expiredDate, ttlDays: 14 }),
       );
 
-      const config14 = { ...baseConfig, ttlDays: 14 };
-      const handler = createHttpHandler(config14, mockLogger);
+      // config.ttlDays は baseConfig の 7 のまま（meta.ttlDays=14 と異なる）
+      const handler = createHttpHandler(baseConfig, mockLogger);
       const req = createMockReq({ url: `/files/${VALID_UUID}/test.pdf` });
       const { res, state } = createMockRes();
 
       await handler(req, res);
 
       expect(state.statusCode).toBe(410);
-      expect(state.body).toContain("14日間");
+      expect(state.body).toContain("14日間"); // meta.ttlDays
+      expect(state.body).not.toContain("7日間"); // config.ttlDays は使われない
     });
   });
 });

@@ -102,7 +102,7 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
         "Content-Type": "text/html; charset=UTF-8",
         "Content-Security-Policy": "default-src 'none'",
       });
-      res.end(buildExpiredHtml(config.ttlDays));
+      res.end(buildExpiredHtml(meta.ttlDays));
       return;
     }
 
