@@ -1,0 +1,30 @@
+{
+  "id": "file-serve",
+  "name": "File Serve",
+  "description": "LINE チャネル向けファイル配信プラグイン",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "baseUrl": {
+        "type": "string",
+        "description": "ファイル配信のベース URL（例: https://my-app.fly.dev）"
+      },
+      "storageDir": {
+        "type": "string",
+        "default": "/data/file-serve"
+      },
+      "ttlDays": {
+        "type": "number",
+        "default": 7
+      },
+      "rateLimit": {
+        "type": "object",
+        "properties": {
+          "windowMs": { "type": "number", "default": 60000 },
+          "maxRequests": { "type": "number", "default": 30 }
+        }
+      }
+    },
+    "additionalProperties": false
+  }
+}
