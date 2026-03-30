@@ -167,7 +167,9 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
     const stream = fs.createReadStream(filePath);
     stream.on("error", (err) => {
       logger.error(`ファイル読み込みエラー: ${err.message}`);
-      res.destroy();
+      if (!res.destroyed) {
+        res.destroy();
+      }
     });
     stream.pipe(res);
   };

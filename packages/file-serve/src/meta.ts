@@ -8,7 +8,9 @@ export type FileMeta = {
 
 /** TTL 有効期限内かどうかを判定 */
 export function isWithinTtl(meta: FileMeta): boolean {
-  const expiresAt = new Date(meta.createdAt).getTime() + meta.ttlDays * 86400000;
+  const createdAtMs = new Date(meta.createdAt).getTime();
+  if (Number.isNaN(createdAtMs)) return false;
+  const expiresAt = createdAtMs + meta.ttlDays * 86400000;
   return Date.now() < expiresAt;
 }
 
