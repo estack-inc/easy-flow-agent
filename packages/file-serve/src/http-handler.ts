@@ -35,12 +35,9 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
       return;
     }
 
-    // IP 取得（Fly.io の Proxy ヘッダ対応）
-    const ip =
-      (req.headers["fly-client-ip"] as string) ||
-      (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
-      req.socket.remoteAddress ||
-      "unknown";
+    // IP 取得: fly-client-ip（Fly.io の信頼できるヘッダ）優先。
+    // x-forwarded-for はクライアントが偽装可能なため Rate Limiting には使用しない。
+    const ip = (req.headers["fly-client-ip"] as string) || req.socket.remoteAddress || "unknown";
 
     const rateResult = rateLimiter.check(ip);
     if (!rateResult.allowed) {
@@ -120,6 +117,8 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
       `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
     );
     res.setHeader("Content-Security-Policy", "default-src 'none'");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "no-store");
     res.setHeader("Content-Length", String(meta.sizeBytes));
     res.writeHead(200);
 

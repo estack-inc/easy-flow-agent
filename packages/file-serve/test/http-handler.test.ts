@@ -120,6 +120,38 @@ describe("createHttpHandler", () => {
         "Content-Disposition",
         `attachment; filename="${encodeURIComponent("test.pdf")}"; filename*=UTF-8''${encodeURIComponent("test.pdf")}`,
       );
+      expect(res.setHeader).toHaveBeenCalledWith("X-Content-Type-Options", "nosniff");
+      expect(res.setHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
+    });
+
+    it("X-Forwarded-For を偽装しても別の IP として Rate Limit が適用される", async () => {
+      (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(makeValidMeta());
+      (fs.promises.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+      const handler = createHttpHandler(baseConfig, mockLogger);
+      const socketIp = "10.0.0.1";
+
+      // 30 回はソケット IP でカウント
+      for (let i = 0; i < 30; i++) {
+        const req = createMockReq({
+          url: `/files/${VALID_UUID}/test.pdf`,
+          headers: { "x-forwarded-for": "1.2.3.4" }, // 偽装ヘッダ
+          remoteAddress: socketIp,
+        });
+        const { res } = createMockRes();
+        await handler(req, res);
+      }
+
+      // 31 回目もソケット IP でカウント → 429
+      const req31 = createMockReq({
+        url: `/files/${VALID_UUID}/test.pdf`,
+        headers: { "x-forwarded-for": "9.9.9.9" }, // 別の偽装 IP
+        remoteAddress: socketIp,
+      });
+      const { res: res31, state: state31 } = createMockRes();
+      await handler(req31, res31);
+
+      expect(state31.statusCode).toBe(429);
     });
 
     it("ストリーミング配信: fs.createReadStream が呼ばれる", async () => {
