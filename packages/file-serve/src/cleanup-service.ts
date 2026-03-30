@@ -64,7 +64,7 @@ export function createCleanupService(fileServeConfig: FileServeConfig, logger: P
         runCleanup().catch((err) => {
           logger.error(`クリーンアップエラー: ${err instanceof Error ? err.message : String(err)}`);
         });
-      }, CLEANUP_INTERVAL_MS);
+      }, CLEANUP_INTERVAL_MS).unref();
       logger.info("クリーンアップサービス起動完了");
     },
     stop(): void {

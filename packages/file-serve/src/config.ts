@@ -55,8 +55,12 @@ export function loadConfig(
       ? rawAllowedSourceDir
       : undefined;
 
+  const rawStorageDir = pluginConfig?.storageDir;
+  const storageDir =
+    typeof rawStorageDir === "string" && rawStorageDir ? rawStorageDir : "/data/file-serve";
+
   return {
-    storageDir: (pluginConfig?.storageDir as string) ?? "/data/file-serve",
+    storageDir,
     baseUrl,
     ttlDays,
     rateLimit: { windowMs, maxRequests },
