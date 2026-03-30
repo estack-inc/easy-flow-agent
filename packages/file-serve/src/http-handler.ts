@@ -153,9 +153,10 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
       : "application/octet-stream";
     res.setHeader("Content-Type", safeMimeType);
     // RFC 6266 / RFC 5987 準拠: ASCII フォールバック + UTF-8 エンコード名
+    // RFC 6266 / RFC 8187 準拠: filename= は ASCII 安全な代替値、filename*= で完全 UTF-8 名を提供
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      `attachment; filename="${filename.replace(/[^\x20-\x7E]|["\\]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
     );
     res.setHeader("Content-Security-Policy", "default-src 'none'");
     res.setHeader("X-Content-Type-Options", "nosniff");
