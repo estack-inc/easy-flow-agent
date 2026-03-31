@@ -13,6 +13,8 @@ vi.mock("node:fs", () => {
       promises: {
         stat: vi.fn().mockResolvedValue({ size: 1024 }),
         readFile: vi.fn(),
+        // デフォルト: シンボリックリンクなし（入力パスをそのまま返す）
+        realpath: vi.fn().mockImplementation((p: string) => Promise.resolve(p)),
       },
       createReadStream: vi.fn().mockReturnValue(mockStream),
     },
@@ -100,6 +102,10 @@ const VALID_UUID = "550e8400-e29b-41d4-a716-446655440000";
 describe("createHttpHandler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // デフォルト: シンボリックリンクなし（入力パスをそのまま返す）
+    (fs.promises.realpath as ReturnType<typeof vi.fn>).mockImplementation((p: string) =>
+      Promise.resolve(p),
+    );
   });
 
   describe("正常系", () => {
@@ -230,7 +236,10 @@ describe("createHttpHandler", () => {
 
     it("meta はあるがファイル実体が消えている → 404 かつ logger.warn が呼ばれる", async () => {
       (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(makeValidMeta());
-      (fs.promises.stat as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("ENOENT"));
+      // realpath でファイルの存在確認（ファイルが消えているため ENOENT）
+      (fs.promises.realpath as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error("ENOENT: no such file or directory"),
+      );
 
       const handler = createHttpHandler(baseConfig, mockLogger);
       const req = createMockReq({ url: `/files/${VALID_UUID}/test.pdf` });

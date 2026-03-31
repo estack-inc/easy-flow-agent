@@ -38,8 +38,9 @@ async function validateSourceFilePath(filePath: string, allowedSourceDir?: strin
   // realpath でシンボリックリンクを解決してから検証する。
   // path.resolve() はパス文字列を正規化するだけでリンクを辿らないため、
   // /tmp/uploads/leak.pdf → /etc/passwd のようなシンボリックリンク経由の検証バイパスを防ぐ。
-  // ファイルが存在しない場合（realpath が失敗する場合）は path.resolve にフォールバック。
-  const resolved = await fs.promises.realpath(filePath).catch(() => path.resolve(filePath));
+  // ENOENT 以外（EPERM 等）を含む全エラーを伝播させ、フォールバックしない。
+  // フォールバックすると EPERM 等でシンボリックリンク解決がバイパスされるリスクがある。
+  const resolved = await fs.promises.realpath(filePath);
   if (allowedSourceDir) {
     const normalizedBase = path.resolve(allowedSourceDir);
     const prefix = normalizedBase.endsWith(path.sep) ? normalizedBase : normalizedBase + path.sep;

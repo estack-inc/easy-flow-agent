@@ -30,7 +30,7 @@ const fileServePlugin = {
   id: "file-serve",
   name: "File Serve",
   description:
-    "LINE チャネル向けファイル配信プラグイン。エージェント生成ファイルに 7 日間有効な配信 URL を発行する。",
+    "LINE チャネル向けファイル配信プラグイン。エージェント生成ファイルに有効期限付きの配信 URL を発行する。",
 
   register(api: PluginApi) {
     const config = loadConfig(api.pluginConfig as Record<string, unknown> | undefined, api.config);

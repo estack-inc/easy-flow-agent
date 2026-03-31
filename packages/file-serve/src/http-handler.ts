@@ -127,12 +127,22 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
       return;
     }
 
-    const filePath = path.join(storageDir, uuid, filename);
+    const rawPath = path.join(storageDir, uuid, filename);
 
-    // Defense in Depth: 構築したパスが storageDir 配下であることを明示的に検証
-    const resolvedFilePath = path.resolve(filePath);
+    // Defense in Depth: realpath でシンボリックリンクを解決し storageDir 配下であることを検証
+    // path.resolve() はファイルシステムを参照せず文字列正規化のみを行うため、
+    // storageDir 内のシンボリックリンクが storageDir 外を指す場合に検証がバイパスされる。
+    let filePath: string;
+    try {
+      filePath = await fs.promises.realpath(rawPath);
+    } catch {
+      logger.warn(`ファイルが見つかりません: ${rawPath}`);
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Not Found");
+      return;
+    }
     const resolvedStorageDir = path.resolve(storageDir);
-    if (!resolvedFilePath.startsWith(resolvedStorageDir + path.sep)) {
+    if (!filePath.startsWith(resolvedStorageDir + path.sep)) {
       res.writeHead(400, { "Content-Type": "text/plain" });
       res.end("Bad Request: Invalid path");
       return;
@@ -142,6 +152,7 @@ export function createHttpHandler(config: FileServeConfig, logger: PluginLogger)
     try {
       fileStat = await fs.promises.stat(filePath);
     } catch {
+      // realpath 後にファイルが削除された競合状態
       logger.warn(`ファイルが見つかりません: ${filePath}`);
       res.writeHead(404, { "Content-Type": "text/plain" });
       res.end("Not Found");
