@@ -344,6 +344,20 @@ describe("createHttpHandler", () => {
       expect(state31.statusCode).toBe(429);
     });
 
+    it("realpath が storageDir 外を返す（symlink が storageDir 外を指す）→ 400", async () => {
+      (fs.promises.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(makeValidMeta());
+      // storageDir 配下の symlink が storageDir 外を指しているケース
+      (fs.promises.realpath as ReturnType<typeof vi.fn>).mockResolvedValue("/etc/passwd");
+
+      const handler = createHttpHandler(baseConfig, mockLogger);
+      const req = createMockReq({ url: `/files/${VALID_UUID}/test.pdf` });
+      const { res, state } = createMockRes();
+
+      await handler(req, res);
+
+      expect(state.statusCode).toBe(400);
+    });
+
     it("GET 以外のメソッド（POST 等）→ 405", async () => {
       const handler = createHttpHandler(baseConfig, mockLogger);
       const req = createMockReq({ method: "POST", url: `/files/${VALID_UUID}/test.pdf` });
