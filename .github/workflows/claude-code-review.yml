@@ -237,6 +237,7 @@ jobs:
             --allowedTools "Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(grep:*),Bash(find:*),Bash(rg:*),Bash(cat:*),Bash(wc:*),Read,Glob,Grep"
 
       - name: Post review comment
+        id: post_review
         if: steps.check_files.outputs.skip != 'true' && success()
         env:
           GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
@@ -251,9 +252,9 @@ jobs:
 
       - name: Submit review verdict
         if: >
-          !cancelled() &&
           steps.check_files.outputs.skip != 'true' &&
-          steps.claude_review.conclusion == 'success'
+          steps.claude_review.conclusion == 'success' &&
+          steps.post_review.conclusion == 'success'
         env:
           GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
