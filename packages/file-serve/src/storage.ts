@@ -34,8 +34,12 @@ const BLOCKED_SOURCE_PREFIXES = [
   "/usr/", // システムユーティリティ
 ];
 
-function validateSourceFilePath(filePath: string, allowedSourceDir?: string): void {
-  const resolved = path.resolve(filePath);
+async function validateSourceFilePath(filePath: string, allowedSourceDir?: string): Promise<void> {
+  // realpath でシンボリックリンクを解決してから検証する。
+  // path.resolve() はパス文字列を正規化するだけでリンクを辿らないため、
+  // /tmp/uploads/leak.pdf → /etc/passwd のようなシンボリックリンク経由の検証バイパスを防ぐ。
+  // ファイルが存在しない場合（realpath が失敗する場合）は path.resolve にフォールバック。
+  const resolved = await fs.promises.realpath(filePath).catch(() => path.resolve(filePath));
   if (allowedSourceDir) {
     const normalizedBase = path.resolve(allowedSourceDir);
     const prefix = normalizedBase.endsWith(path.sep) ? normalizedBase : normalizedBase + path.sep;
@@ -69,7 +73,7 @@ export async function saveFile(input: SaveFileInput): Promise<SaveFileResult> {
     allowedSourceDir,
   } = input;
 
-  validateSourceFilePath(sourceFilePath, allowedSourceDir);
+  await validateSourceFilePath(sourceFilePath, allowedSourceDir);
 
   const uuid = randomUUID();
   const destDir = path.join(storageDir, uuid);

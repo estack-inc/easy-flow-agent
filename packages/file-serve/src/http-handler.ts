@@ -5,7 +5,7 @@ import type { FileServeConfig } from "./config.js";
 import type { PluginLogger } from "./index.js";
 import { isWithinTtl } from "./meta.js";
 import { RateLimiter } from "./rate-limiter.js";
-import { FILE_SERVE_DIR, readMeta } from "./storage.js";
+import { readMeta } from "./storage.js";
 
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -44,7 +44,7 @@ function buildExpiredHtml(ttlDays: number): string {
 
 export function createHttpHandler(config: FileServeConfig, logger: PluginLogger) {
   const rateLimiter = new RateLimiter(config.rateLimit);
-  const storageDir = config.storageDir ?? FILE_SERVE_DIR;
+  const storageDir = config.storageDir;
 
   // 期限切れバケットを定期削除してメモリリークを防ぐ
   setInterval(() => rateLimiter.cleanup(), config.rateLimit.windowMs).unref();

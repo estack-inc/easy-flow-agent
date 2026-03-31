@@ -1,3 +1,4 @@
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // node:fs をモック
@@ -10,6 +11,9 @@ vi.mock("node:fs", () => ({
       writeFile: vi.fn().mockResolvedValue(undefined),
       readFile: vi.fn(),
       rm: vi.fn().mockResolvedValue(undefined),
+      // デフォルト: シンボリックリンクなし（path.resolve で ".." 等を正規化して返す）
+      // 実際の realpath は symlink 解決 + パス正規化を行うため、テストでも正規化を再現する
+      realpath: vi.fn().mockImplementation((p: string) => Promise.resolve(path.resolve(p))),
     },
   },
 }));
@@ -35,6 +39,10 @@ describe("saveFile / validateSourceFilePath", () => {
     (fs.promises.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ size: 1024 });
     (fs.promises.writeFile as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     (fs.promises.rm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    // デフォルト: シンボリックリンクなし（path.resolve で ".." 等を正規化して返す）
+    (fs.promises.realpath as ReturnType<typeof vi.fn>).mockImplementation((p: string) =>
+      Promise.resolve(path.resolve(p)),
+    );
   });
 
   describe("allowedSourceDir 設定時", () => {
@@ -163,6 +171,39 @@ describe("saveFile / validateSourceFilePath", () => {
           baseUrl: BASE_URL,
         }),
       ).resolves.toMatchObject({ uuid: VALID_UUID });
+    });
+  });
+
+  describe("シンボリックリンク経由の検証バイパス防止", () => {
+    it("allowedSourceDir 設定時: symlink が許可ディレクトリ外を指す場合をブロックする", async () => {
+      // /tmp/uploads/leak.pdf はシンボリックリンクで /etc/passwd を指している
+      (fs.promises.realpath as ReturnType<typeof vi.fn>).mockResolvedValue("/etc/passwd");
+
+      await expect(
+        saveFile({
+          sourceFilePath: "/tmp/uploads/leak.pdf",
+          filename: "leak.pdf",
+          mimeType: "text/plain",
+          storageDir: STORAGE_DIR,
+          baseUrl: BASE_URL,
+          allowedSourceDir: "/tmp/uploads",
+        }),
+      ).rejects.toThrow("ソースファイルが許可ディレクトリ外です");
+    });
+
+    it("allowedSourceDir 未設定時: symlink が BLOCKED_SOURCE_PREFIXES 配下を指す場合をブロックする", async () => {
+      // /tmp/uploads/leak.pdf はシンボリックリンクで /etc/passwd を指している
+      (fs.promises.realpath as ReturnType<typeof vi.fn>).mockResolvedValue("/etc/passwd");
+
+      await expect(
+        saveFile({
+          sourceFilePath: "/tmp/leak.pdf",
+          filename: "leak.pdf",
+          mimeType: "text/plain",
+          storageDir: STORAGE_DIR,
+          baseUrl: BASE_URL,
+        }),
+      ).rejects.toThrow("許可されていないソースパス");
     });
   });
 
