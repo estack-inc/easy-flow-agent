@@ -290,6 +290,10 @@ jobs:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           BRANCH: ${{ github.head_ref }}
         run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL is not set, skipping notification"
+            exit 0
+          fi
           payload=$(jq -n \
             --arg title "$PR_TITLE" \
             --arg url "$PR_URL" \
