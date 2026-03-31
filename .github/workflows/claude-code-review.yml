@@ -260,11 +260,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          if [ ! -f /tmp/review-result.md ]; then
-            echo "::warning::Review result file not found — skipping verdict submission"
-            exit 0
-          fi
-
           VERDICT=$(grep -E '^### (判定|レビュー結果):' /tmp/review-result.md | head -1 | \
             sed 's/.*: //' | cut -c1-50)
 
