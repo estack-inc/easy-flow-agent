@@ -298,4 +298,5 @@ jobs:
             --arg author "$PR_AUTHOR" \
             --arg branch "$BRANCH" \
             '{text: ":warning: *AI Code Review Failed*\n<\($url)|PR #\($number)>: \($title)\nAuthor: \($author) | Branch: `\($branch)`"}')
-          curl -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL"
+          curl --fail -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL" \
+            || echo "::warning::Slack notification failed"
