@@ -21,8 +21,12 @@ export function classifyMessage(
     return "default";
   }
 
-  // 2. トークン数チェック（簡易近似: 文字数 / 3）
-  const estimatedTokens = Math.ceil(prompt.length / 3);
+  // 2. トークン数チェック（近似推定）
+  // 日本語（ひらがな・カタカナ・漢字）は 1 文字 ≈ 1 トークン、
+  // ASCII 英数字は 1 文字 ≈ 0.25 トークンで算出（PoC 段階の近似）
+  const japaneseChars = (prompt.match(/[\u3040-\u9fff\uff00-\uffef]/g) ?? []).length;
+  const otherChars = prompt.length - japaneseChars;
+  const estimatedTokens = Math.ceil(japaneseChars + otherChars / 4);
   if (estimatedTokens > config.maxTokensForLight) {
     return "default";
   }

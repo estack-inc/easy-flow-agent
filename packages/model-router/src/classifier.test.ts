@@ -24,7 +24,7 @@ describe("classifyMessage", () => {
   });
 
   it("長文（100トークン超）→ default", () => {
-    const longMessage = "あ".repeat(310); // 310文字 ≈ 104トークン
+    const longMessage = "あ".repeat(101); // 日本語 101 文字 = 101 トークン（maxTokensForLight: 100 超）
     expect(classifyMessage(longMessage, DEFAULT_CONFIG)).toBe("default");
   });
 
