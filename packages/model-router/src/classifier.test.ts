@@ -49,4 +49,12 @@ describe("classifyMessage", () => {
   it("英語 forceDefault（review）が preferLight（ok）に勝つ", () => {
     expect(classifyMessage("ok review this", DEFAULT_CONFIG)).toBe("default");
   });
+
+  it("大文字 forceDefault（Review）が preferLight（ok）に勝つ", () => {
+    expect(classifyMessage("ok Review this", DEFAULT_CONFIG)).toBe("default");
+  });
+
+  it("文頭大文字 Fix が preferLight（ok）に勝つ", () => {
+    expect(classifyMessage("ok Fix this bug", DEFAULT_CONFIG)).toBe("default");
+  });
 });

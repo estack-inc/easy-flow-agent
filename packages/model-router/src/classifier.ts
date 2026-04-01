@@ -17,7 +17,7 @@ export function classifyMessage(
 ): ClassificationResult {
   // 1. forceDefault パターンに一致する場合は Sonnet 維持
   const forceDefaultPatterns = config.patterns.forceDefault ?? [];
-  if (forceDefaultPatterns.some((p) => prompt.includes(p))) {
+  if (forceDefaultPatterns.some((p) => prompt.toLowerCase().includes(p.toLowerCase()))) {
     return "default";
   }
 
