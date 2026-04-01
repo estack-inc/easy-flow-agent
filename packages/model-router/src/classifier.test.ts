@@ -1,0 +1,43 @@
+import { describe, expect, it } from "vitest";
+import { classifyMessage } from "./classifier.js";
+import { DEFAULT_CONFIG } from "./config.js";
+
+describe("classifyMessage", () => {
+  it("挨拶（短文・preferLight）→ light", () => {
+    expect(classifyMessage("おはよう", DEFAULT_CONFIG)).toBe("light");
+  });
+
+  it("感謝（短文・preferLight）→ light", () => {
+    expect(classifyMessage("ありがとう！", DEFAULT_CONFIG)).toBe("light");
+  });
+
+  it("了解（短文・preferLight）→ light", () => {
+    expect(classifyMessage("了解です", DEFAULT_CONFIG)).toBe("light");
+  });
+
+  it("forceDefault パターン（設計）→ default", () => {
+    expect(classifyMessage("設計を見直して", DEFAULT_CONFIG)).toBe("default");
+  });
+
+  it("forceDefault パターン（コード）→ default", () => {
+    expect(classifyMessage("このコードをレビューして", DEFAULT_CONFIG)).toBe("default");
+  });
+
+  it("長文（100トークン超）→ default", () => {
+    const longMessage = "あ".repeat(310); // 310文字 ≈ 104トークン
+    expect(classifyMessage(longMessage, DEFAULT_CONFIG)).toBe("default");
+  });
+
+  it("パターン未一致（短文）→ default", () => {
+    expect(classifyMessage("うん", DEFAULT_CONFIG)).toBe("default");
+  });
+
+  it("空文字列 → default", () => {
+    expect(classifyMessage("", DEFAULT_CONFIG)).toBe("default");
+  });
+
+  it("forceDefault が preferLight に勝つ（優先順位確認）", () => {
+    // 「ありがとう」+ 「コード」が混在 → forceDefault 優先で default
+    expect(classifyMessage("ありがとう、このコードで大丈夫です", DEFAULT_CONFIG)).toBe("default");
+  });
+});

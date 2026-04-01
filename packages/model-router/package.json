@@ -1,0 +1,37 @@
+{
+  "name": "model-router",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./model-router/index.js",
+      "types": "./model-router/index.d.ts",
+      "default": "./model-router/index.js"
+    }
+  },
+  "main": "./model-router/index.js",
+  "types": "./model-router/index.d.ts",
+  "openclaw": {
+    "extensions": ["./src/index.ts"]
+  },
+  "files": [
+    "model-router"
+  ],
+  "scripts": {
+    "build": "tsc && cp openclaw.plugin.json model-router/openclaw.plugin.json",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.7"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  }
+}
