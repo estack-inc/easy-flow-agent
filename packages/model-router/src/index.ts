@@ -27,7 +27,7 @@ export default definePluginEntry({
           if (cfg.logging) {
             api.logger.info(
               `[model-router] → ${cfg.lightProvider}/${cfg.lightModel}` +
-              ` (prompt: "${prompt.slice(0, 50)}${prompt.length > 50 ? "..." : ""}")`,
+                ` (prompt: "${prompt.slice(0, 50)}${prompt.length > 50 ? "..." : ""}")`,
             );
           }
           return {
@@ -37,9 +37,7 @@ export default definePluginEntry({
         }
 
         if (cfg.logging) {
-          api.logger.debug(
-            `[model-router] → ${cfg.defaultProvider}/${cfg.defaultModel} (default)`,
-          );
+          api.logger.debug(`[model-router] → ${cfg.defaultProvider}/${cfg.defaultModel} (default)`);
         }
         // void return = デフォルトモデル維持
       } catch (err) {

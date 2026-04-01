@@ -29,11 +29,7 @@ export function classifyMessage(
 
   // 3. preferLight パターンに一致する場合は Haiku
   const preferLightPatterns = config.patterns.preferLight ?? [];
-  if (
-    preferLightPatterns.some((p) =>
-      prompt.toLowerCase().includes(p.toLowerCase()),
-    )
-  ) {
+  if (preferLightPatterns.some((p) => prompt.toLowerCase().includes(p.toLowerCase()))) {
     return "light";
   }
 
