@@ -40,4 +40,13 @@ describe("classifyMessage", () => {
     // 「ありがとう」+ 「コード」が混在 → forceDefault 優先で default
     expect(classifyMessage("ありがとう、このコードで大丈夫です", DEFAULT_CONFIG)).toBe("default");
   });
+
+  it("英語 forceDefault（code）が preferLight（ok）に勝つ", () => {
+    // "ok" が preferLight にマッチするが "code" が forceDefault にマッチ → default
+    expect(classifyMessage("ok, let's write some code", DEFAULT_CONFIG)).toBe("default");
+  });
+
+  it("英語 forceDefault（review）が preferLight（ok）に勝つ", () => {
+    expect(classifyMessage("ok review this", DEFAULT_CONFIG)).toBe("default");
+  });
 });

@@ -19,6 +19,7 @@ export const DEFAULT_CONFIG: Required<ModelRouterConfig> = {
   maxTokensForLight: 100,
   patterns: {
     forceDefault: [
+      // 日本語
       "レビュー",
       "設計",
       "分析",
@@ -30,6 +31,16 @@ export const DEFAULT_CONFIG: Required<ModelRouterConfig> = {
       "バグ",
       "エラー",
       "仕様",
+      // 英語（preferLight の英語キーワードとの誤分類を防ぐため）
+      "review",
+      "code",
+      "bug",
+      "error",
+      "analyze",
+      "implement",
+      "deploy",
+      "fix",
+      "design",
     ],
     preferLight: [
       "おはよう",
