@@ -48,7 +48,6 @@ export const DEFAULT_CONFIG: Required<ModelRouterConfig> = {
       "おやすみ",
       "ありがとう",
       "了解",
-      "OK",
       "ok",
       "わかった",
       "確認",
