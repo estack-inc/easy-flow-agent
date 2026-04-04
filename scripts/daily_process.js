@@ -24,7 +24,8 @@ const FIELD_RESUME = 3606; // 職務経歴書ファイル
 const FIELD_CV = 3690; // 履歴書ファイル
 const FIELD_NAME = 3591; // 氏名
 const DB_PATH = "/data/db/file_processing.db";
-const LINE_GROUP_ID = "Cu088dbb0c9035833f0a8e0e6940cc6362";
+const LINE_GROUP_ID =
+  process.env.LINE_GROUP_ID || "Cu088dbb0c9035833f0a8e0e6940cc6362";
 const LOG_FILE =
   process.env.DAILY_PROCESS_LOG_PATH ||
   path.join(__dirname, "daily_process.log");
