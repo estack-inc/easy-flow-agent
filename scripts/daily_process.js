@@ -172,7 +172,8 @@ function classifyError(error, filePath) {
   const msg = (error.message || error || "").toString();
   if (msg.includes("password") || msg.includes("encrypted"))
     return "password_protected";
-  if (msg.includes("corrupt") || msg.includes("invalid")) return "corrupted";
+  if (msg.includes("corrupt") || msg.includes("invalid pdf") || msg.includes("invalid file"))
+    return "corrupted";
   const ext = filePath.split(".").pop().toLowerCase();
   if (
     !["pdf", "docx", "doc", "xlsx", "xls", "jpg", "jpeg", "png", "gif"].includes(ext)
@@ -397,6 +398,7 @@ async function sendLineMessage(message) {
         },
       },
       (res) => {
+        res.on("error", reject);
         const chunks = [];
         res.on("data", (d) => chunks.push(d));
         res.on("end", () => {

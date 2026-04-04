@@ -287,10 +287,24 @@ test("classifyError: corrupt → corrupted", () => {
   );
 });
 
-test("classifyError: invalid → corrupted", () => {
+test("classifyError: 'invalid pdf' → corrupted", () => {
   assert.strictEqual(
-    classifyError(new Error("invalid format"), "/file/a.pdf"),
+    classifyError(new Error("invalid pdf structure"), "/file/a.pdf"),
     "corrupted",
+  );
+});
+
+test("classifyError: 'invalid file' → corrupted", () => {
+  assert.strictEqual(
+    classifyError(new Error("invalid file header"), "/file/a.pdf"),
+    "corrupted",
+  );
+});
+
+test("classifyError: 汎用 'invalid' は corrupted にならない → unexpected", () => {
+  assert.strictEqual(
+    classifyError(new Error("invalid argument"), "/file/a.pdf"),
+    "unexpected",
   );
 });
 
