@@ -205,6 +205,7 @@ async function doReq(method, reqPath, cookies, csrf, data) {
         rejectUnauthorized: false,
       },
       (res) => {
+        res.on("error", reject);
         res.on("data", (d) => chunks.push(d));
         res.on("end", () => {
           const text = Buffer.concat(chunks).toString();
@@ -241,6 +242,7 @@ async function downloadFile(filePath, cookies) {
         rejectUnauthorized: false,
       },
       (res) => {
+        res.on("error", reject);
         res.on("data", (d) => chunks.push(d));
         res.on("end", () => resolve(Buffer.concat(chunks)));
       },
