@@ -25,7 +25,9 @@ const FIELD_CV = 3690; // 履歴書ファイル
 const FIELD_NAME = 3591; // 氏名
 const DB_PATH = "/data/db/file_processing.db";
 const LINE_GROUP_ID = "Cu088dbb0c9035833f0a8e0e6940cc6362";
-const LOG_FILE = path.join(__dirname, "daily_process.log");
+const LOG_FILE =
+  process.env.DAILY_PROCESS_LOG_PATH ||
+  path.join(__dirname, "daily_process.log");
 const MAX_RETRY_COUNT = 3;
 const MAX_TEXT_LENGTH = 3000;
 const PAGE_SIZE = 500;
@@ -80,11 +82,16 @@ function initDb(dbPath) {
 function syncRecords(db, records) {
   const now = new Date().toISOString();
 
-  const findLatest = db.prepare(
-    "SELECT * FROM file_processing WHERE record_id = ? AND field_id = ? ORDER BY created_at DESC LIMIT 1",
+  // 同一 (record_id, field_id, file_path) の完全一致で検索
+  const findByExactPath = db.prepare(
+    "SELECT * FROM file_processing WHERE record_id = ? AND field_id = ? AND file_path = ?",
+  );
+  // 同一 (record_id, field_id) で別パスのレコードが存在するか（差し替え判定用）
+  const hasOtherPath = db.prepare(
+    "SELECT 1 FROM file_processing WHERE record_id = ? AND field_id = ? AND file_path != ? LIMIT 1",
   );
   const insertPending = db.prepare(
-    "INSERT OR IGNORE INTO file_processing (record_id, field_id, file_path, status, created_at) VALUES (?, ?, ?, 'pending', ?)",
+    "INSERT INTO file_processing (record_id, field_id, file_path, status, created_at) VALUES (?, ?, ?, 'pending', ?)",
   );
 
   // write_error / unexpected で error_count < MAX_RETRY_COUNT のレコードを pending に戻す
@@ -105,18 +112,19 @@ function syncRecords(db, records) {
     const fieldId = rec.fieldId;
     const filePath = rec.filePath;
 
-    const existing = findLatest.get(recordId, fieldId);
-
-    if (!existing) {
-      // 新規レコード → pending 登録
-      insertPending.run(recordId, fieldId, filePath, now);
-      newCount++;
-    } else if (existing.file_path !== filePath) {
-      // ファイル差し替え検知 → 新規レコードとして pending 登録
-      insertPending.run(recordId, fieldId, filePath, now);
-      replacedCount++;
+    const exactMatch = findByExactPath.get(recordId, fieldId, filePath);
+    if (exactMatch) {
+      // 同一ファイルパスが DB に存在 → 既に管理済み（retryStmt で pending 復帰済みの場合を含む）
+      continue;
     }
-    // existing があり file_path が同じ → status に応じてスキップ（pending に戻す処理は retryStmt で済み）
+
+    // DB に同一パスが存在しない → 新規 or ファイル差し替え
+    insertPending.run(recordId, fieldId, filePath, now);
+    if (hasOtherPath.get(recordId, fieldId, filePath)) {
+      replacedCount++;
+    } else {
+      newCount++;
+    }
   }
 
   return { newCount, replacedCount };
@@ -465,10 +473,9 @@ async function main(options = {}) {
         "UNITBASE_USERNAME / UNITBASE_PASSWORD が未設定です。Fly.io Secrets に設定してください。",
       );
     }
-    const csrf0 = "sqWINyEb";
-    const baseCookies =
-      "csrf-token=sqWINyEb; user_pref_tz=0; hadLoggedInUB=true; server_tz_offset=540; i18n_locale=ja; browser_lang=ja; tz_offset=-540";
-    const [loginStatus, lh] = await doReq(
+    const csrf0 = process.env.UNITBASE_CSRF_TOKEN || "sqWINyEb";
+    const baseCookies = `csrf-token=${csrf0}; user_pref_tz=0; hadLoggedInUB=true; server_tz_offset=540; i18n_locale=ja; browser_lang=ja; tz_offset=-540`;
+    const [loginStatus, lh, loginBody] = await doReq(
       "POST",
       "/teambase/login",
       baseCookies,
@@ -483,11 +490,23 @@ async function main(options = {}) {
     if (loginStatus !== 200 && loginStatus !== 302) {
       throw new Error(`UnitBase ログイン失敗: HTTP ${loginStatus}`);
     }
-    const nc = (lh["set-cookie"] || [])
-      .map((x) => x.split(";")[0])
-      .join("; ");
+    if (
+      loginBody &&
+      typeof loginBody === "object" &&
+      loginBody.status === "error"
+    ) {
+      const errInfo = loginBody.status_info?.code || JSON.stringify(loginBody);
+      throw new Error(`UnitBase ログイン失敗（認証エラー）: ${errInfo}`);
+    }
+    const setCookies = lh["set-cookie"] || [];
+    if (setCookies.length === 0) {
+      throw new Error(
+        "UnitBase ログイン失敗: set-cookie ヘッダーが返されませんでした",
+      );
+    }
+    const nc = setCookies.map((x) => x.split(";")[0]).join("; ");
     const newCsrf =
-      (lh["set-cookie"] || [])
+      setCookies
         .find((x) => x.startsWith("csrf-token="))
         ?.split(";")[0]
         ?.replace("csrf-token=", "") || csrf0;
