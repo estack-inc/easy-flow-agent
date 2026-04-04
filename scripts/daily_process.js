@@ -399,6 +399,9 @@ async function sendLineMessage(message) {
         });
       },
     );
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      req.destroy(new Error(`LINE API タイムアウト (${REQUEST_TIMEOUT_MS}ms)`));
+    });
     req.on("error", reject);
     req.write(body);
     req.end();
@@ -465,12 +468,21 @@ async function main(options = {}) {
     const csrf0 = "sqWINyEb";
     const baseCookies =
       "csrf-token=sqWINyEb; user_pref_tz=0; hadLoggedInUB=true; server_tz_offset=540; i18n_locale=ja; browser_lang=ja; tz_offset=-540";
-    const [, lh] = await doReq("POST", "/teambase/login", baseCookies, csrf0, {
-      user_name: ubUser,
-      password: ubPass,
-      remember_me: false,
-      force: true,
-    });
+    const [loginStatus, lh] = await doReq(
+      "POST",
+      "/teambase/login",
+      baseCookies,
+      csrf0,
+      {
+        user_name: ubUser,
+        password: ubPass,
+        remember_me: false,
+        force: true,
+      },
+    );
+    if (loginStatus !== 200 && loginStatus !== 302) {
+      throw new Error(`UnitBase ログイン失敗: HTTP ${loginStatus}`);
+    }
     const nc = (lh["set-cookie"] || [])
       .map((x) => x.split(";")[0])
       .join("; ");
