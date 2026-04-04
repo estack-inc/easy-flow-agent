@@ -329,8 +329,16 @@ async function extractText(buf, filePath) {
     };
   }
   if (ext === "docx" || ext === "doc") {
-    const text = await extractWordText(buf);
-    return { method: "word", text };
+    try {
+      const text = await extractWordText(buf);
+      return { method: "word", text };
+    } catch (e) {
+      if (ext === "doc") {
+        // mammoth は .docx 専用。.doc（旧バイナリ形式）は非対応
+        return { method: "unsupported", text: "" };
+      }
+      throw e;
+    }
   }
   if (ext === "xlsx" || ext === "xls") {
     const text = extractExcelText(buf);
