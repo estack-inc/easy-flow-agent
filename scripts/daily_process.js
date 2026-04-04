@@ -24,8 +24,7 @@ const FIELD_RESUME = 3606; // 職務経歴書ファイル
 const FIELD_CV = 3690; // 履歴書ファイル
 const FIELD_NAME = 3591; // 氏名
 const DB_PATH = "/data/db/file_processing.db";
-const LINE_GROUP_ID =
-  process.env.LINE_GROUP_ID || "Cu088dbb0c9035833f0a8e0e6940cc6362";
+const LINE_GROUP_ID = process.env.LINE_GROUP_ID;
 const LOG_FILE =
   process.env.DAILY_PROCESS_LOG_PATH ||
   path.join(__dirname, "daily_process.log");
@@ -247,7 +246,17 @@ async function downloadFile(filePath, cookies) {
       (res) => {
         res.on("error", reject);
         res.on("data", (d) => chunks.push(d));
-        res.on("end", () => resolve(Buffer.concat(chunks)));
+        res.on("end", () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            reject(
+              new Error(
+                `ダウンロード失敗: HTTP ${res.statusCode} ${fullPath}`,
+              ),
+            );
+          } else {
+            resolve(Buffer.concat(chunks));
+          }
+        });
       },
     );
     req.setTimeout(REQUEST_TIMEOUT_MS, () => {
@@ -382,10 +391,14 @@ function parseFilePath(raw) {
 async function sendLineMessage(message) {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 
-  if (!token) {
-    console.warn(
-      "[LINE] LINE_CHANNEL_ACCESS_TOKEN が未設定のため通知をスキップします",
-    );
+  if (!token || !LINE_GROUP_ID) {
+    const missing = [
+      !token && "LINE_CHANNEL_ACCESS_TOKEN",
+      !LINE_GROUP_ID && "LINE_GROUP_ID",
+    ]
+      .filter(Boolean)
+      .join(" / ");
+    console.warn(`[LINE] ${missing} が未設定のため通知をスキップします`);
     return;
   }
 
