@@ -28,6 +28,8 @@ const LINE_GROUP_ID = "Cu088dbb0c9035833f0a8e0e6940cc6362";
 const LOG_FILE = path.join(__dirname, "daily_process.log");
 const MAX_RETRY_COUNT = 3;
 const MAX_TEXT_LENGTH = 3000;
+const PAGE_SIZE = 500;
+const REQUEST_TIMEOUT_MS = 30000;
 
 // ----------------------------
 // ロギング
@@ -206,6 +208,9 @@ async function doReq(method, reqPath, cookies, csrf, data) {
         });
       },
     );
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      req.destroy(new Error(`リクエストタイムアウト (${REQUEST_TIMEOUT_MS}ms): ${method} ${reqPath}`));
+    });
     req.on("error", reject);
     if (body) req.write(body);
     req.end();
@@ -219,21 +224,23 @@ async function downloadFile(filePath, cookies) {
   return new Promise((resolve, reject) => {
     const fullPath = "/teambase" + filePath;
     const chunks = [];
-    https
-      .get(
-        {
-          host: HOST,
-          port: PORT,
-          path: fullPath,
-          headers: { Cookie: cookies, "User-Agent": "Mozilla/5.0" },
-          rejectUnauthorized: false,
-        },
-        (res) => {
-          res.on("data", (d) => chunks.push(d));
-          res.on("end", () => resolve(Buffer.concat(chunks)));
-        },
-      )
-      .on("error", reject);
+    const req = https.get(
+      {
+        host: HOST,
+        port: PORT,
+        path: fullPath,
+        headers: { Cookie: cookies, "User-Agent": "Mozilla/5.0" },
+        rejectUnauthorized: false,
+      },
+      (res) => {
+        res.on("data", (d) => chunks.push(d));
+        res.on("end", () => resolve(Buffer.concat(chunks)));
+      },
+    );
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      req.destroy(new Error(`ダウンロードタイムアウト (${REQUEST_TIMEOUT_MS}ms): ${fullPath}`));
+    });
+    req.on("error", reject);
   });
 }
 
@@ -260,9 +267,7 @@ function formatText(raw) {
 // PDF テキスト抽出
 // ----------------------------
 async function extractPdfText(buf) {
-  const pdfMod = await import(
-    "/data/workspace/node_modules/pdfjs-dist/legacy/build/pdf.mjs"
-  );
+  const pdfMod = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const pdfLib = pdfMod.default || pdfMod;
   const doc = await pdfLib.getDocument({ data: new Uint8Array(buf) }).promise;
   let text = "";
@@ -450,12 +455,19 @@ async function main(options = {}) {
 
   try {
     // ② UnitBase ログイン
+    const ubUser = process.env.UNITBASE_USERNAME;
+    const ubPass = process.env.UNITBASE_PASSWORD;
+    if (!ubUser || !ubPass) {
+      throw new Error(
+        "UNITBASE_USERNAME / UNITBASE_PASSWORD が未設定です。Fly.io Secrets に設定してください。",
+      );
+    }
     const csrf0 = "sqWINyEb";
     const baseCookies =
       "csrf-token=sqWINyEb; user_pref_tz=0; hadLoggedInUB=true; server_tz_offset=540; i18n_locale=ja; browser_lang=ja; tz_offset=-540";
     const [, lh] = await doReq("POST", "/teambase/login", baseCookies, csrf0, {
-      user_name: "administrator",
-      password: "voice0009",
+      user_name: ubUser,
+      password: ubPass,
       remember_me: false,
       force: true,
     });
@@ -470,15 +482,22 @@ async function main(options = {}) {
     const cookies = baseCookies + "; " + nc;
     log("ログイン成功");
 
-    // ③ 全レコード取得
-    const [, , listRes] = await doReq(
-      "GET",
-      `/teambase/app/${APP_ID}/table/${TABLE_ID}/record?start=0&count=1000`,
-      cookies,
-      newCsrf,
-      null,
-    );
-    const allRows = listRes?.response_data?.rows || [];
+    // ③ 全レコード取得（ページネーション）
+    const allRows = [];
+    let start = 0;
+    while (true) {
+      const [, , listRes] = await doReq(
+        "GET",
+        `/teambase/app/${APP_ID}/table/${TABLE_ID}/record?start=${start}&count=${PAGE_SIZE}`,
+        cookies,
+        newCsrf,
+        null,
+      );
+      const rows = listRes?.response_data?.rows || [];
+      allRows.push(...rows);
+      if (rows.length < PAGE_SIZE) break;
+      start += PAGE_SIZE;
+    }
     log(`全レコード数: ${allRows.length}件`);
 
     // ファイルがあるレコードを DB に同期用データとして抽出
