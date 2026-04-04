@@ -174,6 +174,7 @@ function classifyError(error, filePath) {
     return "password_protected";
   if (msg.includes("corrupt") || msg.includes("invalid pdf") || msg.includes("invalid file"))
     return "corrupted";
+  if (!filePath || !filePath.includes(".")) return "unexpected";
   const ext = filePath.split(".").pop().toLowerCase();
   if (
     !["pdf", "docx", "doc", "xlsx", "xls", "jpg", "jpeg", "png", "gif"].includes(ext)
@@ -629,6 +630,11 @@ async function main(options = {}) {
           null,
         );
         const latestRow = recRes?.response_data?.rows?.[0];
+        if (!latestRow) {
+          throw new Error(
+            `レコード取得失敗: record_id=${row.record_id} のレスポンスが空です`,
+          );
+        }
         const dbVersion = recRes?.response_data?.dbtable_version;
 
         const reqData = { ...latestRow };
@@ -645,7 +651,7 @@ async function main(options = {}) {
 
         const Q =
           "?isOpenToNew=false&skipApproverLayoutsExistsCheck=false&skipApproverLayoutsPermissionCheck=false";
-        const [, , putRes] = await doReq(
+        const [putStatusCode, , putRes] = await doReq(
           "PUT",
           `/teambase/app/${APP_ID}/table/${TABLE_ID}/record/${row.record_id}${Q}`,
           cookies,
@@ -653,7 +659,10 @@ async function main(options = {}) {
           { request_data: reqData },
         );
 
-        if (putRes.status === "200") {
+        const putSuccess =
+          (typeof putRes === "object" && putRes.status === "200") ||
+          putStatusCode === 200;
+        if (putSuccess) {
           markProcessed(db, row.id);
           successCount++;
           log(
