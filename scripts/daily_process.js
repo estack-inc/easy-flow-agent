@@ -681,9 +681,12 @@ async function main(options = {}) {
           { request_data: reqData },
         );
 
+        const isBodyError =
+          typeof putRes === "object" && putRes.status === "error";
         const putSuccess =
-          (typeof putRes === "object" && putRes.status === "200") ||
-          putStatusCode === 200;
+          !isBodyError &&
+          ((typeof putRes === "object" && putRes.status === "200") ||
+            putStatusCode === 200);
         if (putSuccess) {
           markProcessed(db, row.id);
           successCount++;
