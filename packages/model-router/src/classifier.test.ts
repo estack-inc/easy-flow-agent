@@ -57,4 +57,8 @@ describe("classifyMessage", () => {
   it("文頭大文字 Fix が preferLight（ok）に勝つ", () => {
     expect(classifyMessage("ok Fix this bug", DEFAULT_CONFIG)).toBe("default");
   });
+
+  it("「〜を確認して」はパターン未一致で default（複雑タスク）", () => {
+    expect(classifyMessage("このPRを確認して", DEFAULT_CONFIG)).toBe("default");
+  });
 });
