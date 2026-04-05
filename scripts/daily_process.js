@@ -7,7 +7,8 @@
  * 戻り値: 処理結果を標準出力に出力（エラー時は exit code 1）
  */
 
-const https = require("https");
+const http = require("http");   // UnitBase 接続用（HTTP on port 443）
+const https = require("https"); // LINE API 通知用
 const fs = require("fs");
 const path = require("path");
 
@@ -200,14 +201,13 @@ async function doReq(method, reqPath, cookies, csrf, data) {
     if (csrf) headers["X-UnitBase-CSRF-Token"] = csrf;
     if (body) headers["Content-Length"] = Buffer.byteLength(body);
     const chunks = [];
-    const req = https.request(
+    const req = http.request(
       {
         host: HOST,
         port: PORT,
         path: reqPath,
         method,
         headers,
-        rejectUnauthorized: false,
       },
       (res) => {
         res.on("error", reject);
@@ -238,13 +238,12 @@ async function downloadFile(filePath, cookies) {
   return new Promise((resolve, reject) => {
     const fullPath = "/teambase" + filePath;
     const chunks = [];
-    const req = https.get(
+    const req = http.get(
       {
         host: HOST,
         port: PORT,
         path: fullPath,
         headers: { Cookie: cookies, "User-Agent": "Mozilla/5.0" },
-        rejectUnauthorized: false,
       },
       (res) => {
         res.on("error", reject);
@@ -411,6 +410,7 @@ async function sendLineMessage(message) {
   });
 
   return new Promise((resolve, reject) => {
+    // LINE API は正規 HTTPS サーバー（変更しない）
     const req = https.request(
       {
         host: "api.line.me",
