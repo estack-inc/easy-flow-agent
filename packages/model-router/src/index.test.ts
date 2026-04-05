@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-// definePluginEntry は引数をそのまま返すモック（テスト環境では openclaw 未インストール）
-vi.mock("openclaw/plugin-sdk/plugin-entry", () => ({
-  definePluginEntry: (entry: { register: (api: unknown) => void }) => entry,
-}));
-
-import plugin from "./index.js";
+import register from "./index.js";
 
 type MockApi = {
   pluginConfig: Record<string, unknown>;
@@ -43,21 +38,21 @@ function callHook(api: MockApi, prompt: string) {
 describe("model-router plugin", () => {
   it("before_model_resolve フックを登録する", () => {
     const api = createMockApi();
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
 
     expect(api.registerHook).toHaveBeenCalledWith(["before_model_resolve"], expect.any(Function));
   });
 
   it("登録後に info ログを出力する", () => {
     const api = createMockApi();
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
 
     expect(api.logger.info).toHaveBeenCalledWith("[model-router] plugin registered");
   });
 
   it("軽量タスク → { modelOverride, providerOverride } を返す", () => {
     const api = createMockApi();
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
 
     const result = callHook(api, "おはよう");
 
@@ -69,7 +64,7 @@ describe("model-router plugin", () => {
 
   it("複雑タスク → void（デフォルトモデル維持）", () => {
     const api = createMockApi();
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
 
     const result = callHook(api, "このコードをレビューして");
 
@@ -78,7 +73,7 @@ describe("model-router plugin", () => {
 
   it("logging: true のとき軽量ルーティングで info ログを出力する", () => {
     const api = createMockApi({ logging: true });
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
     callHook(api, "おはよう");
 
     expect(api.logger.info).toHaveBeenCalledWith(
@@ -88,7 +83,7 @@ describe("model-router plugin", () => {
 
   it("logging: false のとき軽量ルーティングで info ログを出力しない", () => {
     const api = createMockApi({ logging: false });
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
 
     // info は "plugin registered" のみ呼ばれる
     const infoCallsBefore = api.logger.info.mock.calls.length;
@@ -104,7 +99,7 @@ describe("model-router plugin", () => {
         forceDefault: [],
       },
     });
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
 
     // カスタム preferLight にマッチ → light
     const lightResult = callHook(api, "hello");
@@ -120,14 +115,14 @@ describe("model-router plugin", () => {
         forceDefault: [],
       },
     });
-    (plugin as unknown as { register: (api: unknown) => void }).register(api2);
+    register(api2 as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
     const defaultResult = callHook(api2, "おはよう");
     expect(defaultResult).toBeUndefined();
   });
 
   it("ハンドラ内で例外が発生しても void を返す（デフォルトモデル維持）", () => {
     const api = createMockApi();
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
 
     // ハンドラに null を渡して event.prompt アクセスで例外を発生させる
     const [, handler] = api.registerHook.mock.calls[0] as [
