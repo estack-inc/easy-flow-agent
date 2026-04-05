@@ -738,11 +738,16 @@ async function main(options = {}) {
         }
       } catch (e) {
         const errorType = classifyError(e, row.file_path);
+        log(`ERROR [${row.record_id}] ${name} - ${errorType}: ${e.message}`);
+        if (dryRun) {
+          log(`[DRY-RUN] エラー記録スキップ: ${errorType}`);
+          await sleep(500);
+          continue;
+        }
         _markError(db, row.id, errorType, e.message || String(e));
         if (row.error_count === 0) {
           firstTimeErrors.push({ name, description: errorTypeLabel(errorType) });
         }
-        log(`ERROR [${row.record_id}] ${name} - ${errorType}: ${e.message}`);
       }
 
       await sleep(500);

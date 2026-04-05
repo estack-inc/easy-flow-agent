@@ -646,6 +646,36 @@ function createTmpDb() {
       },
     );
 
+    await testAsync(
+      "dryRun: true でダウンロード例外時も markError が呼ばれない",
+      async () => {
+        const tmpPath = createTmpDb();
+        let markErrorCalled = false;
+        try {
+          await main({
+            dryRun: true,
+            limit: 1,
+            dbPath: tmpPath,
+            _markProcessed: () => {},
+            _markError: () => {
+              markErrorCalled = true;
+            },
+            _sendLineMessage: async () => {},
+            _downloadFile: async () => {
+              throw new Error("Network error");
+            },
+            _extractText: async () => ({ method: "pdf_text", text: "テストテキスト" }),
+            _doReq: makeMockDoReq(),
+          });
+        } finally {
+          try {
+            fs.unlinkSync(tmpPath);
+          } catch {}
+        }
+        assert.strictEqual(markErrorCalled, false);
+      },
+    );
+
     await testAsync("dryRun: true のログに [DRY-RUN] プレフィックスが出力される", async () => {
       const tmpPath = createTmpDb();
       const logMessages = [];
