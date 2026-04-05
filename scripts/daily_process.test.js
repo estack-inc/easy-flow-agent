@@ -7,6 +7,8 @@
  */
 
 const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const {
@@ -21,6 +23,7 @@ const {
   parseFilePath,
   formatText,
   MAX_RETRY_COUNT,
+  main,
 } = require(path.join(__dirname, "daily_process.js"));
 
 let testCount = 0;
@@ -31,6 +34,19 @@ function test(name, fn) {
   testCount++;
   try {
     fn();
+    passCount++;
+    console.log(`  ✅ ${name}`);
+  } catch (e) {
+    failCount++;
+    console.log(`  ❌ ${name}`);
+    console.log(`     ${e.message}`);
+  }
+}
+
+async function testAsync(name, fn) {
+  testCount++;
+  try {
+    await fn();
     passCount++;
     console.log(`  ✅ ${name}`);
   } catch (e) {
@@ -426,12 +442,198 @@ test("同一 record_id で異なる field_id は別レコード", () => {
 });
 
 // ==============================
-// 結果サマリー
+// DRY_RUN テスト（非同期）
 // ==============================
-console.log("\n========================================");
-console.log(`テスト結果: ${passCount}/${testCount} passed, ${failCount} failed`);
-console.log("========================================\n");
 
-if (failCount > 0) {
-  process.exit(1);
+// DRY_RUN テスト用ユーティリティ
+
+function makeMockDoReq() {
+  return async function mockDoReq(method, reqPath) {
+    if (method === "POST" && reqPath.includes("/login")) {
+      return [
+        200,
+        { "set-cookie": ["csrf-token=test; Path=/", "session=mock; Path=/"] },
+        {},
+      ];
+    }
+    if (method === "GET" && reqPath.includes("/record?")) {
+      return [200, {}, { response_data: { rows: [] } }];
+    }
+    return [200, {}, {}];
+  };
 }
+
+function createTmpDb() {
+  const tmpPath = path.join(
+    os.tmpdir(),
+    `dry_run_test_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
+  );
+  const db = initDb(tmpPath);
+  syncRecords(db, [
+    { recordId: 1, fieldId: 3606, filePath: "/file/a.pdf" },
+    { recordId: 2, fieldId: 3606, filePath: "/file/b.pdf" },
+  ]);
+  db.close();
+  return tmpPath;
+}
+
+(async () => {
+  console.log("\n=== DRY_RUN ===");
+
+  const origUbUser = process.env.UNITBASE_USERNAME;
+  const origUbPass = process.env.UNITBASE_PASSWORD;
+  process.env.UNITBASE_USERNAME = "test_user";
+  process.env.UNITBASE_PASSWORD = "test_pass";
+
+  try {
+    await testAsync("dryRun: true で markProcessed が呼ばれない", async () => {
+      const tmpPath = createTmpDb();
+      let markProcessedCalled = false;
+      try {
+        await main({
+          dryRun: true,
+          limit: 1,
+          dbPath: tmpPath,
+          _markProcessed: () => {
+            markProcessedCalled = true;
+          },
+          _markError: () => {},
+          _sendLineMessage: async () => {},
+          _downloadFile: async () => Buffer.from("fake"),
+          _extractText: async () => ({ method: "pdf_text", text: "テストテキスト" }),
+          _doReq: makeMockDoReq(),
+        });
+      } finally {
+        try {
+          fs.unlinkSync(tmpPath);
+        } catch {}
+      }
+      assert.strictEqual(markProcessedCalled, false);
+    });
+
+    await testAsync("dryRun: true で markError が呼ばれない", async () => {
+      const tmpPath = createTmpDb();
+      let markErrorCalled = false;
+      try {
+        await main({
+          dryRun: true,
+          limit: 1,
+          dbPath: tmpPath,
+          _markProcessed: () => {},
+          _markError: () => {
+            markErrorCalled = true;
+          },
+          _sendLineMessage: async () => {},
+          _downloadFile: async () => Buffer.from("fake"),
+          _extractText: async () => ({ method: "pdf_text", text: "テストテキスト" }),
+          _doReq: makeMockDoReq(),
+        });
+      } finally {
+        try {
+          fs.unlinkSync(tmpPath);
+        } catch {}
+      }
+      assert.strictEqual(markErrorCalled, false);
+    });
+
+    await testAsync("dryRun: true で sendLineMessage が呼ばれない", async () => {
+      const tmpPath = createTmpDb();
+      let sendLineMessageCalled = false;
+      try {
+        await main({
+          dryRun: true,
+          limit: 1,
+          dbPath: tmpPath,
+          _markProcessed: () => {},
+          _markError: () => {},
+          _sendLineMessage: async () => {
+            sendLineMessageCalled = true;
+          },
+          _downloadFile: async () => Buffer.from("fake"),
+          _extractText: async () => ({ method: "pdf_text", text: "テストテキスト" }),
+          _doReq: makeMockDoReq(),
+        });
+      } finally {
+        try {
+          fs.unlinkSync(tmpPath);
+        } catch {}
+      }
+      assert.strictEqual(sendLineMessageCalled, false);
+    });
+
+    await testAsync(
+      "limit: 1 で pending が複数件あっても処理が 1 件のみ",
+      async () => {
+        const tmpPath = createTmpDb(); // 2件のpendingを持つDB
+        let downloadCount = 0;
+        try {
+          await main({
+            dryRun: true,
+            limit: 1,
+            dbPath: tmpPath,
+            _markProcessed: () => {},
+            _markError: () => {},
+            _sendLineMessage: async () => {},
+            _downloadFile: async () => {
+              downloadCount++;
+              return Buffer.from("fake");
+            },
+            _extractText: async () => ({ method: "pdf_text", text: "テストテキスト" }),
+            _doReq: makeMockDoReq(),
+          });
+        } finally {
+          try {
+            fs.unlinkSync(tmpPath);
+          } catch {}
+        }
+        assert.strictEqual(downloadCount, 1, `処理件数が1件であること（実際: ${downloadCount}件）`);
+      },
+    );
+
+    await testAsync("dryRun: true のログに [DRY-RUN] プレフィックスが出力される", async () => {
+      const tmpPath = createTmpDb();
+      const logMessages = [];
+      const originalConsoleLog = console.log;
+      console.log = (...args) => {
+        logMessages.push(args.join(" "));
+        originalConsoleLog(...args);
+      };
+      try {
+        await main({
+          dryRun: true,
+          limit: 1,
+          dbPath: tmpPath,
+          _markProcessed: () => {},
+          _markError: () => {},
+          _sendLineMessage: async () => {},
+          _downloadFile: async () => Buffer.from("fake"),
+          _extractText: async () => ({ method: "pdf_text", text: "テストテキスト" }),
+          _doReq: makeMockDoReq(),
+        });
+      } finally {
+        console.log = originalConsoleLog;
+        try {
+          fs.unlinkSync(tmpPath);
+        } catch {}
+      }
+      assert.ok(
+        logMessages.some((msg) => msg.includes("[DRY-RUN]")),
+        "[DRY-RUN] プレフィックスがログに出力されること",
+      );
+    });
+  } finally {
+    process.env.UNITBASE_USERNAME = origUbUser;
+    process.env.UNITBASE_PASSWORD = origUbPass;
+  }
+
+  // ==============================
+  // 結果サマリー
+  // ==============================
+  console.log("\n========================================");
+  console.log(`テスト結果: ${passCount}/${testCount} passed, ${failCount} failed`);
+  console.log("========================================\n");
+
+  if (failCount > 0) {
+    process.exit(1);
+  }
+})();

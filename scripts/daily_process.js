@@ -32,6 +32,8 @@ const MAX_RETRY_COUNT = 3;
 const MAX_TEXT_LENGTH = 3000;
 const PAGE_SIZE = 500;
 const REQUEST_TIMEOUT_MS = 30000;
+const DRY_RUN = process.env.DRY_RUN === "1";
+const DRY_RUN_LIMIT = parseInt(process.env.DRY_RUN_LIMIT || "1", 10);
 
 // ----------------------------
 // ロギング
@@ -483,6 +485,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // メイン処理
 // ----------------------------
 async function main(options = {}) {
+  const dryRun = options.dryRun !== undefined ? options.dryRun : DRY_RUN;
+  const dryRunLimit = options.limit !== undefined ? options.limit : DRY_RUN_LIMIT;
+  const _markProcessed = options._markProcessed || markProcessed;
+  const _markError = options._markError || markError;
+  const _sendLineMessage = options._sendLineMessage || sendLineMessage;
+  const _downloadFile = options._downloadFile || downloadFile;
+  const _doReq = options._doReq || doReq;
+  const _extractText = options._extractText || extractText;
   const dbPath = options.dbPath || DB_PATH;
   const today = new Date().toISOString().slice(0, 10);
   log(`=== 日次処理開始 ${today} ===`);
@@ -502,7 +512,7 @@ async function main(options = {}) {
     }
     const csrf0 = process.env.UNITBASE_CSRF_TOKEN || "sqWINyEb";
     const baseCookies = `csrf-token=${csrf0}; user_pref_tz=0; hadLoggedInUB=true; server_tz_offset=540; i18n_locale=ja; browser_lang=ja; tz_offset=-540`;
-    const [loginStatus, lh, loginBody] = await doReq(
+    const [loginStatus, lh, loginBody] = await _doReq(
       "POST",
       "/teambase/login",
       baseCookies,
@@ -544,7 +554,7 @@ async function main(options = {}) {
     const allRows = [];
     let start = 0;
     while (true) {
-      const [, , listRes] = await doReq(
+      const [, , listRes] = await _doReq(
         "GET",
         `/teambase/app/${APP_ID}/table/${TABLE_ID}/record?start=${start}&count=${PAGE_SIZE}`,
         cookies,
@@ -591,8 +601,13 @@ async function main(options = {}) {
     );
 
     // ⑤ pending レコードのみ処理
-    const pendingRows = getPendingRecords(db);
+    let pendingRows = getPendingRecords(db);
     log(`処理対象（pending）: ${pendingRows.length}件`);
+
+    if (dryRun) {
+      pendingRows = pendingRows.slice(0, dryRunLimit);
+      log(`[DRY-RUN] 処理件数を ${dryRunLimit} 件に制限します`);
+    }
 
     if (pendingRows.length === 0) {
       log("処理対象なし。終了します。");
@@ -615,16 +630,16 @@ async function main(options = {}) {
 
       try {
         // ファイルダウンロード
-        const buf = await downloadFile(row.file_path, cookies);
+        const buf = await _downloadFile(row.file_path, cookies);
 
         // テキスト抽出
-        const { method, text } = await extractText(buf, row.file_path);
+        const { method, text } = await _extractText(buf, row.file_path);
         const formatted = formatText(text);
         const finalText = formatted.substring(0, MAX_TEXT_LENGTH);
 
         if (method === "unsupported" || !finalText.trim()) {
           if (method === "unsupported") {
-            markError(db, row.id, "unsupported", "非対応ファイル形式");
+            _markError(db, row.id, "unsupported", "非対応ファイル形式");
             if (row.error_count === 0) {
               firstTimeErrors.push({
                 name,
@@ -633,7 +648,7 @@ async function main(options = {}) {
             }
           } else {
             // テキストが空の場合も処理済みとする
-            markProcessed(db, row.id);
+            _markProcessed(db, row.id);
             successCount++;
           }
           log(
@@ -643,8 +658,18 @@ async function main(options = {}) {
           continue;
         }
 
+        // DRY_RUN 時は UnitBase 書き込み・DB 更新をスキップ
+        if (dryRun) {
+          log(
+            `[DRY-RUN] [${row.record_id}] ${name} — ${method}, ${finalText.length}文字（書き込み・DB更新スキップ）`,
+          );
+          successCount++;
+          await sleep(500);
+          continue;
+        }
+
         // UnitBase に書き込み
-        const [, , recRes] = await doReq(
+        const [, , recRes] = await _doReq(
           "GET",
           `/teambase/app/${APP_ID}/table/${TABLE_ID}/record/${row.record_id}`,
           cookies,
@@ -673,7 +698,7 @@ async function main(options = {}) {
 
         const Q =
           "?isOpenToNew=false&skipApproverLayoutsExistsCheck=false&skipApproverLayoutsPermissionCheck=false";
-        const [putStatusCode, , putRes] = await doReq(
+        const [putStatusCode, , putRes] = await _doReq(
           "PUT",
           `/teambase/app/${APP_ID}/table/${TABLE_ID}/record/${row.record_id}${Q}`,
           cookies,
@@ -688,14 +713,14 @@ async function main(options = {}) {
           ((typeof putRes === "object" && putRes.status === "200") ||
             putStatusCode === 200);
         if (putSuccess) {
-          markProcessed(db, row.id);
+          _markProcessed(db, row.id);
           successCount++;
           log(
             `OK [${row.record_id}] ${name} (${method}, ${finalText.length}文字)`,
           );
         } else {
           const errMsg = putRes.status_info?.code || "UnitBase書き込みエラー";
-          markError(db, row.id, "write_error", errMsg);
+          _markError(db, row.id, "write_error", errMsg);
           if (row.error_count === 0) {
             firstTimeErrors.push({
               name,
@@ -706,7 +731,7 @@ async function main(options = {}) {
         }
       } catch (e) {
         const errorType = classifyError(e, row.file_path);
-        markError(db, row.id, errorType, e.message || String(e));
+        _markError(db, row.id, errorType, e.message || String(e));
         if (row.error_count === 0) {
           firstTimeErrors.push({ name, description: errorTypeLabel(errorType) });
         }
@@ -718,7 +743,9 @@ async function main(options = {}) {
 
     // ⑥ LINE 通知
     let notified = false;
-    if (successCount > 0 || firstTimeErrors.length > 0) {
+    if (dryRun) {
+      log("[DRY-RUN] LINE通知スキップ");
+    } else if (successCount > 0 || firstTimeErrors.length > 0) {
       const message = buildNotificationMessage(
         today,
         successCount,
@@ -726,7 +753,7 @@ async function main(options = {}) {
       );
       log(`通知送信:\n${message}`);
       try {
-        await sendLineMessage(message);
+        await _sendLineMessage(message);
         notified = true;
       } catch (e) {
         log(`LINE通知エラー: ${e.message}`);
