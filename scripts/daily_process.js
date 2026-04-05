@@ -33,7 +33,8 @@ const MAX_TEXT_LENGTH = 3000;
 const PAGE_SIZE = 500;
 const REQUEST_TIMEOUT_MS = 30000;
 const DRY_RUN = process.env.DRY_RUN === "1";
-const DRY_RUN_LIMIT = parseInt(process.env.DRY_RUN_LIMIT || "1", 10);
+const _parsedDryRunLimit = parseInt(process.env.DRY_RUN_LIMIT || "1", 10);
+const DRY_RUN_LIMIT = Number.isNaN(_parsedDryRunLimit) || _parsedDryRunLimit < 1 ? 1 : _parsedDryRunLimit;
 
 // ----------------------------
 // ロギング
