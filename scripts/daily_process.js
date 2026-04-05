@@ -188,7 +188,7 @@ function classifyError(error, filePath) {
 }
 
 // ----------------------------
-// HTTPS リクエスト
+// HTTP リクエスト（UnitBase 接続用）
 // ----------------------------
 async function doReq(method, reqPath, cookies, csrf, data) {
   return new Promise((resolve, reject) => {
