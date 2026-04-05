@@ -510,7 +510,7 @@ async function main(options = {}) {
         "UNITBASE_USERNAME / UNITBASE_PASSWORD が未設定です。Fly.io Secrets に設定してください。",
       );
     }
-    const csrf0 = process.env.UNITBASE_CSRF_TOKEN || "sqWINyEb";
+    const csrf0 = process.env.UNITBASE_CSRF_TOKEN || "";
     const baseCookies = `csrf-token=${csrf0}; user_pref_tz=0; hadLoggedInUB=true; server_tz_offset=540; i18n_locale=ja; browser_lang=ja; tz_offset=-540`;
     const [loginStatus, lh, loginBody] = await _doReq(
       "POST",
@@ -638,6 +638,13 @@ async function main(options = {}) {
         const finalText = formatted.substring(0, MAX_TEXT_LENGTH);
 
         if (method === "unsupported" || !finalText.trim()) {
+          if (dryRun) {
+            log(
+              `[DRY-RUN] [${row.record_id}] ${name} — ${method}（DB更新スキップ）`,
+            );
+            await sleep(500);
+            continue;
+          }
           if (method === "unsupported") {
             _markError(db, row.id, "unsupported", "非対応ファイル形式");
             if (row.error_count === 0) {

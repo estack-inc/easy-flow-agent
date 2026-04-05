@@ -590,6 +590,62 @@ function createTmpDb() {
       },
     );
 
+    await testAsync(
+      "dryRun: true で unsupported ファイルの markError が呼ばれない",
+      async () => {
+        const tmpPath = createTmpDb();
+        let markErrorCalled = false;
+        try {
+          await main({
+            dryRun: true,
+            limit: 1,
+            dbPath: tmpPath,
+            _markProcessed: () => {},
+            _markError: () => {
+              markErrorCalled = true;
+            },
+            _sendLineMessage: async () => {},
+            _downloadFile: async () => Buffer.from("fake"),
+            _extractText: async () => ({ method: "unsupported", text: "" }),
+            _doReq: makeMockDoReq(),
+          });
+        } finally {
+          try {
+            fs.unlinkSync(tmpPath);
+          } catch {}
+        }
+        assert.strictEqual(markErrorCalled, false);
+      },
+    );
+
+    await testAsync(
+      "dryRun: true で空テキストの markProcessed が呼ばれない",
+      async () => {
+        const tmpPath = createTmpDb();
+        let markProcessedCalled = false;
+        try {
+          await main({
+            dryRun: true,
+            limit: 1,
+            dbPath: tmpPath,
+            _markProcessed: () => {
+              markProcessedCalled = true;
+            },
+            _markError: () => {},
+            _sendLineMessage: async () => {},
+            _downloadFile: async () => Buffer.from("fake"),
+            _extractText: async () => ({ method: "pdf_text", text: "" }),
+            _doReq: makeMockDoReq(),
+          });
+        } finally {
+          try {
+            fs.unlinkSync(tmpPath);
+          } catch {}
+        }
+        assert.strictEqual(markProcessedCalled, false);
+      },
+    );
+
     await testAsync("dryRun: true のログに [DRY-RUN] プレフィックスが出力される", async () => {
       const tmpPath = createTmpDb();
       const logMessages = [];
