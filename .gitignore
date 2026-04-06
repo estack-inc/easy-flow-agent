@@ -11,6 +11,7 @@ node_modules/
 # Build outputs
 dist/
 pinecone-memory/
+packages/model-router/model-router/
 build/
 *.js.map
 *.d.ts.map

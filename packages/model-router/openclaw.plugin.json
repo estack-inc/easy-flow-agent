@@ -1,0 +1,6 @@
+{
+  "id": "model-router",
+  "kind": "plugin",
+  "name": "Model Router",
+  "description": "Routes lightweight messages to Haiku and complex tasks to Sonnet based on rule-based classification"
+}
