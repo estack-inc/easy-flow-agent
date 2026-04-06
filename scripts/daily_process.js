@@ -367,8 +367,8 @@ async function extractText(buf, filePath, options = {}) {
       const tessdataPath = process.env.TESSDATA_PREFIX || "/data/workspace";
       const worker = await createWorker("jpn+eng", 1, {
         logger: () => {},
-        langPath: tessdataPath,  // traineddata ファイルの読み込み元ディレクトリ
-        dataPath: tessdataPath,  // Emscripten 仮想FS への書き込み先（未指定だと ./ になりエラー）
+        langPath: tessdataPath,  // traineddata ファイルの読み込み元ディレクトリ（実ファイルシステム）
+        // dataPath は Emscripten 仮想FS 内パスのため指定しない（mkdir が失敗してクラッシュする）
       });
       try {
         const {
