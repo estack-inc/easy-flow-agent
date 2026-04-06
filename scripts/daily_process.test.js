@@ -676,6 +676,199 @@ function createTmpDb() {
       },
     );
 
+    // ==============================
+    // ページングロジックテスト
+    // ==============================
+    console.log("\n=== ページングロジック ===");
+
+    await testAsync(
+      "records: 669 を返す API で全件取得が 1 リクエストで完了すること",
+      async () => {
+        const tmpPath = path.join(
+          os.tmpdir(),
+          `paging_test_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
+        );
+        initDb(tmpPath).close(); // 空の DB（pending なし）
+        let recordRequestCount = 0;
+        const rows669 = Array.from({ length: 669 }, (_, i) => ({ id: i + 1 }));
+
+        const mockDoReq = async (method, reqPath) => {
+          if (method === "POST" && reqPath.includes("/login")) {
+            return [200, { "set-cookie": ["csrf-token=test; Path=/", "session=mock; Path=/"] }, {}];
+          }
+          if (method === "GET" && reqPath.includes("/record?")) {
+            recordRequestCount++;
+            return [200, {}, { response_data: { rows: rows669, records: 669 } }];
+          }
+          return [200, {}, {}];
+        };
+
+        try {
+          await main({
+            dryRun: true,
+            limit: 1,
+            dbPath: tmpPath,
+            _markProcessed: () => {},
+            _markError: () => {},
+            _sendLineMessage: async () => {},
+            _downloadFile: async () => Buffer.from("fake"),
+            _extractText: async () => ({ method: "pdf_text", text: "テスト" }),
+            _doReq: mockDoReq,
+          });
+        } finally {
+          try { fs.unlinkSync(tmpPath); } catch {}
+        }
+
+        assert.strictEqual(
+          recordRequestCount,
+          1,
+          `API リクエストが 1 回で終了すること（実際: ${recordRequestCount}回）`,
+        );
+      },
+    );
+
+    await testAsync(
+      "records: 1000 を返す API で PAGE_SIZE=500 × 2 リクエストで取得できること",
+      async () => {
+        const tmpPath = path.join(
+          os.tmpdir(),
+          `paging_test_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
+        );
+        initDb(tmpPath).close(); // 空の DB（pending なし）
+        let recordRequestCount = 0;
+        const rows500 = Array.from({ length: 500 }, (_, i) => ({ id: i + 1 }));
+
+        const mockDoReq = async (method, reqPath) => {
+          if (method === "POST" && reqPath.includes("/login")) {
+            return [200, { "set-cookie": ["csrf-token=test; Path=/", "session=mock; Path=/"] }, {}];
+          }
+          if (method === "GET" && reqPath.includes("/record?")) {
+            recordRequestCount++;
+            return [200, {}, { response_data: { rows: rows500, records: 1000 } }];
+          }
+          return [200, {}, {}];
+        };
+
+        try {
+          await main({
+            dryRun: true,
+            limit: 1,
+            dbPath: tmpPath,
+            _markProcessed: () => {},
+            _markError: () => {},
+            _sendLineMessage: async () => {},
+            _downloadFile: async () => Buffer.from("fake"),
+            _extractText: async () => ({ method: "pdf_text", text: "テスト" }),
+            _doReq: mockDoReq,
+          });
+        } finally {
+          try { fs.unlinkSync(tmpPath); } catch {}
+        }
+
+        assert.strictEqual(
+          recordRequestCount,
+          2,
+          `API リクエストが 2 回で終了すること（実際: ${recordRequestCount}回）`,
+        );
+      },
+    );
+
+    await testAsync(
+      "records フィールドなしの場合 rows.length でフォールバックし 1 リクエストで終了すること",
+      async () => {
+        const tmpPath = path.join(
+          os.tmpdir(),
+          `paging_test_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
+        );
+        initDb(tmpPath).close(); // 空の DB（pending なし）
+        let recordRequestCount = 0;
+        const rows10 = Array.from({ length: 10 }, (_, i) => ({ id: i + 1 }));
+
+        const mockDoReq = async (method, reqPath) => {
+          if (method === "POST" && reqPath.includes("/login")) {
+            return [200, { "set-cookie": ["csrf-token=test; Path=/", "session=mock; Path=/"] }, {}];
+          }
+          if (method === "GET" && reqPath.includes("/record?")) {
+            recordRequestCount++;
+            // records フィールドなし → rows.length でフォールバック
+            return [200, {}, { response_data: { rows: rows10 } }];
+          }
+          return [200, {}, {}];
+        };
+
+        try {
+          await main({
+            dryRun: true,
+            limit: 1,
+            dbPath: tmpPath,
+            _markProcessed: () => {},
+            _markError: () => {},
+            _sendLineMessage: async () => {},
+            _downloadFile: async () => Buffer.from("fake"),
+            _extractText: async () => ({ method: "pdf_text", text: "テスト" }),
+            _doReq: mockDoReq,
+          });
+        } finally {
+          try { fs.unlinkSync(tmpPath); } catch {}
+        }
+
+        assert.strictEqual(
+          recordRequestCount,
+          1,
+          `records フィールドなし時に API リクエストが 1 回で終了すること（実際: ${recordRequestCount}回）`,
+        );
+      },
+    );
+
+    await testAsync(
+      "records フィールドなし + rows.length === PAGE_SIZE の場合に次のページが取得されること",
+      async () => {
+        const tmpPath = path.join(
+          os.tmpdir(),
+          `paging_test_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
+        );
+        initDb(tmpPath).close(); // 空の DB（pending なし）
+        let recordRequestCount = 0;
+        const rows500 = Array.from({ length: 500 }, (_, i) => ({ id: i + 1 }));
+        const rows10 = Array.from({ length: 10 }, (_, i) => ({ id: i + 501 }));
+
+        const mockDoReq = async (method, reqPath) => {
+          if (method === "POST" && reqPath.includes("/login")) {
+            return [200, { "set-cookie": ["csrf-token=test; Path=/", "session=mock; Path=/"] }, {}];
+          }
+          if (method === "GET" && reqPath.includes("/record?")) {
+            recordRequestCount++;
+            // records フィールドなし。1ページ目は PAGE_SIZE と同数の 500 件を返す
+            const rows = recordRequestCount === 1 ? rows500 : rows10;
+            return [200, {}, { response_data: { rows } }];
+          }
+          return [200, {}, {}];
+        };
+
+        try {
+          await main({
+            dryRun: true,
+            limit: 1,
+            dbPath: tmpPath,
+            _markProcessed: () => {},
+            _markError: () => {},
+            _sendLineMessage: async () => {},
+            _downloadFile: async () => Buffer.from("fake"),
+            _extractText: async () => ({ method: "pdf_text", text: "テスト" }),
+            _doReq: mockDoReq,
+          });
+        } finally {
+          try { fs.unlinkSync(tmpPath); } catch {}
+        }
+
+        assert.strictEqual(
+          recordRequestCount,
+          2,
+          `records なし + rows.length === PAGE_SIZE 時に 2 リクエストで終了すること（実際: ${recordRequestCount}回）`,
+        );
+      },
+    );
+
     await testAsync("dryRun: true のログに [DRY-RUN] プレフィックスが出力される", async () => {
       const tmpPath = createTmpDb();
       const logMessages = [];

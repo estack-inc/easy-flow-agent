@@ -359,7 +359,13 @@ async function extractText(buf, filePath) {
   if (["jpg", "jpeg", "png", "gif"].includes(ext)) {
     try {
       const { createWorker } = require("tesseract.js");
-      const worker = await createWorker("jpn+eng", 1, { logger: () => {} });
+      // TESSDATA_PREFIX が未設定の場合は /data/workspace にフォールバック
+      const tessdataPath = process.env.TESSDATA_PREFIX || "/data/workspace";
+      const worker = await createWorker("jpn+eng", 1, {
+        logger: () => {},
+        gzip: false,         // traineddata は非圧縮形式（.traineddata）
+        dataPath: tessdataPath,
+      });
       try {
         const {
           data: { text },
@@ -555,6 +561,7 @@ async function main(options = {}) {
     const fileRecords = [];
     let start = 0;
     let totalRows = 0;
+    let totalRecords = null; // API の response_data.records から取得（全件数）
     while (true) {
       const [, , listRes] = await _doReq(
         "GET",
@@ -564,6 +571,15 @@ async function main(options = {}) {
         null,
       );
       const rows = listRes?.response_data?.rows || [];
+
+      // 初回リクエストで全件数を取得（UnitBase は count パラメータを無視して全件返す場合がある）
+      // records フィールドが存在しない場合は Infinity を使い rows.length < PAGE_SIZE のみで終了判定する
+      // （records === null/undefined のまま rows.length を使うと、rows.length === PAGE_SIZE 時に
+      //   2ページ目以降が切り捨てられるため）
+      if (totalRecords === null) {
+        totalRecords = listRes?.response_data?.records ?? Infinity;
+      }
+
       totalRows += rows.length;
 
       // ページ内でファイル付きレコードのみ抽出（allRows は持たない）
@@ -590,7 +606,10 @@ async function main(options = {}) {
         }
       }
 
-      if (rows.length < PAGE_SIZE) break;
+      // ページング終了判定：
+      // ① API が全件返した場合（totalRows >= totalRecords）
+      // ② 返却件数が PAGE_SIZE 未満の場合（通常のページング末尾）
+      if (totalRows >= totalRecords || rows.length < PAGE_SIZE) break;
       start += PAGE_SIZE;
     }
     log(`全レコード数: ${totalRows}件`);
