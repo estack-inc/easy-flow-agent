@@ -23,6 +23,7 @@ const {
   parseFilePath,
   formatText,
   MAX_RETRY_COUNT,
+  extractText,
   main,
 } = require(path.join(__dirname, "daily_process.js"));
 
@@ -904,6 +905,69 @@ function createTmpDb() {
     process.env.UNITBASE_USERNAME = origUbUser;
     process.env.UNITBASE_PASSWORD = origUbPass;
   }
+
+  // ==============================
+  // extractText: 画像 OCR テスト
+  // ==============================
+  console.log("\n--- extractText: 画像 OCR テスト ---");
+
+  await testAsync(
+    "extractText: 画像 OCR 時に langPath オプションが渡されること",
+    async () => {
+      let capturedOpts;
+      const mockCreateWorker = async (_lang, _oem, opts) => {
+        capturedOpts = opts;
+        return {
+          recognize: async () => ({ data: { text: "OCRテキスト" } }),
+          terminate: async () => {},
+        };
+      };
+      const buf = Buffer.from([0xff, 0xd8, 0xff]); // fake JPEG header
+      const result = await extractText(buf, "resume.jpg", {
+        _createWorker: mockCreateWorker,
+      });
+      assert.strictEqual(result.method, "image_ocr");
+      assert.ok(
+        capturedOpts.langPath !== undefined,
+        "langPath が指定されていること",
+      );
+    },
+  );
+
+  await testAsync(
+    "extractText: 画像 OCR 時に dataPath が使われないこと（v7 互換確認）",
+    async () => {
+      let capturedOpts;
+      const mockCreateWorker = async (_lang, _oem, opts) => {
+        capturedOpts = opts;
+        return {
+          recognize: async () => ({ data: { text: "test" } }),
+          terminate: async () => {},
+        };
+      };
+      await extractText(Buffer.from([0]), "resume.png", {
+        _createWorker: mockCreateWorker,
+      });
+      assert.strictEqual(
+        capturedOpts.dataPath,
+        undefined,
+        "dataPath は使われないこと",
+      );
+    },
+  );
+
+  await testAsync(
+    "extractText: 画像 OCR エラー時に image_ocr_failed を返すこと",
+    async () => {
+      const failingWorker = async () => {
+        throw new Error("OCR init failed");
+      };
+      const result = await extractText(Buffer.from([0]), "photo.gif", {
+        _createWorker: failingWorker,
+      });
+      assert.strictEqual(result.method, "image_ocr_failed");
+    },
+  );
 
   // ==============================
   // 結果サマリー

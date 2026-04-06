@@ -329,7 +329,8 @@ function extractExcelText(buf) {
 // ----------------------------
 // ファイル種別に応じてテキスト抽出
 // ----------------------------
-async function extractText(buf, filePath) {
+async function extractText(buf, filePath, options = {}) {
+  const { _createWorker } = options;
   const ext = filePath.split(".").pop().toLowerCase();
   if (ext === "pdf") {
     const text = await extractPdfText(buf);
@@ -358,13 +359,15 @@ async function extractText(buf, filePath) {
   }
   if (["jpg", "jpeg", "png", "gif"].includes(ext)) {
     try {
-      const { createWorker } = require("tesseract.js");
-      // TESSDATA_PREFIX が未設定の場合は /data/workspace にフォールバック
+      const { createWorker } = _createWorker
+        ? { createWorker: _createWorker }
+        : require("tesseract.js");
+      // tesseract.js v7 では langPath で traineddata ディレクトリを指定する
+      // TESSDATA_PREFIX 環境変数 → /data/workspace の順でフォールバック
       const tessdataPath = process.env.TESSDATA_PREFIX || "/data/workspace";
       const worker = await createWorker("jpn+eng", 1, {
         logger: () => {},
-        gzip: false,         // traineddata は非圧縮形式（.traineddata）
-        dataPath: tessdataPath,
+        langPath: tessdataPath,  // v7: dataPath → langPath に変更
       });
       try {
         const {
@@ -825,6 +828,7 @@ module.exports = {
   parseFilePath,
   formatText,
   MAX_RETRY_COUNT,
+  extractText,
   main,
 };
 
