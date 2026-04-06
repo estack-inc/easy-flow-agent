@@ -551,9 +551,10 @@ async function main(options = {}) {
     const cookies = baseCookies + "; " + nc;
     log("ログイン成功");
 
-    // ③ 全レコード取得（ページネーション）
-    const allRows = [];
+    // ③ 全レコード取得（ページ単位で即時抽出・メモリ節約）
+    const fileRecords = [];
     let start = 0;
+    let totalRows = 0;
     while (true) {
       const [, , listRes] = await _doReq(
         "GET",
@@ -563,36 +564,36 @@ async function main(options = {}) {
         null,
       );
       const rows = listRes?.response_data?.rows || [];
-      allRows.push(...rows);
+      totalRows += rows.length;
+
+      // ページ内でファイル付きレコードのみ抽出（allRows は持たない）
+      for (const row of rows) {
+        const recordId = row.id;
+        const resumePath = parseFilePath(row[FIELD_RESUME]);
+        const cvPath = parseFilePath(row[FIELD_CV]);
+
+        if (resumePath) {
+          fileRecords.push({
+            recordId,
+            fieldId: FIELD_RESUME,
+            filePath: resumePath,
+            name: row[FIELD_NAME] || `ID:${recordId}`,
+          });
+        }
+        if (cvPath) {
+          fileRecords.push({
+            recordId,
+            fieldId: FIELD_CV,
+            filePath: cvPath,
+            name: row[FIELD_NAME] || `ID:${recordId}`,
+          });
+        }
+      }
+
       if (rows.length < PAGE_SIZE) break;
       start += PAGE_SIZE;
     }
-    log(`全レコード数: ${allRows.length}件`);
-
-    // ファイルがあるレコードを DB に同期用データとして抽出
-    const fileRecords = [];
-    for (const row of allRows) {
-      const recordId = row.id;
-      const resumePath = parseFilePath(row[FIELD_RESUME]);
-      const cvPath = parseFilePath(row[FIELD_CV]);
-
-      if (resumePath) {
-        fileRecords.push({
-          recordId,
-          fieldId: FIELD_RESUME,
-          filePath: resumePath,
-          name: row[FIELD_NAME] || `ID:${recordId}`,
-        });
-      }
-      if (cvPath) {
-        fileRecords.push({
-          recordId,
-          fieldId: FIELD_CV,
-          filePath: cvPath,
-          name: row[FIELD_NAME] || `ID:${recordId}`,
-        });
-      }
-    }
+    log(`全レコード数: ${totalRows}件`);
     log(`ファイル付きレコード数: ${fileRecords.length}件`);
 
     // ④ DB 同期（新規→pending、差し替え→pending、リトライ対象→pending）
