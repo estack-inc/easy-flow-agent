@@ -935,7 +935,7 @@ function createTmpDb() {
   );
 
   await testAsync(
-    "extractText: 画像 OCR 時に dataPath が使われないこと（v7 互換確認）",
+    "extractText: 画像 OCR 時に dataPath が langPath と同じパスで指定されること（v7 仮想FS修正）",
     async () => {
       let capturedOpts;
       const mockCreateWorker = async (_lang, _oem, opts) => {
@@ -950,8 +950,8 @@ function createTmpDb() {
       });
       assert.strictEqual(
         capturedOpts.dataPath,
-        undefined,
-        "dataPath は使われないこと",
+        capturedOpts.langPath,
+        "dataPath は langPath と同じパスが指定されること",
       );
     },
   );
