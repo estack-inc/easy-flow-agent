@@ -363,7 +363,7 @@ async function extractText(buf, filePath) {
       const tessdataPath = process.env.TESSDATA_PREFIX || "/data/workspace";
       const worker = await createWorker("jpn+eng", 1, {
         logger: () => {},
-        gzip: false,
+        gzip: false,         // traineddata は非圧縮形式（.traineddata）
         dataPath: tessdataPath,
       });
       try {
