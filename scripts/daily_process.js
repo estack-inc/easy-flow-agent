@@ -359,12 +359,12 @@ async function extractText(buf, filePath) {
   if (["jpg", "jpeg", "png", "gif"].includes(ext)) {
     try {
       const { createWorker } = require("tesseract.js");
-      // TESSDATA_PREFIX が未設定の場合は /data/workspace にフォールバック
+      // tesseract.js v7 では langPath で traineddata ディレクトリを指定する
+      // TESSDATA_PREFIX 環境変数 → /data/workspace の順でフォールバック
       const tessdataPath = process.env.TESSDATA_PREFIX || "/data/workspace";
       const worker = await createWorker("jpn+eng", 1, {
         logger: () => {},
-        gzip: false,         // traineddata は非圧縮形式（.traineddata）
-        dataPath: tessdataPath,
+        langPath: tessdataPath,  // v7: dataPath → langPath に変更
       });
       try {
         const {
