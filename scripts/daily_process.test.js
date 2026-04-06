@@ -820,6 +820,55 @@ function createTmpDb() {
       },
     );
 
+    await testAsync(
+      "records フィールドなし + rows.length === PAGE_SIZE の場合に次のページが取得されること",
+      async () => {
+        const tmpPath = path.join(
+          os.tmpdir(),
+          `paging_test_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
+        );
+        initDb(tmpPath).close(); // 空の DB（pending なし）
+        let recordRequestCount = 0;
+        const rows500 = Array.from({ length: 500 }, (_, i) => ({ id: i + 1 }));
+        const rows10 = Array.from({ length: 10 }, (_, i) => ({ id: i + 501 }));
+
+        const mockDoReq = async (method, reqPath) => {
+          if (method === "POST" && reqPath.includes("/login")) {
+            return [200, { "set-cookie": ["csrf-token=test; Path=/", "session=mock; Path=/"] }, {}];
+          }
+          if (method === "GET" && reqPath.includes("/record?")) {
+            recordRequestCount++;
+            // records フィールドなし。1ページ目は PAGE_SIZE と同数の 500 件を返す
+            const rows = recordRequestCount === 1 ? rows500 : rows10;
+            return [200, {}, { response_data: { rows } }];
+          }
+          return [200, {}, {}];
+        };
+
+        try {
+          await main({
+            dryRun: true,
+            limit: 1,
+            dbPath: tmpPath,
+            _markProcessed: () => {},
+            _markError: () => {},
+            _sendLineMessage: async () => {},
+            _downloadFile: async () => Buffer.from("fake"),
+            _extractText: async () => ({ method: "pdf_text", text: "テスト" }),
+            _doReq: mockDoReq,
+          });
+        } finally {
+          try { fs.unlinkSync(tmpPath); } catch {}
+        }
+
+        assert.strictEqual(
+          recordRequestCount,
+          2,
+          `records なし + rows.length === PAGE_SIZE 時に 2 リクエストで終了すること（実際: ${recordRequestCount}回）`,
+        );
+      },
+    );
+
     await testAsync("dryRun: true のログに [DRY-RUN] プレフィックスが出力される", async () => {
       const tmpPath = createTmpDb();
       const logMessages = [];

@@ -573,8 +573,11 @@ async function main(options = {}) {
       const rows = listRes?.response_data?.rows || [];
 
       // 初回リクエストで全件数を取得（UnitBase は count パラメータを無視して全件返す場合がある）
+      // records フィールドが存在しない場合は Infinity を使い rows.length < PAGE_SIZE のみで終了判定する
+      // （records === null/undefined のまま rows.length を使うと、rows.length === PAGE_SIZE 時に
+      //   2ページ目以降が切り捨てられるため）
       if (totalRecords === null) {
-        totalRecords = listRes?.response_data?.records ?? rows.length;
+        totalRecords = listRes?.response_data?.records ?? Infinity;
       }
 
       totalRows += rows.length;
