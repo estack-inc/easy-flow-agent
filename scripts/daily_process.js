@@ -367,7 +367,8 @@ async function extractText(buf, filePath, options = {}) {
       const tessdataPath = process.env.TESSDATA_PREFIX || "/data/workspace";
       const worker = await createWorker("jpn+eng", 1, {
         logger: () => {},
-        langPath: tessdataPath,  // v7: dataPath → langPath に変更
+        langPath: tessdataPath,  // traineddata ファイルの読み込み元ディレクトリ
+        dataPath: tessdataPath,  // Emscripten 仮想FS への書き込み先（未指定だと ./ になりエラー）
       });
       try {
         const {
