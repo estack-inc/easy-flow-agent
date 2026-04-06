@@ -31,36 +31,44 @@ function createMockApi(pluginConfig: Record<string, unknown> = {}): MockApi {
   };
 }
 
-/** 登録済みの before_model_resolve ハンドラを取得して呼び出す */
-function callHook(api: MockApi, prompt: string) {
-  const [, handler] = api.registerHook.mock.calls[0] as [
-    string[],
-    (e: { prompt: string }, ctx: unknown) => unknown,
-  ];
-  return handler({ prompt }, {});
+type HookHandler = (
+  e: { prompt?: string } | null,
+  ctx: Record<string, unknown> | undefined,
+) => unknown;
+
+/** 登録済みの before_model_resolve ハンドラを取得 */
+function getHandler(api: MockApi): HookHandler {
+  const [, handler] = api.registerHook.mock.calls[0] as [string[], HookHandler];
+  return handler;
+}
+
+/** ハンドラを呼び出す（ctx 付き） */
+function callHook(api: MockApi, prompt: string, ctx: Record<string, unknown> = {}) {
+  return getHandler(api)({ prompt }, ctx);
+}
+
+function registerPlugin(pluginConfig: Record<string, unknown> = {}): MockApi {
+  const api = createMockApi(pluginConfig);
+  (plugin as unknown as { register: (api: unknown) => void }).register(api);
+  return api;
 }
 
 describe("model-router plugin", () => {
-  it("before_model_resolve フックを登録する", () => {
-    const api = createMockApi();
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
+  // --- 既存テスト ---
 
+  it("before_model_resolve フックを登録する", () => {
+    const api = registerPlugin();
     expect(api.registerHook).toHaveBeenCalledWith(["before_model_resolve"], expect.any(Function));
   });
 
   it("登録後に info ログを出力する", () => {
-    const api = createMockApi();
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
-
+    const api = registerPlugin();
     expect(api.logger.info).toHaveBeenCalledWith("[model-router] plugin registered");
   });
 
   it("軽量タスク → { modelOverride, providerOverride } を返す", () => {
-    const api = createMockApi();
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
-
+    const api = registerPlugin();
     const result = callHook(api, "おはよう");
-
     expect(result).toEqual({
       modelOverride: "claude-haiku-4-5",
       providerOverride: "anthropic",
@@ -68,77 +76,127 @@ describe("model-router plugin", () => {
   });
 
   it("複雑タスク → void（デフォルトモデル維持）", () => {
-    const api = createMockApi();
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
-
+    const api = registerPlugin();
     const result = callHook(api, "このコードをレビューして");
-
     expect(result).toBeUndefined();
   });
 
-  it("logging: true のとき軽量ルーティングで info ログを出力する", () => {
-    const api = createMockApi({ logging: true });
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
+  it("logging: true のとき軽量ルーティングで reason 付き info ログを出力する", () => {
+    const api = registerPlugin({ logging: true });
     callHook(api, "おはよう");
-
-    expect(api.logger.info).toHaveBeenCalledWith(
-      expect.stringContaining("anthropic/claude-haiku-4-5"),
-    );
+    expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("reason: light_match"));
   });
 
   it("logging: false のとき軽量ルーティングで info ログを出力しない", () => {
-    const api = createMockApi({ logging: false });
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
-
-    // info は "plugin registered" のみ呼ばれる
+    const api = registerPlugin({ logging: false });
     const infoCallsBefore = api.logger.info.mock.calls.length;
     callHook(api, "おはよう");
-
     expect(api.logger.info.mock.calls.length).toBe(infoCallsBefore);
   });
 
   it("pluginConfig.patterns でデフォルト設定を上書きできる", () => {
-    const api = createMockApi({
-      patterns: {
-        preferLight: ["hello"],
-        forceDefault: [],
-      },
+    const api = registerPlugin({
+      patterns: { preferLight: ["hello"], forceDefault: [] },
     });
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
 
-    // カスタム preferLight にマッチ → light
     const lightResult = callHook(api, "hello");
     expect(lightResult).toEqual({
       modelOverride: "claude-haiku-4-5",
       providerOverride: "anthropic",
     });
 
-    // デフォルトの preferLight（おはよう）はオーバーライドされているのでマッチしない → void
-    const api2 = createMockApi({
-      patterns: {
-        preferLight: ["hello"],
-        forceDefault: [],
-      },
+    const api2 = registerPlugin({
+      patterns: { preferLight: ["hello"], forceDefault: [] },
     });
-    (plugin as unknown as { register: (api: unknown) => void }).register(api2);
     const defaultResult = callHook(api2, "おはよう");
     expect(defaultResult).toBeUndefined();
   });
 
   it("ハンドラ内で例外が発生しても void を返す（デフォルトモデル維持）", () => {
-    const api = createMockApi();
-    (plugin as unknown as { register: (api: unknown) => void }).register(api);
-
-    // ハンドラに null を渡して event.prompt アクセスで例外を発生させる
-    const [, handler] = api.registerHook.mock.calls[0] as [
-      string[],
-      (e: unknown, ctx: unknown) => unknown,
-    ];
+    const api = registerPlugin();
+    const handler = getHandler(api);
     const result = handler(null, {});
-
     expect(result).toBeUndefined();
     expect(api.logger.warn).toHaveBeenCalledWith(
       expect.stringContaining("[model-router] classify error:"),
     );
+  });
+
+  // --- Phase 1.5: セッションコンテキスト統合テスト ---
+
+  it("Sticky Default: 複雑タスク後の軽量メッセージが default 維持", () => {
+    const api = registerPlugin();
+    const ctx = { sessionKey: "line:user1" };
+
+    // ターン 1: 複雑タスク
+    const r1 = callHook(api, "このコードをレビューして", ctx);
+    expect(r1).toBeUndefined(); // default
+
+    // ターン 2: 軽量メッセージ → sticky で default 維持
+    const r2 = callHook(api, "おはよう", ctx);
+    expect(r2).toBeUndefined(); // sticky_default
+  });
+
+  it("Sticky Default: sticky_default は伝播せず自然解除される", () => {
+    const api = registerPlugin({ stickyWindowSize: 2 });
+    const ctx = { sessionKey: "line:user1" };
+
+    // ターン 1: 複雑タスク → force_default
+    callHook(api, "コードをレビューして", ctx);
+    // ターン 2: sticky → sticky_default（window=[force_default] → sticky 発動）
+    callHook(api, "はい", ctx);
+    // ターン 3: window=[force_default, sticky_default] → force_default が window 内 → まだ sticky
+    callHook(api, "了解", ctx);
+    // ターン 4: window=[sticky_default, sticky_default] → force_default が window 外 → sticky 解除
+    const r4 = callHook(api, "おはよう", ctx);
+    expect(r4).toEqual({
+      modelOverride: "claude-haiku-4-5",
+      providerOverride: "anthropic",
+    });
+  });
+
+  it("異なる sessionKey は独立したセッションとして扱われる", () => {
+    const api = registerPlugin();
+
+    // セッション A: 複雑タスク
+    callHook(api, "コードをレビューして", { sessionKey: "line:userA" });
+
+    // セッション B: 軽量メッセージ → sticky の影響を受けない
+    const result = callHook(api, "おはよう", { sessionKey: "slack:C123" });
+    expect(result).toEqual({
+      modelOverride: "claude-haiku-4-5",
+      providerOverride: "anthropic",
+    });
+  });
+
+  it("enableSessionContext: false → Sticky Guard 無効（Phase 1 互換）", () => {
+    const api = registerPlugin({ enableSessionContext: false });
+    const ctx = { sessionKey: "line:user1" };
+
+    // 複雑タスク
+    callHook(api, "コードをレビューして", ctx);
+
+    // Sticky Guard 無効なので、直後の軽量メッセージは light に
+    const result = callHook(api, "おはよう", ctx);
+    expect(result).toEqual({
+      modelOverride: "claude-haiku-4-5",
+      providerOverride: "anthropic",
+    });
+  });
+
+  it("ctx が undefined でもエラーにならない", () => {
+    const api = registerPlugin();
+    const handler = getHandler(api);
+    const result = handler({ prompt: "おはよう" }, undefined);
+    expect(result).toEqual({
+      modelOverride: "claude-haiku-4-5",
+      providerOverride: "anthropic",
+    });
+  });
+
+  it("初回フック呼び出し時に ctx shape をログ出力する", () => {
+    const api = registerPlugin({ logging: true });
+    callHook(api, "おはよう", { sessionKey: "line:user1", runId: "r1" });
+    expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("ctx shape:"));
   });
 });

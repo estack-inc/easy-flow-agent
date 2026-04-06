@@ -9,6 +9,14 @@ export type ModelRouterConfig = {
     preferLight?: string[];
   };
   logging?: boolean;
+  /** セッションコンテキストによる Sticky Default Guard の有効/無効 */
+  enableSessionContext?: boolean;
+  /** Sticky Default Guard が参照する直近ターン数 */
+  stickyWindowSize?: number;
+  /** セッション TTL（ミリ秒）。超過したセッションは自動削除 */
+  sessionTtlMs?: number;
+  /** インメモリに保持する最大セッション数 */
+  maxSessions?: number;
 };
 
 export const DEFAULT_CONFIG: Required<ModelRouterConfig> = {
@@ -56,4 +64,8 @@ export const DEFAULT_CONFIG: Required<ModelRouterConfig> = {
     ],
   },
   logging: true,
+  enableSessionContext: true,
+  stickyWindowSize: 3,
+  sessionTtlMs: 30 * 60 * 1000, // 30 分
+  maxSessions: 1000,
 };
