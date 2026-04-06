@@ -359,8 +359,8 @@ async function extractText(buf, filePath) {
   if (["jpg", "jpeg", "png", "gif"].includes(ext)) {
     try {
       const { createWorker } = require("tesseract.js");
-      // TESSDATA_PREFIX が未設定の場合はスクリプトのディレクトリを使用
-      const tessdataPath = process.env.TESSDATA_PREFIX || path.dirname(process.env.DAILY_PROCESS_LOG_PATH || __filename);
+      // TESSDATA_PREFIX が未設定の場合は /data/workspace にフォールバック
+      const tessdataPath = process.env.TESSDATA_PREFIX || "/data/workspace";
       const worker = await createWorker("jpn+eng", 1, {
         logger: () => {},
         gzip: false,
