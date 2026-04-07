@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-// definePluginEntry は引数をそのまま返すモック（テスト環境では openclaw 未インストール）
-vi.mock("openclaw/plugin-sdk/plugin-entry", () => ({
-  definePluginEntry: (entry: { register: (api: unknown) => void }) => entry,
-}));
-
-import plugin from "./index.js";
+import register from "./index.js";
 
 type MockApi = {
   pluginConfig: Record<string, unknown>;
@@ -36,20 +31,18 @@ type HookHandler = (
   ctx: Record<string, unknown> | undefined,
 ) => unknown;
 
-/** 登録済みの before_model_resolve ハンドラを取得 */
 function getHandler(api: MockApi): HookHandler {
   const [, handler] = api.registerHook.mock.calls[0] as [string[], HookHandler];
   return handler;
 }
 
-/** ハンドラを呼び出す（ctx 付き） */
 function callHook(api: MockApi, prompt: string, ctx: Record<string, unknown> = {}) {
   return getHandler(api)({ prompt }, ctx);
 }
 
 function registerPlugin(pluginConfig: Record<string, unknown> = {}): MockApi {
   const api = createMockApi(pluginConfig);
-  (plugin as unknown as { register: (api: unknown) => void }).register(api);
+  register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
   return api;
 }
 
@@ -75,7 +68,7 @@ describe("model-router plugin", () => {
     });
   });
 
-  it("複雑タスク → void（デフォルトモデル維持）", () => {
+  it("複雑タスク → void(デフォルトモデル維持)", () => {
     const api = registerPlugin();
     const result = callHook(api, "このコードをレビューして");
     expect(result).toBeUndefined();
@@ -98,7 +91,6 @@ describe("model-router plugin", () => {
     const api = registerPlugin({
       patterns: { preferLight: ["hello"], forceDefault: [] },
     });
-
     const lightResult = callHook(api, "hello");
     expect(lightResult).toEqual({
       modelOverride: "claude-haiku-4-5",
@@ -112,7 +104,7 @@ describe("model-router plugin", () => {
     expect(defaultResult).toBeUndefined();
   });
 
-  it("ハンドラ内で例外が発生しても void を返す（デフォルトモデル維持）", () => {
+  it("ハンドラ内で例外が発生しても void を返す(デフォルトモデル維持)", () => {
     const api = registerPlugin();
     const handler = getHandler(api);
     const result = handler(null, {});
@@ -128,26 +120,20 @@ describe("model-router plugin", () => {
     const api = registerPlugin();
     const ctx = { sessionKey: "line:user1" };
 
-    // ターン 1: 複雑タスク
     const r1 = callHook(api, "このコードをレビューして", ctx);
-    expect(r1).toBeUndefined(); // default
+    expect(r1).toBeUndefined();
 
-    // ターン 2: 軽量メッセージ → sticky で default 維持
     const r2 = callHook(api, "おはよう", ctx);
-    expect(r2).toBeUndefined(); // sticky_default
+    expect(r2).toBeUndefined();
   });
 
   it("Sticky Default: sticky_default は伝播せず自然解除される", () => {
     const api = registerPlugin({ stickyWindowSize: 2 });
     const ctx = { sessionKey: "line:user1" };
 
-    // ターン 1: 複雑タスク → force_default
     callHook(api, "コードをレビューして", ctx);
-    // ターン 2: sticky → sticky_default（window=[force_default] → sticky 発動）
     callHook(api, "はい", ctx);
-    // ターン 3: window=[force_default, sticky_default] → force_default が window 内 → まだ sticky
     callHook(api, "了解", ctx);
-    // ターン 4: window=[sticky_default, sticky_default] → force_default が window 外 → sticky 解除
     const r4 = callHook(api, "おはよう", ctx);
     expect(r4).toEqual({
       modelOverride: "claude-haiku-4-5",
@@ -158,10 +144,8 @@ describe("model-router plugin", () => {
   it("異なる sessionKey は独立したセッションとして扱われる", () => {
     const api = registerPlugin();
 
-    // セッション A: 複雑タスク
     callHook(api, "コードをレビューして", { sessionKey: "line:userA" });
 
-    // セッション B: 軽量メッセージ → sticky の影響を受けない
     const result = callHook(api, "おはよう", { sessionKey: "slack:C123" });
     expect(result).toEqual({
       modelOverride: "claude-haiku-4-5",
@@ -169,14 +153,12 @@ describe("model-router plugin", () => {
     });
   });
 
-  it("enableSessionContext: false → Sticky Guard 無効（Phase 1 互換）", () => {
+  it("enableSessionContext: false → Sticky Guard 無効(Phase 1 互換)", () => {
     const api = registerPlugin({ enableSessionContext: false });
     const ctx = { sessionKey: "line:user1" };
 
-    // 複雑タスク
     callHook(api, "コードをレビューして", ctx);
 
-    // Sticky Guard 無効なので、直後の軽量メッセージは light に
     const result = callHook(api, "おはよう", ctx);
     expect(result).toEqual({
       modelOverride: "claude-haiku-4-5",

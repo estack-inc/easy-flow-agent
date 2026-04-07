@@ -197,4 +197,11 @@ describe("shouldStickyDefault", () => {
     const ctx = session("force_default", "sticky_default", "light_match");
     expect(shouldStickyDefault(ctx, 2)).toBe(false);
   });
+
+  it("「〜を確認して」はパターン未一致で default（複雑タスク）", () => {
+    expect(classifyMessage("このPRを確認して", DEFAULT_CONFIG)).toEqual({
+      result: "default",
+      reason: "unmatched",
+    });
+  });
 });
