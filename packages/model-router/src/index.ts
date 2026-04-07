@@ -37,13 +37,13 @@ export default function register(api: OpenClawPluginApi): void {
       const prompt = (event as { prompt?: string }).prompt ?? "";
       const sessionKey = resolveSessionKey(ctxObj);
 
-      // セッションコンテキスト取得
-      const sessionContext = sessionStore ? sessionStore.get(sessionKey) : undefined;
+      // セッションコンテキスト取得（sessionKey 不明時はセッション追跡をスキップ）
+      const sessionContext = sessionStore && sessionKey ? sessionStore.get(sessionKey) : undefined;
 
       const detail = classifyMessage(prompt, cfg, sessionContext);
 
-      // 分類結果を記録
-      if (sessionStore) {
+      // 分類結果を記録（sessionKey 不明時は記録しない = セッション汚染防止）
+      if (sessionStore && sessionKey) {
         sessionStore.record(sessionKey, detail);
       }
 
@@ -76,10 +76,14 @@ export default function register(api: OpenClawPluginApi): void {
   api.logger.info("[model-router] plugin registered");
 }
 
-/** ctx からセッション識別キーを取得。未定義時は "unknown" にフォールバック */
-function resolveSessionKey(ctx: Record<string, unknown> | undefined): string {
-  if (!ctx) return "unknown";
+/**
+ * ctx からセッション識別キーを取得。
+ * キーが不明な場合は null を返し、呼び出し側でセッション追跡をスキップする。
+ * （null フォールバックがないと、異なるユーザー・会話の履歴が混在しセッション汚染を引き起こす）
+ */
+function resolveSessionKey(ctx: Record<string, unknown> | undefined): string | null {
+  if (!ctx) return null;
   if (typeof ctx.sessionKey === "string" && ctx.sessionKey) return ctx.sessionKey;
   if (typeof ctx.sessionId === "string" && ctx.sessionId) return ctx.sessionId;
-  return "unknown";
+  return null;
 }

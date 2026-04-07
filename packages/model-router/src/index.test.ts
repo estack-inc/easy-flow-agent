@@ -181,4 +181,20 @@ describe("model-router plugin", () => {
     callHook(api, "おはよう", { sessionKey: "line:user1", runId: "r1" });
     expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("ctx shape:"));
   });
+
+  it("sessionKey 不明時はセッション追跡をスキップする(セッション汚染防止)", () => {
+    const api = registerPlugin();
+
+    // ユーザー A 相当: ctx に sessionKey なし → 追跡されない
+    const r1 = callHook(api, "コードをレビューして", {});
+    expect(r1).toBeUndefined(); // force_default
+
+    // ユーザー B 相当: ctx に sessionKey なし → 前の force_default は記録されていない
+    // → Sticky Guard が発動せず、preferLight が通常通り light を返す
+    const r2 = callHook(api, "おはよう", {});
+    expect(r2).toEqual({
+      modelOverride: "claude-haiku-4-5",
+      providerOverride: "anthropic",
+    });
+  });
 });
