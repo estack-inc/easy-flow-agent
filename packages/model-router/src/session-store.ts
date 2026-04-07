@@ -1,13 +1,7 @@
-import type { ClassificationDetail, ClassificationReason } from "./classifier.js";
+import type { ClassificationDetail, SessionContext, TurnRecord } from "./types.js";
 
-export type TurnRecord = {
-  reason: ClassificationReason;
-  timestamp: number;
-};
-
-export type SessionContext = {
-  recentTurns: TurnRecord[];
-};
+// 後方互換: 型を re-export（既存の import { SessionContext } from "./session-store.js" を維持）
+export type { SessionContext, TurnRecord };
 
 type StoreEntry = {
   recentTurns: TurnRecord[];

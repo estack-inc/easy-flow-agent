@@ -1,19 +1,13 @@
 import type { ModelRouterConfig } from "./config.js";
-import type { SessionContext } from "./session-store.js";
+import type {
+  ClassificationDetail,
+  ClassificationReason,
+  ClassificationResult,
+  SessionContext,
+} from "./types.js";
 
-export type ClassificationResult = "light" | "default";
-
-export type ClassificationReason =
-  | "force_default"
-  | "token_exceeded"
-  | "sticky_default"
-  | "light_match"
-  | "unmatched";
-
-export type ClassificationDetail = {
-  result: ClassificationResult;
-  reason: ClassificationReason;
-};
+// 後方互換: 型を re-export（既存の import { ClassificationDetail } from "./classifier.js" を維持）
+export type { ClassificationDetail, ClassificationReason, ClassificationResult };
 
 /**
  * ユーザープロンプトを分類し、軽量モデルで処理可能かを判定する。
@@ -66,6 +60,8 @@ function matchesForceDefault(prompt: string, config: Required<ModelRouterConfig>
  * sticky_default 自体は伝播しない（無限ループ防止）。
  */
 export function shouldStickyDefault(ctx: SessionContext, windowSize: number): boolean {
+  // windowSize <= 0 は Sticky Guard 無効化（slice(-0) が全配列を返す JS の罠を回避）
+  if (windowSize <= 0) return false;
   const window = ctx.recentTurns.slice(-windowSize);
   return window.some((t) => t.reason === "force_default" || t.reason === "token_exceeded");
 }

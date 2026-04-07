@@ -198,6 +198,16 @@ describe("shouldStickyDefault", () => {
     expect(shouldStickyDefault(ctx, 2)).toBe(false);
   });
 
+  it("windowSize=0 → false（Sticky Guard 無効化、slice(-0) の罠を回避）", () => {
+    const ctx = session("force_default", "force_default");
+    expect(shouldStickyDefault(ctx, 0)).toBe(false);
+  });
+
+  it("windowSize=-1 → false（負数も無効化）", () => {
+    const ctx = session("force_default");
+    expect(shouldStickyDefault(ctx, -1)).toBe(false);
+  });
+
   it("「〜を確認して」はパターン未一致で default（複雑タスク）", () => {
     expect(classifyMessage("このPRを確認して", DEFAULT_CONFIG)).toEqual({
       result: "default",
