@@ -44,7 +44,9 @@ const fileServePlugin = {
     });
 
     // 2. before_tool_call フック
-    api.registerHook("before_tool_call", createBeforeToolCallHook(config, api.logger));
+    const beforeToolCallHook = createBeforeToolCallHook(config, api.logger);
+    Object.defineProperty(beforeToolCallHook, "name", { value: "file-serve:before_tool_call" });
+    api.registerHook("before_tool_call", beforeToolCallHook);
 
     // 3. クリーンアップサービス
     api.registerService(createCleanupService(config, api.logger));
