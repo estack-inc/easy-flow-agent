@@ -87,7 +87,7 @@ describe("pinecone-memory plugin", () => {
     expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("agentId: default"));
   });
 
-  it("uses custom indexName and logs mode: classic", () => {
+  it("uses custom indexName, compactAfterDays, and logs mode: classic", () => {
     const api = createMockApi({
       apiKey: "test-key",
       agentId: "mell",
@@ -98,6 +98,7 @@ describe("pinecone-memory plugin", () => {
 
     expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("index: custom-index"));
     expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("mode: classic"));
+    expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("compactAfterDays: 14"));
   });
 
   it("passes memoryHint and minQueryTokens to PineconeContextEngine", () => {

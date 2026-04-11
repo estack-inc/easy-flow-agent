@@ -237,6 +237,7 @@ export class PineconeContextEngine implements ContextEngine {
       // 2. 検索クエリを生成
       const baseQuery = buildQueryFromRecentTurns(params.messages);
       const queryTokens = baseQuery ? estimateTokens(baseQuery) : 0;
+      const totalBudget = params.tokenBudget ?? this.ragTokenBudget;
 
       if (!baseQuery) {
         // クエリなし → AGENTS-CORE.md のみ返却
@@ -246,7 +247,7 @@ export class PineconeContextEngine implements ContextEngine {
             `[pinecone-context-engine] mode=rag query_tokens=0 ns=agent:${this.agentId} topK=0 results=0 latency=${Date.now() - startTime}ms`,
           );
           console.info(
-            `[pinecone-context-engine] merged: core_tokens=${coreTokens} dynamic_tokens=0 total=${coreTokens} budget=${this.ragTokenBudget}`,
+            `[pinecone-context-engine] merged: core_tokens=${coreTokens} dynamic_tokens=0 total=${coreTokens} budget=${totalBudget}`,
           );
           return {
             messages: params.messages,
@@ -299,7 +300,7 @@ export class PineconeContextEngine implements ContextEngine {
         if (agentsCoreText) {
           const coreTokens = estimateTokens(agentsCoreText);
           console.info(
-            `[pinecone-context-engine] merged: core_tokens=${coreTokens} dynamic_tokens=0 total=${coreTokens} budget=${this.ragTokenBudget}`,
+            `[pinecone-context-engine] merged: core_tokens=${coreTokens} dynamic_tokens=0 total=${coreTokens} budget=${totalBudget}`,
           );
           return {
             messages: params.messages,
@@ -336,8 +337,7 @@ export class PineconeContextEngine implements ContextEngine {
       );
 
       // 5. トークン予算内でマージ
-      // params.tokenBudget は総トークン上限。AGENTS-CORE.md 分を差し引いて動的チャンク予算を算出
-      const totalBudget = params.tokenBudget ?? this.ragTokenBudget;
+      // totalBudget は総トークン上限。AGENTS-CORE.md 分を差し引いて動的チャンク予算を算出
       const coreTokensEstimate = agentsCoreText ? estimateTokens(agentsCoreText) : 0;
       const dynamicBudget = Math.max(0, totalBudget - coreTokensEstimate);
       const { markdown, coreTokens, dynamicTokens } = buildRagSystemPromptAddition(

@@ -64,6 +64,6 @@ export default function register(api: OpenClawPluginApi): void {
 
   const mode = ragEnabled ? "rag" : "classic";
   api.logger.info(
-    `pinecone-memory: registered (agentId: ${agentId}, index: ${indexName}, mode: ${mode})`,
+    `pinecone-memory: registered (agentId: ${agentId}, index: ${indexName}, mode: ${mode}, compactAfterDays: ${compactAfterDays})`,
   );
 }

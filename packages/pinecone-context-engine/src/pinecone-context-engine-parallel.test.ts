@@ -185,4 +185,41 @@ describe("PineconeContextEngineParallel", () => {
       expect(result.compacted).toBe(false);
     });
   });
+
+  describe("ragEnabled warning", () => {
+    it("warns when ragEnabled=true is passed", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      new PineconeContextEngineParallel({
+        pineconeClient: mockPineconeClient,
+        agentId: "test-agent",
+        ragEnabled: true,
+      });
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("ragEnabled=true は Parallel 実装では未サポート"),
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it("does not warn when ragEnabled is false or omitted", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      new PineconeContextEngineParallel({
+        pineconeClient: mockPineconeClient,
+        agentId: "test-agent",
+        ragEnabled: false,
+      });
+
+      new PineconeContextEngineParallel({
+        pineconeClient: mockPineconeClient,
+        agentId: "test-agent",
+      });
+
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+  });
 });
