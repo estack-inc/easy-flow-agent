@@ -29,6 +29,12 @@ function parsePositiveInt(value: string | undefined): number | undefined {
   return rounded >= 1 ? rounded : undefined;
 }
 
+function parseScoreFloat(value: string | undefined): number | undefined {
+  const n = parseFiniteNumber(value);
+  if (n === undefined) return undefined;
+  return n >= 0 && n <= 1 ? n : undefined;
+}
+
 export default function register(api: OpenClawPluginApi): void {
   const cfg = (api.pluginConfig ?? {}) as PluginConfig;
 
@@ -44,8 +50,8 @@ export default function register(api: OpenClawPluginApi): void {
 
   const ragEnabled = cfg.ragEnabled ?? process.env.RAG_ENABLED === "true";
   const agentsCorePath = cfg.agentsCorePath ?? process.env.RAG_AGENTS_CORE_PATH;
-  const ragTokenBudget = cfg.ragTokenBudget ?? parseFiniteNumber(process.env.RAG_TOKEN_BUDGET);
-  const ragMinScore = cfg.ragMinScore ?? parseFiniteNumber(process.env.RAG_MIN_SCORE);
+  const ragTokenBudget = cfg.ragTokenBudget ?? parsePositiveInt(process.env.RAG_TOKEN_BUDGET);
+  const ragMinScore = cfg.ragMinScore ?? parseScoreFloat(process.env.RAG_MIN_SCORE);
   const ragTopK = cfg.ragTopK ?? parsePositiveInt(process.env.RAG_TOP_K);
 
   api.registerContextEngine("pinecone-memory", () => {

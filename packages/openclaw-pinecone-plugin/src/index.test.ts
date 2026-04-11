@@ -240,6 +240,56 @@ describe("pinecone-memory plugin", () => {
     }
   });
 
+  it("rejects negative and out-of-range RAG_MIN_SCORE env var values", () => {
+    const originalScore = process.env.RAG_MIN_SCORE;
+
+    for (const val of ["-0.5", "1.5"]) {
+      process.env.RAG_MIN_SCORE = val;
+      vi.mocked(PineconeContextEngine).mockClear();
+
+      const api = createMockApi({ apiKey: "test-key", agentId: "mell" });
+      register(api as any);
+
+      const factory = api.registerContextEngine.mock.calls[0][1];
+      factory();
+
+      expect(PineconeContextEngine).toHaveBeenCalledWith(
+        expect.objectContaining({ ragMinScore: undefined }),
+      );
+    }
+
+    if (originalScore === undefined) {
+      delete process.env.RAG_MIN_SCORE;
+    } else {
+      process.env.RAG_MIN_SCORE = originalScore;
+    }
+  });
+
+  it("rejects zero and negative RAG_TOKEN_BUDGET env var values", () => {
+    const originalBudget = process.env.RAG_TOKEN_BUDGET;
+
+    for (const val of ["0", "-100"]) {
+      process.env.RAG_TOKEN_BUDGET = val;
+      vi.mocked(PineconeContextEngine).mockClear();
+
+      const api = createMockApi({ apiKey: "test-key", agentId: "mell" });
+      register(api as any);
+
+      const factory = api.registerContextEngine.mock.calls[0][1];
+      factory();
+
+      expect(PineconeContextEngine).toHaveBeenCalledWith(
+        expect.objectContaining({ ragTokenBudget: undefined }),
+      );
+    }
+
+    if (originalBudget === undefined) {
+      delete process.env.RAG_TOKEN_BUDGET;
+    } else {
+      process.env.RAG_TOKEN_BUDGET = originalBudget;
+    }
+  });
+
   it("logs mode: rag when ragEnabled is true via pluginConfig", () => {
     const api = createMockApi({ apiKey: "test-key", agentId: "mell", ragEnabled: true });
     register(api as any);
