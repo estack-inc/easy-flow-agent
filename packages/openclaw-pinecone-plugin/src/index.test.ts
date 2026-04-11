@@ -149,4 +149,32 @@ describe("pinecone-memory plugin", () => {
     );
     expect(engine).toBeDefined();
   });
+
+  it("ignores NaN from invalid env var values and falls back to undefined", () => {
+    const originalBudget = process.env.RAG_TOKEN_BUDGET;
+    const originalScore = process.env.RAG_MIN_SCORE;
+    const originalTopK = process.env.RAG_TOP_K;
+
+    process.env.RAG_TOKEN_BUDGET = "abc";
+    process.env.RAG_MIN_SCORE = "not-a-number";
+    process.env.RAG_TOP_K = "";
+
+    const api = createMockApi({ apiKey: "test-key", agentId: "mell" });
+    register(api as any);
+
+    const factory = api.registerContextEngine.mock.calls[0][1];
+    factory();
+
+    expect(PineconeContextEngine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ragTokenBudget: undefined,
+        ragMinScore: undefined,
+        ragTopK: undefined,
+      }),
+    );
+
+    process.env.RAG_TOKEN_BUDGET = originalBudget;
+    process.env.RAG_MIN_SCORE = originalScore;
+    process.env.RAG_TOP_K = originalTopK;
+  });
 });

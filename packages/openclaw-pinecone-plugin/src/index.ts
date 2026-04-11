@@ -16,6 +16,12 @@ type PluginConfig = {
   ragTopK?: number;
 };
 
+function parseFiniteNumber(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 export default function register(api: OpenClawPluginApi): void {
   const cfg = (api.pluginConfig ?? {}) as PluginConfig;
 
@@ -31,13 +37,9 @@ export default function register(api: OpenClawPluginApi): void {
 
   const ragEnabled = cfg.ragEnabled ?? process.env.RAG_ENABLED === "true";
   const agentsCorePath = cfg.agentsCorePath ?? process.env.RAG_AGENTS_CORE_PATH;
-  const ragTokenBudget =
-    cfg.ragTokenBudget ??
-    (process.env.RAG_TOKEN_BUDGET ? Number(process.env.RAG_TOKEN_BUDGET) : undefined);
-  const ragMinScore =
-    cfg.ragMinScore ?? (process.env.RAG_MIN_SCORE ? Number(process.env.RAG_MIN_SCORE) : undefined);
-  const ragTopK =
-    cfg.ragTopK ?? (process.env.RAG_TOP_K ? Number(process.env.RAG_TOP_K) : undefined);
+  const ragTokenBudget = cfg.ragTokenBudget ?? parseFiniteNumber(process.env.RAG_TOKEN_BUDGET);
+  const ragMinScore = cfg.ragMinScore ?? parseFiniteNumber(process.env.RAG_MIN_SCORE);
+  const ragTopK = cfg.ragTopK ?? parseFiniteNumber(process.env.RAG_TOP_K);
 
   api.registerContextEngine("pinecone-memory", () => {
     const client = new PineconeClient({ apiKey, indexName });

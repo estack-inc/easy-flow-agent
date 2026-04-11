@@ -186,19 +186,22 @@ describe("PineconeContextEngine - RAG mode", () => {
   describe("トークン予算", () => {
     it("トークン予算超過時に低スコアチャンクが除外される", async () => {
       const client = createMockClient();
-      const longText = "A".repeat(8000); // ~2000 ASCII tokens → 予算いっぱい
+      const longText = "A".repeat(8000); // ~2000 ASCII tokens
+      const overflowText = "B".repeat(400); // ~100 tokens → 残り予算を超過
       const results: QueryResult[] = [
         makeQueryResult(longText, 0.95, "agents_rule"),
-        makeQueryResult("Should be excluded due to budget", 0.8, "memory_file"),
+        makeQueryResult(overflowText, 0.8, "memory_file"),
       ];
       client.query.mockResolvedValue(results);
 
+      // ragTokenBudget は総予算（core + dynamic）
+      // AGENTS-CORE.md ~10 tokens → 動的予算 ~2040 → longText (2000) は入る → overflowText (100) は超過
       const engine = new PineconeContextEngine({
         pineconeClient: client,
         agentId: "test-agent",
         ragEnabled: true,
         agentsCorePath,
-        ragTokenBudget: 2000,
+        ragTokenBudget: 2050,
       });
 
       const result = await engine.assemble({
@@ -207,7 +210,8 @@ describe("PineconeContextEngine - RAG mode", () => {
       });
 
       expect(result.systemPromptAddition).toContain("AGENTS-CORE");
-      expect(result.systemPromptAddition).not.toContain("Should be excluded due to budget");
+      expect(result.systemPromptAddition).toContain(longText);
+      expect(result.systemPromptAddition).not.toContain(overflowText);
     });
 
     it("ragTokenBudget パラメータで予算を制御可能", async () => {

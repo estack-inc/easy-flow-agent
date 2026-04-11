@@ -333,7 +333,10 @@ export class PineconeContextEngine implements ContextEngine {
     );
 
     // 5. トークン予算内でマージ
-    const dynamicBudget = params.tokenBudget ?? this.ragTokenBudget;
+    // params.tokenBudget は総トークン上限。AGENTS-CORE.md 分を差し引いて動的チャンク予算を算出
+    const totalBudget = params.tokenBudget ?? this.ragTokenBudget;
+    const coreTokensEstimate = agentsCoreText ? estimateTokens(agentsCoreText) : 0;
+    const dynamicBudget = Math.max(0, totalBudget - coreTokensEstimate);
     const { markdown, coreTokens, dynamicTokens } = buildRagSystemPromptAddition(
       agentsCoreText,
       ranked,
@@ -342,7 +345,7 @@ export class PineconeContextEngine implements ContextEngine {
     const totalTokens = coreTokens + dynamicTokens;
 
     console.info(
-      `[pinecone-context-engine] merged: core_tokens=${coreTokens} dynamic_tokens=${dynamicTokens} total=${totalTokens} budget=${dynamicBudget}`,
+      `[pinecone-context-engine] merged: core_tokens=${coreTokens} dynamic_tokens=${dynamicTokens} total=${totalTokens} budget=${totalBudget}`,
     );
 
     return {
