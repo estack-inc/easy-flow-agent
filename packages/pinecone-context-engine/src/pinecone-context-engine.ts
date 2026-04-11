@@ -11,21 +11,28 @@ import type {
   IngestResult,
 } from "openclaw/plugin-sdk";
 import { EmptyFallbackContextEngine, FallbackContextEngine } from "./fallback-adapter.js";
+import { rerankChunks } from "./reranker.js";
 import {
   ASSEMBLE_TIMEOUT_MS,
   buildEnrichedQuery,
   buildQueryFromRecentTurns,
+  buildRagSystemPromptAddition,
   buildSystemPromptAddition,
   DEFAULT_COMPACT_AFTER_DAYS,
   DEFAULT_INGEST_ROLES,
   DEFAULT_MIN_QUERY_TOKENS,
   DEFAULT_MIN_SCORE,
+  DEFAULT_RAG_MIN_SCORE,
+  DEFAULT_RAG_TOKEN_BUDGET,
+  DEFAULT_RAG_TOP_K,
   DEFAULT_SKIP_PATTERNS,
   DEFAULT_TOKEN_BUDGET,
   DEFAULT_TOP_K,
+  readAgentsCore,
   readOldTurns,
   withRetry,
 } from "./shared.js";
+import { estimateTokens } from "./token-estimator.js";
 import type { PineconeContextEngineParams } from "./types.js";
 
 // Re-export for backward compatibility
@@ -49,6 +56,11 @@ export class PineconeContextEngine implements ContextEngine {
   private readonly defaultCategory: string;
   private readonly memoryHint?: string;
   private readonly minQueryTokens: number;
+  private readonly ragEnabled: boolean;
+  private readonly agentsCorePath?: string;
+  private readonly ragTokenBudget: number;
+  private readonly ragMinScore: number;
+  private readonly ragTopK: number;
 
   constructor(params: PineconeContextEngineParams) {
     this.client = params.pineconeClient;
@@ -64,6 +76,11 @@ export class PineconeContextEngine implements ContextEngine {
     this.defaultCategory = params.defaultCategory ?? "conversation";
     this.memoryHint = params.memoryHint;
     this.minQueryTokens = params.minQueryTokens ?? DEFAULT_MIN_QUERY_TOKENS;
+    this.ragEnabled = params.ragEnabled ?? false;
+    this.agentsCorePath = params.agentsCorePath;
+    this.ragTokenBudget = params.ragTokenBudget ?? DEFAULT_RAG_TOKEN_BUDGET;
+    this.ragMinScore = params.ragMinScore ?? DEFAULT_RAG_MIN_SCORE;
+    this.ragTopK = params.ragTopK ?? DEFAULT_RAG_TOP_K;
   }
 
   async bootstrap(_params: { sessionId: string; sessionFile: string }): Promise<BootstrapResult> {
@@ -140,6 +157,17 @@ export class PineconeContextEngine implements ContextEngine {
     messages: AgentMessage[];
     tokenBudget?: number;
   }): Promise<AssembleResult> {
+    if (this.ragEnabled) {
+      return this.assembleRag(params);
+    }
+    return this.assembleClassic(params);
+  }
+
+  private async assembleClassic(params: {
+    sessionId: string;
+    messages: AgentMessage[];
+    tokenBudget?: number;
+  }): Promise<AssembleResult> {
     try {
       const baseQuery = buildQueryFromRecentTurns(params.messages);
 
@@ -185,6 +213,143 @@ export class PineconeContextEngine implements ContextEngine {
       console.error("[PineconeContextEngine] assemble failed, using fallback:", err);
       return this.fallback.assemble(params);
     }
+  }
+
+  private async assembleRag(params: {
+    sessionId: string;
+    messages: AgentMessage[];
+    tokenBudget?: number;
+  }): Promise<AssembleResult> {
+    const startTime = Date.now();
+
+    // 1. AGENTS-CORE.md を読み込み
+    let agentsCoreText = "";
+    if (this.agentsCorePath) {
+      agentsCoreText = await readAgentsCore(this.agentsCorePath);
+      if (!agentsCoreText) {
+        console.warn(`[pinecone-context-engine] AGENTS-CORE.md not found: ${this.agentsCorePath}`);
+      }
+    }
+
+    // 2. 検索クエリを生成
+    const baseQuery = buildQueryFromRecentTurns(params.messages);
+    const queryTokens = baseQuery ? estimateTokens(baseQuery) : 0;
+
+    if (!baseQuery) {
+      // クエリなし → AGENTS-CORE.md のみ返却
+      if (agentsCoreText) {
+        const coreTokens = estimateTokens(agentsCoreText);
+        console.info(
+          `[pinecone-context-engine] mode=rag query_tokens=0 ns=agent:${this.agentId} topK=0 results=0 latency=${Date.now() - startTime}ms`,
+        );
+        console.info(
+          `[pinecone-context-engine] merged: core_tokens=${coreTokens} dynamic_tokens=0 total=${coreTokens} budget=${this.ragTokenBudget}`,
+        );
+        return {
+          messages: params.messages,
+          estimatedTokens: coreTokens,
+          systemPromptAddition: agentsCoreText,
+        };
+      }
+      return { messages: params.messages, estimatedTokens: 0 };
+    }
+
+    const queryText = this.enrichQuery(baseQuery);
+
+    // 3. Pinecone セマンティック検索
+    let results: Awaited<ReturnType<IPineconeClient["query"]>> = [];
+    try {
+      results = await Promise.race([
+        withRetry(() =>
+          this.client.query({
+            text: queryText,
+            agentId: this.agentId,
+            topK: this.ragTopK,
+            minScore: this.ragMinScore,
+          }),
+        ),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("assemble timeout")), ASSEMBLE_TIMEOUT_MS),
+        ),
+      ]);
+    } catch (err) {
+      // Pinecone 接続不可 → AGENTS-CORE.md のみで動作
+      console.warn("[pinecone-context-engine] Pinecone query failed in RAG mode:", err);
+      if (agentsCoreText) {
+        const coreTokens = estimateTokens(agentsCoreText);
+        return {
+          messages: params.messages,
+          estimatedTokens: coreTokens,
+          systemPromptAddition: agentsCoreText,
+        };
+      }
+      return this.fallback.assemble(params);
+    }
+
+    const latency = Date.now() - startTime;
+
+    if (results.length === 0) {
+      console.info(
+        `[pinecone-context-engine] mode=rag query_tokens=${queryTokens} ns=agent:${this.agentId} topK=${this.ragTopK} results=0 latency=${latency}ms`,
+      );
+      // 検索結果 0 件 → AGENTS-CORE.md のみ
+      if (agentsCoreText) {
+        const coreTokens = estimateTokens(agentsCoreText);
+        console.info(
+          `[pinecone-context-engine] merged: core_tokens=${coreTokens} dynamic_tokens=0 total=${coreTokens} budget=${this.ragTokenBudget}`,
+        );
+        return {
+          messages: params.messages,
+          estimatedTokens: coreTokens,
+          systemPromptAddition: agentsCoreText,
+        };
+      }
+      return { messages: params.messages, estimatedTokens: 0 };
+    }
+
+    // 4. re-ranking
+    const chunksForRerank = results.map((r) => ({
+      id: r.chunk.id,
+      text: r.chunk.text,
+      score: r.score,
+      metadata: r.chunk.metadata,
+    }));
+    const ranked = rerankChunks(chunksForRerank);
+    const dropped = chunksForRerank.length - ranked.length;
+
+    // rerank ログ: sourceType 別カウント
+    const typeCounts: Record<string, number> = {};
+    for (const chunk of ranked) {
+      const st = chunk.metadata.sourceType;
+      typeCounts[st] = (typeCounts[st] ?? 0) + 1;
+    }
+    console.info(
+      `[pinecone-context-engine] mode=rag query_tokens=${queryTokens} ns=agent:${this.agentId} topK=${this.ragTopK} results=${results.length} latency=${latency}ms`,
+    );
+    console.info(
+      `[pinecone-context-engine] rerank: ${Object.entries(typeCounts)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(" ")} dropped=${dropped}`,
+    );
+
+    // 5. トークン予算内でマージ
+    const dynamicBudget = params.tokenBudget ?? this.ragTokenBudget;
+    const { markdown, coreTokens, dynamicTokens } = buildRagSystemPromptAddition(
+      agentsCoreText,
+      ranked,
+      dynamicBudget,
+    );
+    const totalTokens = coreTokens + dynamicTokens;
+
+    console.info(
+      `[pinecone-context-engine] merged: core_tokens=${coreTokens} dynamic_tokens=${dynamicTokens} total=${totalTokens} budget=${dynamicBudget}`,
+    );
+
+    return {
+      messages: params.messages,
+      estimatedTokens: totalTokens,
+      systemPromptAddition: markdown || undefined,
+    };
   }
 
   async compact(params: {

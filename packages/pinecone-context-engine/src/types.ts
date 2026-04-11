@@ -21,4 +21,16 @@ export interface PineconeContextEngineParams {
   memoryHint?: string;
   /** Token threshold below which a query is considered "thin". Default: 20 */
   minQueryTokens?: number;
+
+  // --- RAG mode params ---
+  /** RAG モード有効化。Default: false (env: RAG_ENABLED) */
+  ragEnabled?: boolean;
+  /** AGENTS-CORE.md の絶対パス (env: RAG_AGENTS_CORE_PATH) */
+  agentsCorePath?: string;
+  /** 動的チャンクのトークン予算。Default: 2000 (env: RAG_TOKEN_BUDGET) */
+  ragTokenBudget?: number;
+  /** 最低類似度スコア。Default: 0.75 (env: RAG_MIN_SCORE) */
+  ragMinScore?: number;
+  /** 検索結果数。Default: 10 (env: RAG_TOP_K) */
+  ragTopK?: number;
 }

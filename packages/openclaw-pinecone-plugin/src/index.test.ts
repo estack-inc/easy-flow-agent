@@ -97,7 +97,7 @@ describe("pinecone-memory plugin", () => {
     register(api as any);
 
     expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("index: custom-index"));
-    expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("compactAfterDays: 14"));
+    expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("mode: classic"));
   });
 
   it("passes memoryHint and minQueryTokens to PineconeContextEngine", () => {
@@ -137,13 +137,16 @@ describe("pinecone-memory plugin", () => {
       apiKey: "test-key",
       indexName: "custom-index",
     });
-    expect(PineconeContextEngine).toHaveBeenCalledWith({
-      pineconeClient: expect.objectContaining({
-        _config: { apiKey: "test-key", indexName: "custom-index" },
+    expect(PineconeContextEngine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pineconeClient: expect.objectContaining({
+          _config: { apiKey: "test-key", indexName: "custom-index" },
+        }),
+        agentId: "mell",
+        compactAfterDays: 14,
+        ragEnabled: false,
       }),
-      agentId: "mell",
-      compactAfterDays: 14,
-    });
+    );
     expect(engine).toBeDefined();
   });
 });
