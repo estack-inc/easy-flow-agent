@@ -173,8 +173,20 @@ describe("pinecone-memory plugin", () => {
       }),
     );
 
-    process.env.RAG_TOKEN_BUDGET = originalBudget;
-    process.env.RAG_MIN_SCORE = originalScore;
-    process.env.RAG_TOP_K = originalTopK;
+    if (originalBudget === undefined) {
+      delete process.env.RAG_TOKEN_BUDGET;
+    } else {
+      process.env.RAG_TOKEN_BUDGET = originalBudget;
+    }
+    if (originalScore === undefined) {
+      delete process.env.RAG_MIN_SCORE;
+    } else {
+      process.env.RAG_MIN_SCORE = originalScore;
+    }
+    if (originalTopK === undefined) {
+      delete process.env.RAG_TOP_K;
+    } else {
+      process.env.RAG_TOP_K = originalTopK;
+    }
   });
 });
