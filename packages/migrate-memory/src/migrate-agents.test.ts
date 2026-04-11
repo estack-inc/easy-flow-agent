@@ -132,18 +132,23 @@ describe("parseMarkdownSections", () => {
 });
 
 describe("estimateTokens", () => {
-  it("テキストのトークン数を推定する", () => {
-    const text = "Hello World"; // 11 chars → ceil(11/3) = 4
-    expect(estimateTokens(text)).toBe(4);
+  it("ASCII テキストは ~4 chars/token で推定する", () => {
+    const text = "Hello World"; // 11 ASCII chars → ceil(11 * 0.25) = 3
+    expect(estimateTokens(text)).toBe(3);
   });
 
   it("空文字列は 0 を返す", () => {
     expect(estimateTokens("")).toBe(0);
   });
 
-  it("日本語テキストのトークン数を推定する", () => {
-    const text = "日本語テスト"; // 6 chars → ceil(6/3) = 2
-    expect(estimateTokens(text)).toBe(2);
+  it("日本語テキストは ~1.5 tokens/char で推定する", () => {
+    const text = "日本語テスト"; // 6 CJK chars → ceil(6 * 1.5) = 9
+    expect(estimateTokens(text)).toBe(9);
+  });
+
+  it("日本語と ASCII の混在テキストを正しく推定する", () => {
+    const text = "Hello日本語"; // 5 ASCII + 3 CJK → ceil(5*0.25 + 3*1.5) = ceil(5.75) = 6
+    expect(estimateTokens(text)).toBe(6);
   });
 });
 
@@ -158,7 +163,7 @@ describe("AgentsMigrator", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("dry-run モードでは upsert を呼ばない", async () => {
+  it("dry-run モードでは upsert も deleteBySource も呼ばない", async () => {
     const client = createMockClient();
     const migrator = new AgentsMigrator({
       pineconeClient: client,
@@ -174,9 +179,10 @@ describe("AgentsMigrator", () => {
     expect(result.chunks).toBe(2);
     expect(result.upsertedChunks).toBe(0);
     expect(client.upsert).not.toHaveBeenCalled();
+    expect(client.deleteBySource).not.toHaveBeenCalled();
   });
 
-  it("通常モードでは upsert を呼ぶ", async () => {
+  it("通常モードでは deleteBySource → upsert の順で呼ぶ", async () => {
     const client = createMockClient();
     const migrator = new AgentsMigrator({
       pineconeClient: client,
@@ -191,7 +197,13 @@ describe("AgentsMigrator", () => {
 
     expect(result.chunks).toBe(2);
     expect(result.upsertedChunks).toBe(2);
+    expect(client.deleteBySource).toHaveBeenCalledWith("mel", "AGENTS.md");
     expect(client.upsert).toHaveBeenCalledOnce();
+
+    // deleteBySource が upsert より先に呼ばれていることを確認
+    const deleteOrder = client.deleteBySource.mock.invocationCallOrder[0];
+    const upsertOrder = client.upsert.mock.invocationCallOrder[0];
+    expect(deleteOrder).toBeLessThan(upsertOrder);
   });
 
   it("メタデータに agents_rule と agentId を正しく設定する", async () => {

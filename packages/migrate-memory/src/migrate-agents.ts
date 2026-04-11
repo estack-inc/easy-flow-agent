@@ -14,8 +14,34 @@ export interface AgentsMigrateResult {
   sections: { heading: string; tokens: number }[];
 }
 
+/**
+ * Estimate token count from text.
+ *
+ * Based on Claude tokenizer empirical data:
+ * - ASCII (U+0000–U+007F): ~4 chars/token → 0.25 tokens/char
+ * - Japanese/CJK: ~1–2 tokens/char → 1.5 tokens/char (avg)
+ * - Fullwidth/Halfwidth forms: ~1 token/char
+ * - Other non-ASCII: ~1 token/char
+ */
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 3);
+  let tokens = 0;
+  for (const char of text) {
+    const code = char.codePointAt(0)!;
+    if (code <= 0x7f) {
+      tokens += 0.25;
+    } else if (
+      (code >= 0x3000 && code <= 0x9fff) ||
+      (code >= 0xf900 && code <= 0xfaff) ||
+      (code >= 0xac00 && code <= 0xd7af)
+    ) {
+      tokens += 1.5;
+    } else if (code >= 0xff00 && code <= 0xffef) {
+      tokens += 1.0;
+    } else {
+      tokens += 1.0;
+    }
+  }
+  return Math.ceil(tokens);
 }
 
 export function parseMarkdownSections(text: string): ParsedSection[] {
@@ -107,6 +133,7 @@ export class AgentsMigrator {
 
     let upsertedChunks = 0;
     if (!this.dryRun && chunks.length > 0) {
+      await this.client.deleteBySource(this.agentId, sourceFile);
       await this.client.upsert(chunks);
       upsertedChunks = chunks.length;
     }
