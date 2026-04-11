@@ -64,6 +64,11 @@ export class PineconeContextEngineParallel implements ContextEngine {
   private readonly minQueryTokens: number;
 
   constructor(params: PineconeContextEngineParams) {
+    if (params.ragEnabled) {
+      console.warn(
+        "[PineconeContextEngineParallel] ragEnabled=true は Parallel 実装では未サポートです。PineconeContextEngine を使用してください。",
+      );
+    }
     this.client = params.pineconeClient;
     this.agentId = params.agentId;
     this.tokenBudget = params.tokenBudget ?? DEFAULT_TOKEN_BUDGET;

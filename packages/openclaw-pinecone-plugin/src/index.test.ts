@@ -87,7 +87,7 @@ describe("pinecone-memory plugin", () => {
     expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("agentId: default"));
   });
 
-  it("uses custom indexName and compactAfterDays", () => {
+  it("uses custom indexName and logs mode: classic", () => {
     const api = createMockApi({
       apiKey: "test-key",
       agentId: "mell",
@@ -183,6 +183,30 @@ describe("pinecone-memory plugin", () => {
     } else {
       process.env.RAG_MIN_SCORE = originalScore;
     }
+    if (originalTopK === undefined) {
+      delete process.env.RAG_TOP_K;
+    } else {
+      process.env.RAG_TOP_K = originalTopK;
+    }
+  });
+
+  it("rounds float RAG_TOP_K env var to integer", () => {
+    const originalTopK = process.env.RAG_TOP_K;
+
+    process.env.RAG_TOP_K = "5.7";
+
+    const api = createMockApi({ apiKey: "test-key", agentId: "mell" });
+    register(api as any);
+
+    const factory = api.registerContextEngine.mock.calls[0][1];
+    factory();
+
+    expect(PineconeContextEngine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ragTopK: 6,
+      }),
+    );
+
     if (originalTopK === undefined) {
       delete process.env.RAG_TOP_K;
     } else {

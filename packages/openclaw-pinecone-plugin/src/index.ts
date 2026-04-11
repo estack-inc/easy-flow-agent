@@ -22,6 +22,11 @@ function parseFiniteNumber(value: string | undefined): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+function parseFiniteInt(value: string | undefined): number | undefined {
+  const n = parseFiniteNumber(value);
+  return n !== undefined ? Math.round(n) : undefined;
+}
+
 export default function register(api: OpenClawPluginApi): void {
   const cfg = (api.pluginConfig ?? {}) as PluginConfig;
 
@@ -39,7 +44,7 @@ export default function register(api: OpenClawPluginApi): void {
   const agentsCorePath = cfg.agentsCorePath ?? process.env.RAG_AGENTS_CORE_PATH;
   const ragTokenBudget = cfg.ragTokenBudget ?? parseFiniteNumber(process.env.RAG_TOKEN_BUDGET);
   const ragMinScore = cfg.ragMinScore ?? parseFiniteNumber(process.env.RAG_MIN_SCORE);
-  const ragTopK = cfg.ragTopK ?? parseFiniteNumber(process.env.RAG_TOP_K);
+  const ragTopK = cfg.ragTopK ?? parseFiniteInt(process.env.RAG_TOP_K);
 
   api.registerContextEngine("pinecone-memory", () => {
     const client = new PineconeClient({ apiKey, indexName });
