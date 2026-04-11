@@ -17,7 +17,7 @@ type PluginConfig = {
 };
 
 function parseFiniteNumber(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined || value === "") return undefined;
   const n = Number(value);
   return Number.isFinite(n) ? n : undefined;
 }

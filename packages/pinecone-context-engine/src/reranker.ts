@@ -21,7 +21,7 @@ const VECTOR_WEIGHT = 0.7;
 const SOURCE_WEIGHT = 0.2;
 const FRESHNESS_WEIGHT = 0.1;
 
-/** 線形減衰で鮮度スコアを計算（直近 24h = 1.0、7 日以上前 = 0.0） */
+/** 線形減衰で鮮度スコアを計算（作成直後 = 1.0、7 日以上前 = 0.0） */
 const FRESHNESS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function computeFreshnessScore(createdAt: number, now: number): number {

@@ -27,7 +27,7 @@ export interface PineconeContextEngineParams {
   ragEnabled?: boolean;
   /** AGENTS-CORE.md の絶対パス (env: RAG_AGENTS_CORE_PATH) */
   agentsCorePath?: string;
-  /** 動的チャンクのトークン予算。Default: 2000 (env: RAG_TOKEN_BUDGET) */
+  /** AGENTS-CORE.md と動的チャンクを合わせた総トークン予算。Default: 2000 (env: RAG_TOKEN_BUDGET) */
   ragTokenBudget?: number;
   /** 最低類似度スコア。Default: 0.75 (env: RAG_MIN_SCORE) */
   ragMinScore?: number;
