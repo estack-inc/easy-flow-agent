@@ -4,7 +4,11 @@ import type { FileServeConfig } from "./config.js";
 import type { PluginLogger } from "./index.js";
 import { saveFile } from "./storage.js";
 
-const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+/** LINE が画像メッセージ（media）として送信可能な MIME タイプ（JPEG/PNG のみ公式サポート） */
+const LINE_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg"]);
+
+/** media 送信時のプレビュー画像サイズ上限（LINE 仕様: 1 MB） */
+const LINE_PREVIEW_IMAGE_MAX_BYTES = 1 * 1024 * 1024;
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -12,34 +16,13 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function buildFlexMessage(filename: string, sizeBytes: number, downloadUrl: string): object {
-  return {
-    type: "flex",
-    altText: `ファイル: ${filename}`,
-    contents: {
-      type: "bubble",
-      body: {
-        type: "box",
-        layout: "vertical",
-        contents: [
-          { type: "text", text: "📄 ファイル", weight: "bold", size: "sm", color: "#999999" },
-          { type: "text", text: filename, weight: "bold", size: "md", wrap: true },
-          { type: "text", text: formatFileSize(sizeBytes), size: "sm", color: "#999999" },
-        ],
-      },
-      footer: {
-        type: "box",
-        layout: "vertical",
-        contents: [
-          {
-            type: "button",
-            action: { type: "uri", label: "ダウンロード", uri: downloadUrl },
-            style: "primary",
-          },
-        ],
-      },
-    },
-  };
+function buildDownloadText(
+  filename: string,
+  sizeBytes: number,
+  downloadUrl: string,
+  ttlDays: number,
+): string {
+  return `📄 ${filename}（${formatFileSize(sizeBytes)}）\n${downloadUrl}\n有効期限: ${ttlDays}日間`;
 }
 
 export type PluginHookBeforeToolCallEvent = {
@@ -112,14 +95,21 @@ export function createBeforeToolCallHook(config: FileServeConfig, logger: Plugin
 
     const updatedParams = { ...event.params };
 
-    if (IMAGE_MIME_TYPES.has(detectedMime)) {
-      // 画像: media を配信 URL に書き換え
+    const isLineImage =
+      LINE_IMAGE_MIME_TYPES.has(detectedMime) &&
+      saveResult.sizeBytes <= LINE_PREVIEW_IMAGE_MAX_BYTES;
+
+    if (isLineImage) {
+      // JPEG/PNG かつ 1 MB 以下: LINE 画像メッセージとして送信
       updatedParams.media = saveResult.servedUrl;
       delete updatedParams.filePath;
     } else {
-      // PDF/Excel 等: Flex Message に変換（sizeBytes は saveFile が stat 済みの値を使用）
-      updatedParams.message = JSON.stringify(
-        buildFlexMessage(filename, saveResult.sizeBytes, saveResult.servedUrl),
+      // それ以外（PDF/Excel/大きい画像/GIF/WebP 等）: テキスト URL で案内
+      updatedParams.message = buildDownloadText(
+        filename,
+        saveResult.sizeBytes,
+        saveResult.servedUrl,
+        config.ttlDays,
       );
       delete updatedParams.filePath;
       delete updatedParams.media;

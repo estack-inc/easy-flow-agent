@@ -69,7 +69,7 @@ describe("createBeforeToolCallHook", () => {
     expect(result?.params?.filePath).toBeUndefined();
   });
 
-  it("LINE + PDF → params.message が Flex Message JSON、type === 'flex'、params.filePath が undefined", async () => {
+  it("LINE + PDF → params.message がダウンロード URL テキスト、params.filePath/media が undefined", async () => {
     const servedUrl = "https://example.fly.dev/files/uuid-2/document.pdf";
     (saveFile as ReturnType<typeof vi.fn>).mockResolvedValue({
       uuid: "uuid-2",
@@ -85,9 +85,50 @@ describe("createBeforeToolCallHook", () => {
 
     expect(result).toBeDefined();
     expect(typeof result?.params?.message).toBe("string");
-    const flexMsg = JSON.parse(result?.params?.message as string);
-    expect(flexMsg.type).toBe("flex");
+    expect(result?.params?.message).toContain(servedUrl);
+    expect(result?.params?.message).toContain("document.pdf");
+    expect(result?.params?.message).toContain("7日間");
     expect(result?.params?.filePath).toBeUndefined();
+    expect(result?.params?.media).toBeUndefined();
+  });
+
+  it("LINE + PNG（1 MB 超）→ テキスト URL で案内（LINE プレビュー制限回避）", async () => {
+    const servedUrl = "https://example.fly.dev/files/uuid-4/large.png";
+    (saveFile as ReturnType<typeof vi.fn>).mockResolvedValue({
+      uuid: "uuid-4",
+      servedUrl,
+      sizeBytes: 2 * 1024 * 1024, // 2 MB
+    });
+
+    const hook = createBeforeToolCallHook(baseConfig, mockLogger);
+    const result = await hook(
+      makeEvent({ params: { filePath: "/tmp/large.png" } }),
+      makeCtx({ sessionKey: "line:user123" }),
+    );
+
+    expect(result).toBeDefined();
+    expect(typeof result?.params?.message).toBe("string");
+    expect(result?.params?.message).toContain(servedUrl);
+    expect(result?.params?.media).toBeUndefined();
+  });
+
+  it("LINE + GIF → テキスト URL で案内（LINE 公式未サポート）", async () => {
+    const servedUrl = "https://example.fly.dev/files/uuid-5/anim.gif";
+    (saveFile as ReturnType<typeof vi.fn>).mockResolvedValue({
+      uuid: "uuid-5",
+      servedUrl,
+      sizeBytes: 512,
+    });
+
+    const hook = createBeforeToolCallHook(baseConfig, mockLogger);
+    const result = await hook(
+      makeEvent({ params: { filePath: "/tmp/anim.gif" } }),
+      makeCtx({ sessionKey: "line:user123" }),
+    );
+
+    expect(result).toBeDefined();
+    expect(typeof result?.params?.message).toBe("string");
+    expect(result?.params?.message).toContain(servedUrl);
     expect(result?.params?.media).toBeUndefined();
   });
 
