@@ -160,13 +160,14 @@ export function buildRagSystemPromptAddition(
   agentsCoreText: string,
   dynamicChunks: Array<{ text: string; score: number }>,
   dynamicBudget: number,
+  precomputedCoreTokens?: number,
 ): { markdown: string; coreTokens: number; dynamicTokens: number } {
   const parts: string[] = [];
   let coreTokens = 0;
 
   if (agentsCoreText) {
     parts.push(agentsCoreText);
-    coreTokens = estimateTokens(agentsCoreText);
+    coreTokens = precomputedCoreTokens ?? estimateTokens(agentsCoreText);
   }
 
   const selectedTexts: string[] = [];

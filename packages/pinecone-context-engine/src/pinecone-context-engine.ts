@@ -342,6 +342,7 @@ export class PineconeContextEngine implements ContextEngine {
         agentsCoreText,
         ranked,
         dynamicBudget,
+        coreTokensEstimate,
       );
       const totalTokens = coreTokens + dynamicTokens;
 
