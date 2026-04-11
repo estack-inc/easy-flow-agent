@@ -264,7 +264,7 @@ describe("PineconeContextEngine - RAG mode", () => {
       expect(result.systemPromptAddition).toContain("AGENTS-CORE");
       expect(result.systemPromptAddition).toContain("Core rules for the agent");
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("[pinecone-context-engine] Pinecone query failed in RAG mode:"),
+        expect.stringContaining("[PineconeContextEngine] Pinecone query failed in RAG mode:"),
         expect.any(Error),
       );
     });
@@ -293,7 +293,7 @@ describe("PineconeContextEngine - RAG mode", () => {
       expect(result.systemPromptAddition).toContain("Dynamic chunk only");
       expect(result.systemPromptAddition).not.toContain("AGENTS-CORE");
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("[pinecone-context-engine] AGENTS-CORE.md not found:"),
+        expect.stringContaining("[PineconeContextEngine] AGENTS-CORE.md not found:"),
       );
     });
 
@@ -318,6 +318,29 @@ describe("PineconeContextEngine - RAG mode", () => {
       expect(result.systemPromptAddition).toContain("AGENTS-CORE");
       expect(result.systemPromptAddition).toContain("Core rules for the agent");
       expect(result.systemPromptAddition).not.toContain("Relevant Knowledge");
+    });
+
+    it("agentsCorePath 未設定でも動的チャンクのみで動作する", async () => {
+      const client = createMockClient();
+      const results: QueryResult[] = [makeQueryResult("Dynamic only", 0.9, "agents_rule")];
+      client.query.mockResolvedValue(results);
+
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "test-agent",
+        ragEnabled: true,
+        // agentsCorePath は未設定
+      });
+
+      vi.spyOn(console, "info").mockImplementation(() => {});
+
+      const result = await engine.assemble({
+        sessionId: "s1",
+        messages: [{ role: "user", content: "No core path" }],
+      });
+
+      expect(result.systemPromptAddition).toContain("Dynamic only");
+      expect(result.systemPromptAddition).not.toContain("AGENTS-CORE");
     });
 
     it("Pinecone 接続不可 + AGENTS-CORE.md 不在 — fallback adapter が使われる", async () => {

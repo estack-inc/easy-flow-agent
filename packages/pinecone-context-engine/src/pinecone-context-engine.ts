@@ -228,9 +228,7 @@ export class PineconeContextEngine implements ContextEngine {
       if (this.agentsCorePath) {
         agentsCoreText = await readAgentsCore(this.agentsCorePath);
         if (!agentsCoreText) {
-          console.warn(
-            `[pinecone-context-engine] AGENTS-CORE.md not found: ${this.agentsCorePath}`,
-          );
+          console.warn(`[PineconeContextEngine] AGENTS-CORE.md not found: ${this.agentsCorePath}`);
         }
       }
 
@@ -244,10 +242,10 @@ export class PineconeContextEngine implements ContextEngine {
         if (agentsCoreText) {
           const coreTokens = estimateTokens(agentsCoreText);
           console.info(
-            `[pinecone-context-engine] mode=rag query_tokens=0 ns=agent:${this.agentId} topK=0 results=0 latency=${Date.now() - startTime}ms`,
+            `[PineconeContextEngine] mode=rag query_tokens=0 ns=agent:${this.agentId} topK=0 results=0 latency=${Date.now() - startTime}ms`,
           );
           console.info(
-            `[pinecone-context-engine] merged: core_tokens=${coreTokens} dynamic_tokens=0 total=${coreTokens} budget=${totalBudget}`,
+            `[PineconeContextEngine] merged: core_tokens=${coreTokens} dynamic_tokens=0 total=${coreTokens} budget=${totalBudget}`,
           );
           return {
             messages: params.messages,
@@ -278,7 +276,7 @@ export class PineconeContextEngine implements ContextEngine {
         ]);
       } catch (err) {
         // Pinecone 接続不可 → AGENTS-CORE.md のみで動作
-        console.warn("[pinecone-context-engine] Pinecone query failed in RAG mode:", err);
+        console.warn("[PineconeContextEngine] Pinecone query failed in RAG mode:", err);
         if (agentsCoreText) {
           const coreTokens = estimateTokens(agentsCoreText);
           return {
@@ -294,13 +292,13 @@ export class PineconeContextEngine implements ContextEngine {
 
       if (results.length === 0) {
         console.info(
-          `[pinecone-context-engine] mode=rag query_tokens=${queryTokens} ns=agent:${this.agentId} topK=${this.ragTopK} results=0 latency=${latency}ms`,
+          `[PineconeContextEngine] mode=rag query_tokens=${queryTokens} ns=agent:${this.agentId} topK=${this.ragTopK} results=0 latency=${latency}ms`,
         );
         // 検索結果 0 件 → AGENTS-CORE.md のみ
         if (agentsCoreText) {
           const coreTokens = estimateTokens(agentsCoreText);
           console.info(
-            `[pinecone-context-engine] merged: core_tokens=${coreTokens} dynamic_tokens=0 total=${coreTokens} budget=${totalBudget}`,
+            `[PineconeContextEngine] merged: core_tokens=${coreTokens} dynamic_tokens=0 total=${coreTokens} budget=${totalBudget}`,
           );
           return {
             messages: params.messages,
@@ -328,10 +326,10 @@ export class PineconeContextEngine implements ContextEngine {
         typeCounts[st] = (typeCounts[st] ?? 0) + 1;
       }
       console.info(
-        `[pinecone-context-engine] mode=rag query_tokens=${queryTokens} ns=agent:${this.agentId} topK=${this.ragTopK} results=${results.length} latency=${latency}ms`,
+        `[PineconeContextEngine] mode=rag query_tokens=${queryTokens} ns=agent:${this.agentId} topK=${this.ragTopK} results=${results.length} latency=${latency}ms`,
       );
       console.info(
-        `[pinecone-context-engine] rerank: ${Object.entries(typeCounts)
+        `[PineconeContextEngine] rerank: ${Object.entries(typeCounts)
           .map(([k, v]) => `${k}=${v}`)
           .join(" ")} dropped=${dropped}`,
       );
@@ -348,7 +346,7 @@ export class PineconeContextEngine implements ContextEngine {
       const totalTokens = coreTokens + dynamicTokens;
 
       console.info(
-        `[pinecone-context-engine] merged: core_tokens=${coreTokens} dynamic_tokens=${dynamicTokens} total=${totalTokens} budget=${totalBudget}`,
+        `[PineconeContextEngine] merged: core_tokens=${coreTokens} dynamic_tokens=${dynamicTokens} total=${totalTokens} budget=${totalBudget}`,
       );
 
       return {
