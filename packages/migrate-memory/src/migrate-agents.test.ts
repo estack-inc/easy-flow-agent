@@ -258,6 +258,7 @@ describe("AgentsMigrator", () => {
     expect(result.chunks).toBe(0);
     expect(result.totalTokens).toBe(0);
     expect(client.upsert).not.toHaveBeenCalled();
+    expect(client.deleteBySource).not.toHaveBeenCalled();
   });
 
   it("空白のみのファイルでは 0 チャンクを返す", async () => {
@@ -274,6 +275,7 @@ describe("AgentsMigrator", () => {
 
     expect(result.chunks).toBe(0);
     expect(client.upsert).not.toHaveBeenCalled();
+    expect(client.deleteBySource).not.toHaveBeenCalled();
   });
 
   it("見出しなしファイルは 1 チャンクになる", async () => {
