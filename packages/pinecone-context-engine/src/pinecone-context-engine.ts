@@ -317,7 +317,7 @@ export class PineconeContextEngine implements ContextEngine {
         metadata: r.chunk.metadata,
       }));
       const ranked = rerankChunks(chunksForRerank);
-      const dropped = chunksForRerank.length - ranked.length;
+      const deduplicated = chunksForRerank.length - ranked.length;
 
       // rerank ログ: sourceType 別カウント
       const typeCounts: Record<string, number> = {};
@@ -331,7 +331,7 @@ export class PineconeContextEngine implements ContextEngine {
       console.info(
         `[PineconeContextEngine] rerank: ${Object.entries(typeCounts)
           .map(([k, v]) => `${k}=${v}`)
-          .join(" ")} dropped=${dropped}`,
+          .join(" ")} deduplicated=${deduplicated}`,
       );
 
       // 5. トークン予算内でマージ

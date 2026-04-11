@@ -214,4 +214,18 @@ describe("pinecone-memory plugin", () => {
       process.env.RAG_TOP_K = originalTopK;
     }
   });
+
+  it("logs mode: rag when ragEnabled is true via pluginConfig", () => {
+    const api = createMockApi({ apiKey: "test-key", agentId: "mell", ragEnabled: true });
+    register(api as any);
+
+    expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("mode: rag"));
+
+    const factory = api.registerContextEngine.mock.calls[0][1];
+    factory();
+
+    expect(PineconeContextEngine).toHaveBeenCalledWith(
+      expect.objectContaining({ ragEnabled: true }),
+    );
+  });
 });
