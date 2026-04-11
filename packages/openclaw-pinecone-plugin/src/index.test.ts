@@ -191,7 +191,7 @@ describe("pinecone-memory plugin", () => {
     }
   });
 
-  it("rounds float RAG_TOP_K env var to integer", () => {
+  it("rounds float RAG_TOP_K env var to positive integer", () => {
     const originalTopK = process.env.RAG_TOP_K;
 
     process.env.RAG_TOP_K = "5.7";
@@ -207,6 +207,31 @@ describe("pinecone-memory plugin", () => {
         ragTopK: 6,
       }),
     );
+
+    if (originalTopK === undefined) {
+      delete process.env.RAG_TOP_K;
+    } else {
+      process.env.RAG_TOP_K = originalTopK;
+    }
+  });
+
+  it("rejects zero and negative RAG_TOP_K env var values", () => {
+    const originalTopK = process.env.RAG_TOP_K;
+
+    for (const val of ["0", "-5"]) {
+      process.env.RAG_TOP_K = val;
+      vi.mocked(PineconeContextEngine).mockClear();
+
+      const api = createMockApi({ apiKey: "test-key", agentId: "mell" });
+      register(api as any);
+
+      const factory = api.registerContextEngine.mock.calls[0][1];
+      factory();
+
+      expect(PineconeContextEngine).toHaveBeenCalledWith(
+        expect.objectContaining({ ragTopK: undefined }),
+      );
+    }
 
     if (originalTopK === undefined) {
       delete process.env.RAG_TOP_K;
