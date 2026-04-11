@@ -69,6 +69,25 @@ describe("createBeforeToolCallHook", () => {
     expect(result?.params?.filePath).toBeUndefined();
   });
 
+  it("LINE + JPEG → params.media が配信 URL に書き換わる、params.filePath が undefined", async () => {
+    const servedUrl = "https://example.fly.dev/files/uuid-6/photo.jpg";
+    (saveFile as ReturnType<typeof vi.fn>).mockResolvedValue({
+      uuid: "uuid-6",
+      servedUrl,
+      sizeBytes: 4096,
+    });
+
+    const hook = createBeforeToolCallHook(baseConfig, mockLogger);
+    const result = await hook(
+      makeEvent({ params: { filePath: "/tmp/photo.jpg" } }),
+      makeCtx({ sessionKey: "line:user123" }),
+    );
+
+    expect(result).toBeDefined();
+    expect(result?.params?.media).toBe(servedUrl);
+    expect(result?.params?.filePath).toBeUndefined();
+  });
+
   it("LINE + PDF → params.message がダウンロード URL テキスト、params.filePath/media が undefined", async () => {
     const servedUrl = "https://example.fly.dev/files/uuid-2/document.pdf";
     (saveFile as ReturnType<typeof vi.fn>).mockResolvedValue({
