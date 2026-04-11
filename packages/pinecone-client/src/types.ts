@@ -8,7 +8,7 @@ export interface MemoryChunk {
 export interface ChunkMetadata {
   agentId: string;
   sourceFile: string;
-  sourceType: "memory_file" | "session_turn" | "workflow_state";
+  sourceType: "memory_file" | "session_turn" | "workflow_state" | "agents_rule";
   chunkIndex: number;
   createdAt: number;
   turnId?: string;

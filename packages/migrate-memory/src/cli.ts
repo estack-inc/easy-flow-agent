@@ -5,6 +5,7 @@ import { PineconeClient } from "@easy-flow/pinecone-client";
 import { bulkMigrate } from "./bulk-migrator.js";
 import { bulkUpdate } from "./bulk-updater.js";
 import { MemoryDeleter } from "./deleter.js";
+import { AgentsMigrator } from "./migrate-agents.js";
 import { Migrator } from "./migrator.js";
 import { validateExcludePatterns } from "./preflight.js";
 
@@ -13,6 +14,7 @@ function printUsage(): void {
 
 Commands:
   migrate-memory    Migrate markdown files to Pinecone
+  agents            Migrate AGENTS.md to Pinecone (section-based chunking)
   memory-delete     Delete memory from Pinecone
   bulk-migrate      Bulk migrate all EasyFlow instances to Pinecone
   bulk-update       Bulk update easy-flow-agent on all instances
@@ -131,6 +133,94 @@ async function runMigrate(args: string[]): Promise<void> {
       console.log(`  ${err.file}: ${err.error}`);
     }
     process.exit(1);
+  }
+}
+
+function printAgentsUsage(): void {
+  console.log(`Usage: easy-flow agents [options]
+
+Options:
+  --file <path>       AGENTS.md file path (required)
+  --agent-id <id>     Agent ID (required)
+  --dry-run           Preview chunking without writing to Pinecone
+  --help              Show this help message`);
+}
+
+async function runAgents(args: string[]): Promise<void> {
+  const { values } = parseArgs({
+    args,
+    options: {
+      file: { type: "string" },
+      "agent-id": { type: "string" },
+      "dry-run": { type: "boolean", default: false },
+      help: { type: "boolean", default: false },
+    },
+    strict: true,
+  });
+
+  if (values.help) {
+    printAgentsUsage();
+    process.exit(0);
+  }
+
+  const filePath = values.file as string | undefined;
+  const agentId = values["agent-id"] as string | undefined;
+  const dryRun = values["dry-run"] as boolean;
+
+  if (!filePath) {
+    console.error("Error: --file is required");
+    process.exit(1);
+  }
+  if (!agentId) {
+    console.error("Error: --agent-id is required");
+    process.exit(1);
+  }
+
+  const apiKey = process.env.PINECONE_API_KEY;
+  if (!apiKey && !dryRun) {
+    console.error("Error: PINECONE_API_KEY environment variable is required");
+    process.exit(1);
+  }
+
+  const client = apiKey ? new PineconeClient({ apiKey }) : noopClient();
+  const migrator = new AgentsMigrator({ pineconeClient: client, agentId, dryRun });
+
+  const namespace = `agent:${agentId}`;
+
+  if (dryRun) {
+    console.log(`📄 Parsing: ${filePath}`);
+    console.log(`   Agent ID: ${agentId}`);
+    console.log(`   Namespace: ${namespace}\n`);
+
+    const result = await migrator.migrate(filePath);
+
+    console.log("   Chunks:");
+    for (let i = 0; i < result.sections.length; i++) {
+      const s = result.sections[i];
+      console.log(`   [${i + 1}] ${s.heading} (${s.tokens} tokens)`);
+    }
+
+    console.log(
+      `\n   Total: ${result.chunks} chunks, ~${result.totalTokens.toLocaleString()} tokens`,
+    );
+    console.log("   (dry-run: no data written to Pinecone)");
+  } else {
+    console.log(`📄 Migrating: ${filePath} → Pinecone`);
+    console.log(`   Agent ID: ${agentId}`);
+    console.log(`   Namespace: ${namespace}\n`);
+
+    const start = Date.now();
+    const result = await migrator.migrate(filePath);
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+
+    const avgTokens = result.chunks > 0 ? Math.round(result.totalTokens / result.chunks) : 0;
+    console.log(`   Chunking... done (${result.chunks} chunks, avg ${avgTokens} tokens)`);
+    console.log(`   Upserting... done (${result.upsertedChunks}/${result.chunks})`);
+
+    console.log(`\n✅ Migration complete`);
+    console.log(`   Chunks: ${result.chunks}`);
+    console.log(`   Total tokens: ~${result.totalTokens.toLocaleString()}`);
+    console.log(`   Time: ${elapsed}s`);
   }
 }
 
@@ -281,6 +371,8 @@ async function main(): Promise<void> {
 
   if (subcommand === "migrate-memory") {
     await runMigrate(process.argv.slice(3));
+  } else if (subcommand === "agents") {
+    await runAgents(process.argv.slice(3));
   } else if (subcommand === "memory-delete") {
     await runDelete(process.argv.slice(3));
   } else if (subcommand === "bulk-migrate") {
