@@ -68,7 +68,7 @@
         "**/mail-rules.md",
         "**/node_modules/**"
       ],
-      "memoryHint": "AI agent for BUZZ. MEMORY.md + memory/ (1 file only)."
+      "memoryHint": "AI agent for BUZZ (バズ)."
     },
     {
       "name": "umito-openclaw",
@@ -83,7 +83,7 @@
         "**/spec/**",
         "**/node_modules/**"
       ],
-      "memoryHint": "AI agent for UMITO (WithSea). PAT in MEMORY.md has been REDACTED on 2026-03-15."
+      "memoryHint": "AI agent for UMITO/WithSea (ウミト)."
     },
     {
       "name": "estack-soumu-openclaw",
@@ -100,6 +100,149 @@
         "**/downloads/**"
       ],
       "memoryHint": "AI agent for eSTACK SOUMU (accounting/payroll). KOT->freee journal automation."
+    },
+    {
+      "name": "baniyan-tsuri-agent",
+      "flyApp": "baniyan-tsuri-agent",
+      "agentId": "baniyan-tsuri",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/"
+      ],
+      "excludePatterns": [
+        "**/node_modules/**"
+      ],
+      "memoryHint": "AI agent for バニヤンパートナーズ (baniyan-partners). DX 支援・OEM パートナー。"
+    },
+    {
+      "name": "dev-and-test-agent",
+      "flyApp": "dev-and-test-agent",
+      "agentId": "dev-and-test",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/"
+      ],
+      "excludePatterns": [
+        "**/node_modules/**"
+      ],
+      "memoryHint": "Easy Flow 開発・テスト用エージェント。eSTACK 社内利用。"
+    },
+    {
+      "name": "free-standrd-core-agent",
+      "flyApp": "free-standrd-core-agent",
+      "agentId": "free-standrd-core",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/"
+      ],
+      "excludePatterns": [
+        "**/node_modules/**"
+      ],
+      "memoryHint": "AI agent for Free Standard (フリースタンダード). リコマース事業のチームディスカッション支援。"
+    },
+    {
+      "name": "fs-harimoto-agent",
+      "flyApp": "fs-harimoto-agent",
+      "agentId": "fs-harimoto",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/"
+      ],
+      "excludePatterns": [
+        "**/node_modules/**"
+      ],
+      "memoryHint": "AI agent for Free Standard (フリースタンダード). 張本氏の経営参謀エージェント。"
+    },
+    {
+      "name": "hongmong-ochi-agent",
+      "flyApp": "hongmong-ochi-agent",
+      "agentId": "hongmong-ochi",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/"
+      ],
+      "excludePatterns": [
+        "**/node_modules/**"
+      ],
+      "memoryHint": "AI agent for 越智氏. 経営参謀エージェント。"
+    },
+    {
+      "name": "hub-spoke-agent",
+      "flyApp": "hub-spoke-agent",
+      "agentId": "hub-spoke",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/"
+      ],
+      "excludePatterns": [
+        "**/node_modules/**"
+      ],
+      "memoryHint": "AI agent for ハブアンドスポーク (hub-spoke.jp). 遠藤氏の経営参謀エージェント。"
+    },
+    {
+      "name": "mofumofu-agent",
+      "flyApp": "mofumofu-agent",
+      "agentId": "mofumofu",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/"
+      ],
+      "excludePatterns": [
+        "**/node_modules/**"
+      ],
+      "memoryHint": "AI agent for もふもふ不動産. YouTube 配信向けパワーポイント作成支援。"
+    },
+    {
+      "name": "namiki-ai-test-agent",
+      "flyApp": "namiki-ai-test-agent",
+      "agentId": "namiki-ai-test",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/"
+      ],
+      "excludePatterns": [
+        "**/node_modules/**"
+      ],
+      "memoryHint": "Easy Flow テスト用エージェント。eSTACK 社内利用。"
+    },
+    {
+      "name": "techno-japan-koga-agent",
+      "flyApp": "techno-japan-koga-agent",
+      "agentId": "techno-japan-koga",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/"
+      ],
+      "excludePatterns": [
+        "**/node_modules/**"
+      ],
+      "memoryHint": "AI agent for テクノジャパン (techno-japan.co.jp). 甲賀氏の経営参謀エージェント。"
+    },
+    {
+      "name": "voice-ai-agent-agent",
+      "flyApp": "voice-ai-agent-agent",
+      "agentId": "voice-ai-agent",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/"
+      ],
+      "excludePatterns": [
+        "**/node_modules/**"
+      ],
+      "memoryHint": "AI agent for ヴォイス (voice-ai). PDF ファイル処理・UnitBase 連携。"
+    },
+    {
+      "name": "tom-openclaw",
+      "flyApp": "tom-openclaw",
+      "agentId": "tom",
+      "index": "easy-flow-memory",
+      "sources": [
+        "/data/workspace/"
+      ],
+      "excludePatterns": [
+        "**/node_modules/**"
+      ],
+      "memoryHint": "AI agent for TOM. eSTACK 社内利用。"
     }
   ],
   "compactAfterDays": 7
