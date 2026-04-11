@@ -31,6 +31,11 @@ export const RETRY_BASE_MS = 100;
 export const MAX_RETRIES = 3;
 export const ASSEMBLE_TIMEOUT_MS = 3000;
 
+// --- RAG mode defaults ---
+export const DEFAULT_RAG_TOKEN_BUDGET = 2000;
+export const DEFAULT_RAG_MIN_SCORE = 0.75;
+export const DEFAULT_RAG_TOP_K = 10;
+
 /**
  * Determine if a query is "thin" — too short or lacking proper nouns to
  * produce good Pinecone vector-search results.
@@ -131,6 +136,56 @@ export async function readOldTurns(
   } catch {
     return [];
   }
+}
+
+/**
+ * AGENTS-CORE.md をファイルシステムから読み込む。
+ * ファイルが存在しない場合は空文字を返す。
+ */
+export async function readAgentsCore(filePath: string): Promise<string> {
+  try {
+    const { readFile } = await import("node:fs/promises");
+    return await readFile(filePath, "utf-8");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * RAG モードの systemPromptAddition を組み立てる。
+ *
+ * AGENTS-CORE.md 固定テキスト + re-ranking 済み動的チャンクをトークン予算内でマージ。
+ */
+export function buildRagSystemPromptAddition(
+  agentsCoreText: string,
+  dynamicChunks: Array<{ text: string; score: number }>,
+  dynamicBudget: number,
+  precomputedCoreTokens?: number,
+): { markdown: string; coreTokens: number; dynamicTokens: number } {
+  const parts: string[] = [];
+  let coreTokens = 0;
+
+  if (agentsCoreText) {
+    parts.push(agentsCoreText);
+    coreTokens = precomputedCoreTokens ?? estimateTokens(agentsCoreText);
+  }
+
+  const selectedTexts: string[] = [];
+  let dynamicTokens = 0;
+
+  for (const chunk of dynamicChunks) {
+    const tokens = estimateTokens(chunk.text);
+    if (dynamicTokens + tokens > dynamicBudget) break;
+    selectedTexts.push(chunk.text);
+    dynamicTokens += tokens;
+  }
+
+  if (selectedTexts.length > 0) {
+    parts.push(`## Relevant Knowledge\n\n${selectedTexts.map((t) => `- ${t}`).join("\n")}`);
+  }
+
+  const markdown = parts.join("\n\n");
+  return { markdown, coreTokens, dynamicTokens };
 }
 
 export function buildSystemPromptAddition(

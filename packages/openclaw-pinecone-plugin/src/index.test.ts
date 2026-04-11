@@ -87,7 +87,7 @@ describe("pinecone-memory plugin", () => {
     expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("agentId: default"));
   });
 
-  it("uses custom indexName and compactAfterDays", () => {
+  it("uses custom indexName, compactAfterDays, and logs mode: classic", () => {
     const api = createMockApi({
       apiKey: "test-key",
       agentId: "mell",
@@ -97,6 +97,7 @@ describe("pinecone-memory plugin", () => {
     register(api as any);
 
     expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("index: custom-index"));
+    expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("mode: classic"));
     expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("compactAfterDays: 14"));
   });
 
@@ -137,13 +138,169 @@ describe("pinecone-memory plugin", () => {
       apiKey: "test-key",
       indexName: "custom-index",
     });
-    expect(PineconeContextEngine).toHaveBeenCalledWith({
-      pineconeClient: expect.objectContaining({
-        _config: { apiKey: "test-key", indexName: "custom-index" },
+    expect(PineconeContextEngine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pineconeClient: expect.objectContaining({
+          _config: { apiKey: "test-key", indexName: "custom-index" },
+        }),
+        agentId: "mell",
+        compactAfterDays: 14,
+        ragEnabled: false,
       }),
-      agentId: "mell",
-      compactAfterDays: 14,
-    });
+    );
     expect(engine).toBeDefined();
+  });
+
+  it("ignores NaN from invalid env var values and falls back to undefined", () => {
+    const originalBudget = process.env.RAG_TOKEN_BUDGET;
+    const originalScore = process.env.RAG_MIN_SCORE;
+    const originalTopK = process.env.RAG_TOP_K;
+
+    process.env.RAG_TOKEN_BUDGET = "abc";
+    process.env.RAG_MIN_SCORE = "not-a-number";
+    process.env.RAG_TOP_K = "";
+
+    const api = createMockApi({ apiKey: "test-key", agentId: "mell" });
+    register(api as any);
+
+    const factory = api.registerContextEngine.mock.calls[0][1];
+    factory();
+
+    expect(PineconeContextEngine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ragTokenBudget: undefined,
+        ragMinScore: undefined,
+        ragTopK: undefined,
+      }),
+    );
+
+    if (originalBudget === undefined) {
+      delete process.env.RAG_TOKEN_BUDGET;
+    } else {
+      process.env.RAG_TOKEN_BUDGET = originalBudget;
+    }
+    if (originalScore === undefined) {
+      delete process.env.RAG_MIN_SCORE;
+    } else {
+      process.env.RAG_MIN_SCORE = originalScore;
+    }
+    if (originalTopK === undefined) {
+      delete process.env.RAG_TOP_K;
+    } else {
+      process.env.RAG_TOP_K = originalTopK;
+    }
+  });
+
+  it("rounds float RAG_TOP_K env var to positive integer", () => {
+    const originalTopK = process.env.RAG_TOP_K;
+
+    process.env.RAG_TOP_K = "5.7";
+
+    const api = createMockApi({ apiKey: "test-key", agentId: "mell" });
+    register(api as any);
+
+    const factory = api.registerContextEngine.mock.calls[0][1];
+    factory();
+
+    expect(PineconeContextEngine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ragTopK: 6,
+      }),
+    );
+
+    if (originalTopK === undefined) {
+      delete process.env.RAG_TOP_K;
+    } else {
+      process.env.RAG_TOP_K = originalTopK;
+    }
+  });
+
+  it("rejects zero and negative RAG_TOP_K env var values", () => {
+    const originalTopK = process.env.RAG_TOP_K;
+
+    for (const val of ["0", "-5"]) {
+      process.env.RAG_TOP_K = val;
+      vi.mocked(PineconeContextEngine).mockClear();
+
+      const api = createMockApi({ apiKey: "test-key", agentId: "mell" });
+      register(api as any);
+
+      const factory = api.registerContextEngine.mock.calls[0][1];
+      factory();
+
+      expect(PineconeContextEngine).toHaveBeenCalledWith(
+        expect.objectContaining({ ragTopK: undefined }),
+      );
+    }
+
+    if (originalTopK === undefined) {
+      delete process.env.RAG_TOP_K;
+    } else {
+      process.env.RAG_TOP_K = originalTopK;
+    }
+  });
+
+  it("rejects negative and out-of-range RAG_MIN_SCORE env var values", () => {
+    const originalScore = process.env.RAG_MIN_SCORE;
+
+    for (const val of ["-0.5", "1.5"]) {
+      process.env.RAG_MIN_SCORE = val;
+      vi.mocked(PineconeContextEngine).mockClear();
+
+      const api = createMockApi({ apiKey: "test-key", agentId: "mell" });
+      register(api as any);
+
+      const factory = api.registerContextEngine.mock.calls[0][1];
+      factory();
+
+      expect(PineconeContextEngine).toHaveBeenCalledWith(
+        expect.objectContaining({ ragMinScore: undefined }),
+      );
+    }
+
+    if (originalScore === undefined) {
+      delete process.env.RAG_MIN_SCORE;
+    } else {
+      process.env.RAG_MIN_SCORE = originalScore;
+    }
+  });
+
+  it("rejects zero and negative RAG_TOKEN_BUDGET env var values", () => {
+    const originalBudget = process.env.RAG_TOKEN_BUDGET;
+
+    for (const val of ["0", "-100"]) {
+      process.env.RAG_TOKEN_BUDGET = val;
+      vi.mocked(PineconeContextEngine).mockClear();
+
+      const api = createMockApi({ apiKey: "test-key", agentId: "mell" });
+      register(api as any);
+
+      const factory = api.registerContextEngine.mock.calls[0][1];
+      factory();
+
+      expect(PineconeContextEngine).toHaveBeenCalledWith(
+        expect.objectContaining({ ragTokenBudget: undefined }),
+      );
+    }
+
+    if (originalBudget === undefined) {
+      delete process.env.RAG_TOKEN_BUDGET;
+    } else {
+      process.env.RAG_TOKEN_BUDGET = originalBudget;
+    }
+  });
+
+  it("logs mode: rag when ragEnabled is true via pluginConfig", () => {
+    const api = createMockApi({ apiKey: "test-key", agentId: "mell", ragEnabled: true });
+    register(api as any);
+
+    expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("mode: rag"));
+
+    const factory = api.registerContextEngine.mock.calls[0][1];
+    factory();
+
+    expect(PineconeContextEngine).toHaveBeenCalledWith(
+      expect.objectContaining({ ragEnabled: true }),
+    );
   });
 });
