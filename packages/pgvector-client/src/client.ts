@@ -25,8 +25,13 @@ export class PgVectorClient implements IPineconeClient {
   private async getClient() {
     const client = await this.pool.connect();
     if (!this.typesRegistered) {
-      await pgvector.registerTypes(client);
-      this.typesRegistered = true;
+      try {
+        await pgvector.registerTypes(client);
+        this.typesRegistered = true;
+      } catch (e) {
+        client.release();
+        throw e;
+      }
     }
     return client;
   }
