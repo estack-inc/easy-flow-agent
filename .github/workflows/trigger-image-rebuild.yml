@@ -9,6 +9,7 @@ jobs:
     name: Notify openclaw-templates
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions: {}
     steps:
       - name: Trigger repository_dispatch
         env:
@@ -17,8 +18,9 @@ jobs:
           SHA: ${{ github.sha }}
           REF: ${{ github.ref }}
         run: |
-          curl -X POST \
+          curl --fail-with-body -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+            -H "Content-Type: application/json" \
             https://api.github.com/repos/estack-inc/openclaw-templates/dispatches \
             -d "{\"event_type\":\"dependency-updated\",\"client_payload\":{\"source\":\"${REPO_NAME}\",\"sha\":\"${SHA}\",\"ref\":\"${REF}\"}}"
