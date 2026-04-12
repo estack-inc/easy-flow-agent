@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@easy-flow/pinecone-client", () => ({
   PineconeClient: vi.fn().mockImplementation((config) => ({
@@ -295,6 +295,10 @@ describe("pinecone-memory plugin", () => {
 
   describe("config fallback from openclaw.json", () => {
     beforeEach(() => {
+      vi.mocked(fs.readFileSync).mockReset();
+    });
+
+    afterAll(() => {
       vi.mocked(fs.readFileSync).mockReset();
     });
 
