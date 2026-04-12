@@ -58,7 +58,7 @@ export function loadConfig(
   const allowedSourceDir =
     typeof rawAllowedSourceDir === "string" && rawAllowedSourceDir
       ? rawAllowedSourceDir
-      : undefined;
+      : "/data/workspace";
 
   const rawStorageDir = pluginConfig?.storageDir;
   const storageDir =
