@@ -65,7 +65,7 @@ export class EmbeddingService {
     if (inputType === "query" && texts.length === 1) {
       const cached = this.queryCache.get(texts[0]);
       if (cached) {
-        return [cached];
+        return [cached.slice()];
       }
     }
 
