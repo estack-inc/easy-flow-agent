@@ -29,15 +29,15 @@ function buildDownloadText(
 function findJsonEnd(s: string): number {
   let depth = 0;
   let inString = false;
-  let escape = false;
+  let escaped = false;
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
-    if (escape) {
-      escape = false;
+    if (escaped) {
+      escaped = false;
       continue;
     }
     if (ch === "\\" && inString) {
-      escape = true;
+      escaped = true;
       continue;
     }
     if (ch === '"') {
@@ -71,7 +71,7 @@ function sanitizeFlexJson(message: string, logger: PluginLogger): string | null 
   const trailingText = jsonEnd > 0 ? message.slice(jsonEnd).trim() : "";
 
   logger.info(`Flex JSON を検出、plain text に変換: ${downloadUrl}`);
-  return `📄 ${filename}\n${downloadUrl}${trailingText ? "\n" + trailingText : ""}`;
+  return `📄 ${filename}\n${downloadUrl}${trailingText ? `\n${trailingText}` : ""}`;
 }
 
 export type PluginHookBeforeToolCallEvent = {
