@@ -29,7 +29,10 @@ function readConfigFallback(configPath: string): Partial<PluginConfig> {
     const raw = fs.readFileSync(configPath, "utf8");
     const config = JSON.parse(raw);
     return (config?.plugins?.entries?.["pinecone-memory"]?.config ?? {}) as Partial<PluginConfig>;
-  } catch {
+  } catch (err) {
+    console.debug(
+      `[pinecone-memory] readConfigFallback failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return {};
   }
 }

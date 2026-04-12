@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@easy-flow/pinecone-client", () => ({
   PineconeClient: vi.fn().mockImplementation((config) => ({
@@ -40,6 +40,10 @@ function createMockApi(pluginConfig: Record<string, unknown> = {}) {
 }
 
 describe("pinecone-memory plugin", () => {
+  beforeEach(() => {
+    vi.mocked(fs.readFileSync).mockReset();
+  });
+
   it("warns and does not register when API key is missing", () => {
     const originalEnv = process.env.PINECONE_API_KEY;
     delete process.env.PINECONE_API_KEY;
@@ -294,14 +298,6 @@ describe("pinecone-memory plugin", () => {
   });
 
   describe("config fallback from openclaw.json", () => {
-    beforeEach(() => {
-      vi.mocked(fs.readFileSync).mockReset();
-    });
-
-    afterAll(() => {
-      vi.mocked(fs.readFileSync).mockReset();
-    });
-
     it("reads config from openclaw.json when api.pluginConfig is empty", () => {
       const fallbackConfig = JSON.stringify({
         plugins: {
