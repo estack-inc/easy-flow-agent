@@ -87,6 +87,19 @@ describe("PgVectorClient", () => {
       );
     });
 
+    it("should batch upserts when exceeding UPSERT_BATCH_SIZE (100)", async () => {
+      const chunks = Array.from({ length: 101 }, (_, i) =>
+        makeChunk("mell", "file", i, `text-${i}`),
+      );
+      const embeddings = Array.from({ length: 101 }, () => [0.1, 0.2, 0.3]);
+      mockEmbed.mockResolvedValueOnce(embeddings);
+
+      await client.upsert(chunks);
+
+      // Should call query twice: batch of 100, then batch of 1
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+    });
+
     it("should reject mixed agentId chunks", async () => {
       const chunks = [makeChunk("mell", "file1", 0, "a"), makeChunk("tom", "file1", 0, "b")];
       await expect(client.upsert(chunks)).rejects.toThrow("same agentId");
