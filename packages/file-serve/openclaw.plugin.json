@@ -28,6 +28,10 @@
         "type": "string",
         "default": "/data/workspace",
         "description": "ソースファイルの許可ディレクトリ（デフォルト: /data/workspace。このディレクトリ外のファイルは拒否される）"
+      },
+      "publicUrl": {
+        "type": "string",
+        "description": "baseUrl の別名。entrypoint.sh との互換性用"
       }
     },
     "additionalProperties": false

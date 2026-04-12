@@ -25,6 +25,8 @@ export function loadConfig(
   let baseUrl: string;
   if (typeof pluginConfig?.baseUrl === "string" && pluginConfig.baseUrl) {
     baseUrl = pluginConfig.baseUrl;
+  } else if (typeof pluginConfig?.publicUrl === "string" && pluginConfig.publicUrl) {
+    baseUrl = pluginConfig.publicUrl;
   } else if (typeof apiConfig?.publicUrl === "string" && apiConfig.publicUrl) {
     baseUrl = apiConfig.publicUrl;
   } else if (process.env.FLY_APP_NAME) {
