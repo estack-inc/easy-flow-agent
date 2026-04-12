@@ -24,15 +24,16 @@ type PluginConfig = {
  * via api.pluginConfig due to entrypoint clearing plugins.load.paths.
  * See: estack-inc/easy-flow#189
  */
-function readConfigFallback(configPath: string): Partial<PluginConfig> {
+function readConfigFallback(
+  configPath: string,
+  logger: Pick<OpenClawPluginApi["logger"], "debug">,
+): Partial<PluginConfig> {
   try {
     const raw = fs.readFileSync(configPath, "utf8");
     const config = JSON.parse(raw);
     return (config?.plugins?.entries?.["pinecone-memory"]?.config ?? {}) as Partial<PluginConfig>;
   } catch (err) {
-    console.debug(
-      `[pinecone-memory] readConfigFallback failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    logger.debug(`readConfigFallback failed: ${err instanceof Error ? err.message : String(err)}`);
     return {};
   }
 }
@@ -65,7 +66,7 @@ export default function register(api: OpenClawPluginApi): void {
   if (hasApiConfig) {
     cfg = apiCfg;
   } else {
-    const fallback = readConfigFallback(OPENCLAW_CONFIG_PATH);
+    const fallback = readConfigFallback(OPENCLAW_CONFIG_PATH, api.logger);
     const hasFallback = Object.keys(fallback).length > 0;
     cfg = { ...fallback };
     if (hasFallback) {
