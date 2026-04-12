@@ -94,12 +94,12 @@ export class EmbeddingService {
     return results;
   }
 
-  /** Clear the query embedding cache. Useful for testing. */
+  /** @internal Clear the query embedding cache. */
   clearCache(): void {
     this.queryCache.clear();
   }
 
-  /** Current number of cached query embeddings. */
+  /** @internal Current number of cached query embeddings. */
   get cacheSize(): number {
     return this.queryCache.size;
   }
