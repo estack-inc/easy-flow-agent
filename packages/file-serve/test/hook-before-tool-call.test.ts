@@ -174,6 +174,67 @@ describe("createBeforeToolCallHook", () => {
     expect(saveFile).not.toHaveBeenCalled();
   });
 
+  it("LINE + Flex JSON が message に直接含まれている → plain text に変換", async () => {
+    const flexJson =
+      '{"type":"flex","altText":"📄 sample.pdf","contents":{"type":"bubble","body":{"type":"box","layout":"vertical","contents":[]},"footer":{"type":"box","layout":"vertical","contents":[{"type":"button","action":{"type":"uri","label":"ダウンロード","uri":"https://example.fly.dev/files/abcd1234-5678-9abc-def0-123456789abc/sample.pdf"},"style":"primary"}]}}}送りました！';
+    const hook = createBeforeToolCallHook(baseConfig, mockLogger);
+    const result = await hook(
+      makeEvent({ params: { message: flexJson } }),
+      makeCtx({ sessionKey: "line:user123" }),
+    );
+
+    expect(result).toBeDefined();
+    expect(result?.params?.message).not.toContain('{"type":"flex"');
+    expect(result?.params?.message).toContain("sample.pdf");
+    expect(result?.params?.message).toContain(
+      "https://example.fly.dev/files/abcd1234-5678-9abc-def0-123456789abc/sample.pdf",
+    );
+    expect(result?.params?.message).toContain("送りました！");
+    expect(saveFile).not.toHaveBeenCalled();
+  });
+
+  it("LINE + Flex JSON（file-serve URL なし）→ 変換しない", async () => {
+    const flexJson = '{"type":"flex","altText":"test","contents":{"type":"bubble"}}';
+    const hook = createBeforeToolCallHook(baseConfig, mockLogger);
+    const result = await hook(
+      makeEvent({ params: { message: flexJson } }),
+      makeCtx({ sessionKey: "line:user123" }),
+    );
+
+    expect(result).toBeUndefined();
+    expect(saveFile).not.toHaveBeenCalled();
+  });
+
+  it("LINE + Flex JSON（文字列値内に } を含む）→ 正しく終端検出して変換", async () => {
+    const flexJson =
+      '{"type":"flex","altText":"完了}テスト","contents":{"type":"bubble","footer":{"type":"box","layout":"vertical","contents":[{"type":"button","action":{"type":"uri","uri":"https://example.fly.dev/files/abcd1234-5678-9abc-def0-123456789abc/report.pdf"}}]}}}後続テキスト';
+    const hook = createBeforeToolCallHook(baseConfig, mockLogger);
+    const result = await hook(
+      makeEvent({ params: { message: flexJson } }),
+      makeCtx({ sessionKey: "line:user123" }),
+    );
+
+    expect(result).toBeDefined();
+    expect(result?.params?.message).toContain("report.pdf");
+    expect(result?.params?.message).toContain("後続テキスト");
+    expect(result?.params?.message).not.toContain('{"type":"flex"');
+    // JSON フラグメントが混入していないことを確認
+    expect(result?.params?.message).not.toContain("完了}テスト");
+  });
+
+  it("Slack + Flex JSON → 変換しない（LINE 以外はスキップ）", async () => {
+    const flexJson =
+      '{"type":"flex","altText":"test","contents":{"type":"bubble","footer":{"type":"box","layout":"vertical","contents":[{"type":"button","action":{"type":"uri","uri":"https://example.fly.dev/files/abcd1234-5678-9abc-def0-123456789abc/test.pdf"}}]}}}';
+    const hook = createBeforeToolCallHook(baseConfig, mockLogger);
+    const result = await hook(
+      makeEvent({ params: { message: flexJson } }),
+      makeCtx({ sessionKey: "slack:C0123456" }),
+    );
+
+    expect(result).toBeUndefined();
+    expect(saveFile).not.toHaveBeenCalled();
+  });
+
   it("toolName が message 以外 → 戻り値が undefined", async () => {
     const hook = createBeforeToolCallHook(baseConfig, mockLogger);
     const result = await hook(
