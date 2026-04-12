@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import { PineconeClient } from "@easy-flow/pinecone-client";
 import { PineconeContextEngine } from "@easy-flow/pinecone-context-engine";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
@@ -15,6 +16,23 @@ type PluginConfig = {
   ragMinScore?: number;
   ragTopK?: number;
 };
+
+/**
+ * Fallback: read plugin config directly from openclaw.json when api.pluginConfig is empty.
+ *
+ * Auto-discovered extensions (loaded from /data/extensions/) may not receive config
+ * via api.pluginConfig due to entrypoint clearing plugins.load.paths.
+ * See: estack-inc/easy-flow#189
+ */
+function readConfigFallback(configPath: string): Partial<PluginConfig> {
+  try {
+    const raw = fs.readFileSync(configPath, "utf8");
+    const config = JSON.parse(raw);
+    return (config?.plugins?.entries?.["pinecone-memory"]?.config ?? {}) as Partial<PluginConfig>;
+  } catch {
+    return {};
+  }
+}
 
 function parseFiniteNumber(value: string | undefined): number | undefined {
   if (value === undefined || value === "") return undefined;
@@ -35,8 +53,15 @@ function parseScoreFloat(value: string | undefined): number | undefined {
   return n >= 0 && n <= 1 ? n : undefined;
 }
 
+const OPENCLAW_CONFIG_PATH = "/data/openclaw.json";
+
 export default function register(api: OpenClawPluginApi): void {
-  const cfg = (api.pluginConfig ?? {}) as PluginConfig;
+  const apiCfg = (api.pluginConfig ?? {}) as PluginConfig;
+  const hasApiConfig = Object.keys(apiCfg).length > 0;
+  const cfg: PluginConfig = hasApiConfig ? apiCfg : { ...readConfigFallback(OPENCLAW_CONFIG_PATH) };
+  if (!hasApiConfig) {
+    api.logger.info("pinecone-memory: api.pluginConfig empty — using fallback from openclaw.json");
+  }
 
   const apiKey = cfg.apiKey ?? process.env.PINECONE_API_KEY;
   if (!apiKey) {
