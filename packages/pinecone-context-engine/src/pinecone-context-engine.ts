@@ -223,22 +223,19 @@ export class PineconeContextEngine implements ContextEngine {
     try {
       const startTime = Date.now();
 
-      // 1. AGENTS-CORE.md を読み込み
-      let agentsCoreText = "";
-      if (this.agentsCorePath) {
-        agentsCoreText = await readAgentsCore(this.agentsCorePath);
-        if (!agentsCoreText) {
-          console.warn(`[PineconeContextEngine] AGENTS-CORE.md not found: ${this.agentsCorePath}`);
-        }
-      }
+      // 1. AGENTS-CORE.md 読み込みを即座に開始（await せず並列化）
+      const agentsCorePromise = this.agentsCorePath
+        ? readAgentsCore(this.agentsCorePath)
+        : Promise.resolve("");
 
-      // 2. 検索クエリを生成
+      // 2. 検索クエリを生成（同期処理）
       const baseQuery = buildQueryFromRecentTurns(params.messages);
       const queryTokens = baseQuery ? estimateTokens(baseQuery) : 0;
       const totalBudget = params.tokenBudget ?? this.ragTokenBudget;
 
       if (!baseQuery) {
         // クエリなし → AGENTS-CORE.md のみ返却
+        const agentsCoreText = await agentsCorePromise;
         if (agentsCoreText) {
           const coreTokens = estimateTokens(agentsCoreText);
           console.info(
@@ -258,25 +255,29 @@ export class PineconeContextEngine implements ContextEngine {
 
       const queryText = this.enrichQuery(baseQuery);
 
-      // 3. Pinecone セマンティック検索
-      let results: Awaited<ReturnType<IPineconeClient["query"]>> = [];
+      // 3. AGENTS-CORE.md と Pinecone セマンティック検索を並列実行
+      const pineconePromise = Promise.race([
+        withRetry(() =>
+          this.client.query({
+            text: queryText,
+            agentId: this.agentId,
+            topK: this.ragTopK,
+            minScore: this.ragMinScore,
+          }),
+        ),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("assemble timeout")), ASSEMBLE_TIMEOUT_MS),
+        ),
+      ]);
+
+      let agentsCoreText: string;
+      let results: Awaited<ReturnType<IPineconeClient["query"]>>;
       try {
-        results = await Promise.race([
-          withRetry(() =>
-            this.client.query({
-              text: queryText,
-              agentId: this.agentId,
-              topK: this.ragTopK,
-              minScore: this.ragMinScore,
-            }),
-          ),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("assemble timeout")), ASSEMBLE_TIMEOUT_MS),
-          ),
-        ]);
+        [agentsCoreText, results] = await Promise.all([agentsCorePromise, pineconePromise]);
       } catch (err) {
         // Pinecone 接続不可 → AGENTS-CORE.md のみで動作
         console.warn("[PineconeContextEngine] Pinecone query failed in RAG mode:", err);
+        agentsCoreText = await agentsCorePromise.catch(() => "");
         if (agentsCoreText) {
           const coreTokens = estimateTokens(agentsCoreText);
           return {
@@ -286,6 +287,10 @@ export class PineconeContextEngine implements ContextEngine {
           };
         }
         return this.fallback.assemble(params);
+      }
+
+      if (this.agentsCorePath && !agentsCoreText) {
+        console.warn(`[PineconeContextEngine] AGENTS-CORE.md not found: ${this.agentsCorePath}`);
       }
 
       const latency = Date.now() - startTime;
