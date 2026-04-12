@@ -88,7 +88,7 @@ export class EmbeddingService {
 
     // Cache single-text query embeddings
     if (inputType === "query" && texts.length === 1 && results.length === 1) {
-      this.queryCache.set(texts[0], results[0]);
+      this.queryCache.set(texts[0], results[0].slice());
     }
 
     return results;
