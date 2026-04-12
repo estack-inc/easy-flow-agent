@@ -205,6 +205,23 @@ describe("createBeforeToolCallHook", () => {
     expect(saveFile).not.toHaveBeenCalled();
   });
 
+  it("LINE + Flex JSON（文字列値内に } を含む）→ 正しく終端検出して変換", async () => {
+    const flexJson =
+      '{"type":"flex","altText":"完了}テスト","contents":{"type":"bubble","footer":{"type":"box","layout":"vertical","contents":[{"type":"button","action":{"type":"uri","uri":"https://example.fly.dev/files/abcd1234-5678-9abc-def0-123456789abc/report.pdf"}}]}}}後続テキスト';
+    const hook = createBeforeToolCallHook(baseConfig, mockLogger);
+    const result = await hook(
+      makeEvent({ params: { message: flexJson } }),
+      makeCtx({ sessionKey: "line:user123" }),
+    );
+
+    expect(result).toBeDefined();
+    expect(result?.params?.message).toContain("report.pdf");
+    expect(result?.params?.message).toContain("後続テキスト");
+    expect(result?.params?.message).not.toContain('{"type":"flex"');
+    // JSON フラグメントが混入していないことを確認
+    expect(result?.params?.message).not.toContain("完了}テスト");
+  });
+
   it("Slack + Flex JSON → 変換しない（LINE 以外はスキップ）", async () => {
     const flexJson =
       '{"type":"flex","altText":"test","contents":{"type":"bubble","footer":{"type":"box","layout":"vertical","contents":[{"type":"button","action":{"type":"uri","uri":"https://example.fly.dev/files/abcd1234-5678-9abc-def0-123456789abc/test.pdf"}}]}}}';

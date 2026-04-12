@@ -25,6 +25,32 @@ function buildDownloadText(
   return `📄 ${filename}（${formatFileSize(sizeBytes)}）\n${downloadUrl}\n有効期限: ${ttlDays}日間`;
 }
 
+/** JSON 文字列の終端位置を返す。文字列値・エスケープを考慮し } の誤検出を防ぐ。 */
+function findJsonEnd(s: string): number {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}" && --depth === 0) return i + 1;
+  }
+  return 0;
+}
+
 /**
  * AI が Flex Message JSON を message パラメータに直接埋め込んだ場合に検出し、
  * file-serve ダウンロード URL を含む plain text に変換する。
@@ -40,18 +66,8 @@ function sanitizeFlexJson(message: string, logger: PluginLogger): string | null 
   const filename = decodeURIComponent(downloadUrl.split("/").pop() || "file");
 
   // Flex JSON の終端を検出し、後続テキストを保持
-  let depth = 0;
-  let jsonEnd = 0;
-  for (let i = 0; i < message.length; i++) {
-    if (message[i] === "{") depth++;
-    else if (message[i] === "}") {
-      depth--;
-      if (depth === 0) {
-        jsonEnd = i + 1;
-        break;
-      }
-    }
-  }
+  // JSON 文字列値内の } で誤動作しないよう、文字列・エスケープを考慮
+  const jsonEnd = findJsonEnd(message);
   const trailingText = jsonEnd > 0 ? message.slice(jsonEnd).trim() : "";
 
   logger.info(`Flex JSON を検出、plain text に変換: ${downloadUrl}`);
