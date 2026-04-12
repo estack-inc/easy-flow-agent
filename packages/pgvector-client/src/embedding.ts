@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, type TaskType } from "@google/generative-ai";
 
 const MODEL = "text-embedding-004";
 const BATCH_SIZE = 96;
@@ -14,7 +14,7 @@ export class GeminiEmbeddingService {
 
   async embed(
     texts: string[],
-    taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY",
+    taskType: TaskType.RETRIEVAL_DOCUMENT | TaskType.RETRIEVAL_QUERY,
   ): Promise<number[][]> {
     if (texts.length === 0) return [];
 

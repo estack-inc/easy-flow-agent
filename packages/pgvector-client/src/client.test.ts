@@ -196,7 +196,9 @@ describe("PgVectorClient", () => {
       await client.deleteBySource("mell", "session:abc");
 
       expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining("DELETE FROM memory_vectors WHERE namespace = $1 AND id LIKE $2"),
+        expect.stringContaining(
+          "DELETE FROM memory_vectors WHERE namespace = $1 AND id LIKE $2 ESCAPE",
+        ),
         ["agent:mell", "mell:session:abc:%"],
       );
     });

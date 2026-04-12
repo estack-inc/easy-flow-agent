@@ -7,6 +7,7 @@ import type {
 import { Index } from "@upstash/vector";
 
 const UPSERT_BATCH_SIZE = 100;
+const DELETE_BATCH_SIZE = 100;
 const RANGE_PAGE_SIZE = 100;
 
 export class UpstashVectorClient implements IPineconeClient {
@@ -56,7 +57,9 @@ export class UpstashVectorClient implements IPineconeClient {
 
     const ns = this.index.namespace(`agent:${agentId}`);
 
-    const filter = filterCategory ? `category = '${filterCategory}'` : undefined;
+    const filter = filterCategory
+      ? `category = '${filterCategory.replace(/'/g, "\\'")}'`
+      : undefined;
 
     const results = await ns.query<Record<string, unknown>>({
       data: text,
@@ -125,8 +128,8 @@ export class UpstashVectorClient implements IPineconeClient {
       cursor = page.nextCursor;
     } while (cursor !== "" && cursor !== "0");
 
-    if (ids.length > 0) {
-      await ns.delete(ids);
+    for (let i = 0; i < ids.length; i += DELETE_BATCH_SIZE) {
+      await ns.delete(ids.slice(i, i + DELETE_BATCH_SIZE));
     }
   }
 

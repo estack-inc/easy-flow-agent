@@ -4,6 +4,7 @@ import type {
   QueryParams,
   QueryResult,
 } from "@easy-flow/pinecone-client";
+import { TaskType } from "@google/generative-ai";
 import { Pool } from "pg";
 import pgvector from "pgvector/pg";
 import { GeminiEmbeddingService } from "./embedding.js";
@@ -45,7 +46,7 @@ export class PgVectorClient implements IPineconeClient {
 
     const namespace = `agent:${agentId}`;
     const texts = chunks.map((c) => c.text);
-    const embeddings = await this.embeddingService.embed(texts, "RETRIEVAL_DOCUMENT");
+    const embeddings = await this.embeddingService.embed(texts, TaskType.RETRIEVAL_DOCUMENT);
 
     const client = await this.getClient();
     try {
@@ -93,7 +94,7 @@ export class PgVectorClient implements IPineconeClient {
     const { text, agentId, topK = 20, minScore = 0.7, filterCategory } = params;
     const namespace = `agent:${agentId}`;
 
-    const [queryEmbedding] = await this.embeddingService.embed([text], "RETRIEVAL_QUERY");
+    const [queryEmbedding] = await this.embeddingService.embed([text], TaskType.RETRIEVAL_QUERY);
 
     const client = await this.getClient();
     try {
@@ -173,14 +174,15 @@ export class PgVectorClient implements IPineconeClient {
 
   async deleteBySource(agentId: string, sourceFile: string): Promise<void> {
     const namespace = `agent:${agentId}`;
-    const prefix = `${agentId}:${sourceFile}:%`;
+    const escapedSourceFile = sourceFile.replace(/[%_\\]/g, "\\$&");
+    const prefix = `${agentId}:${escapedSourceFile}:%`;
 
     const client = await this.getClient();
     try {
-      await client.query("DELETE FROM memory_vectors WHERE namespace = $1 AND id LIKE $2", [
-        namespace,
-        prefix,
-      ]);
+      await client.query(
+        "DELETE FROM memory_vectors WHERE namespace = $1 AND id LIKE $2 ESCAPE '\\'",
+        [namespace, prefix],
+      );
     } finally {
       client.release();
     }
