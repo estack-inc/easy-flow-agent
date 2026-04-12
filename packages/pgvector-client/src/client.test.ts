@@ -202,6 +202,15 @@ describe("PgVectorClient", () => {
         ["agent:mell", "mell:session:abc:%"],
       );
     });
+
+    it("should escape LIKE special chars in agentId and sourceFile", async () => {
+      await client.deleteBySource("agent%1", "file_name\\path");
+
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("id LIKE $2 ESCAPE"), [
+        "agent:agent%1",
+        "agent\\%1:file\\_name\\\\path:%",
+      ]);
+    });
   });
 
   describe("deleteNamespace", () => {

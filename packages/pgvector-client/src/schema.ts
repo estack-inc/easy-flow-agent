@@ -1,7 +1,6 @@
 import type { Pool } from "pg";
 import pgvector from "pgvector/pg";
-
-const DIMENSIONS = 768;
+import { GeminiEmbeddingService } from "./embedding.js";
 
 export async function ensureSchema(pool: Pool): Promise<void> {
   const client = await pool.connect();
@@ -13,7 +12,7 @@ export async function ensureSchema(pool: Pool): Promise<void> {
       CREATE TABLE IF NOT EXISTS memory_vectors (
         id TEXT NOT NULL,
         namespace TEXT NOT NULL,
-        embedding vector(${DIMENSIONS}),
+        embedding vector(${GeminiEmbeddingService.DIMENSIONS}),
         metadata JSONB NOT NULL DEFAULT '{}',
         text TEXT NOT NULL DEFAULT '',
         created_at BIGINT NOT NULL DEFAULT 0,
