@@ -58,7 +58,7 @@ export class UpstashVectorClient implements IPineconeClient {
     const ns = this.index.namespace(`agent:${agentId}`);
 
     const filter = filterCategory
-      ? `category = '${filterCategory.replace(/'/g, "\\'")}'`
+      ? `category = '${filterCategory.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`
       : undefined;
 
     const results = await ns.query<Record<string, unknown>>({

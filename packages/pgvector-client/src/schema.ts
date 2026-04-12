@@ -27,6 +27,12 @@ export async function ensureSchema(pool: Pool): Promise<void> {
       ON memory_vectors
       USING hnsw (embedding vector_cosine_ops)
     `);
+
+    // B-tree index for namespace filtering (used in query, delete, deleteBySource)
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_memory_vectors_namespace
+      ON memory_vectors (namespace)
+    `);
   } finally {
     client.release();
   }
