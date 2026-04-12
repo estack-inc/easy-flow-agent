@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@upstash/vector": "^1.2.0",
-    "@easy-flow/pinecone-client": "1.0.0"
+    "@easy-flow/pinecone-client": "*"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
