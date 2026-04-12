@@ -6,8 +6,8 @@ export type FileServeConfig = {
     windowMs: number;
     maxRequests: number;
   };
-  /** ソースファイルの許可ディレクトリ。設定時はこのディレクトリ外のファイルを拒否する。 */
-  allowedSourceDir?: string;
+  /** ソースファイルの許可ディレクトリ（デフォルト: /data/workspace）。このディレクトリ外のファイルは拒否される。 */
+  allowedSourceDir: string;
 };
 
 /**
@@ -58,7 +58,7 @@ export function loadConfig(
   const allowedSourceDir =
     typeof rawAllowedSourceDir === "string" && rawAllowedSourceDir
       ? rawAllowedSourceDir
-      : undefined;
+      : "/data/workspace";
 
   const rawStorageDir = pluginConfig?.storageDir;
   const storageDir =

@@ -137,16 +137,81 @@ describe("saveFile / validateSourceFilePath", () => {
       ).rejects.toThrow("許可されていないソースパス");
     });
 
-    it("/data/ のパスをブロックする（アプリデータ漏洩防止）", async () => {
+    it("/data/openclaw.json をブロックする（設定ファイル漏洩防止）", async () => {
+      // realpath で正確なパスに解決されるケースをシミュレート
+      (fs.promises.realpath as ReturnType<typeof vi.fn>).mockResolvedValue("/data/openclaw.json");
+
       await expect(
         saveFile({
-          sourceFilePath: "/data/secrets/key.pem",
-          filename: "key.pem",
+          sourceFilePath: "/data/openclaw.json",
+          filename: "openclaw.json",
+          mimeType: "application/json",
+          storageDir: STORAGE_DIR,
+          baseUrl: BASE_URL,
+        }),
+      ).rejects.toThrow("許可されていないソースパス");
+    });
+
+    it("/data/extensions/ のパスをブロックする（プラグインソースコード漏洩防止）", async () => {
+      await expect(
+        saveFile({
+          sourceFilePath: "/data/extensions/file-serve/index.ts",
+          filename: "index.ts",
           mimeType: "text/plain",
           storageDir: STORAGE_DIR,
           baseUrl: BASE_URL,
         }),
       ).rejects.toThrow("許可されていないソースパス");
+    });
+
+    it("/data/file-serve/ のパスをブロックする（ストレージ自体の再配信防止）", async () => {
+      await expect(
+        saveFile({
+          sourceFilePath: "/data/file-serve/some-uuid/secret.pdf",
+          filename: "secret.pdf",
+          mimeType: "application/pdf",
+          storageDir: STORAGE_DIR,
+          baseUrl: BASE_URL,
+        }),
+      ).rejects.toThrow("許可されていないソースパス");
+    });
+
+    it("/data/lcm.db をブロックする（LCM データベース漏洩防止）", async () => {
+      (fs.promises.realpath as ReturnType<typeof vi.fn>).mockResolvedValue("/data/lcm.db");
+
+      await expect(
+        saveFile({
+          sourceFilePath: "/data/lcm.db",
+          filename: "lcm.db",
+          mimeType: "application/octet-stream",
+          storageDir: STORAGE_DIR,
+          baseUrl: BASE_URL,
+        }),
+      ).rejects.toThrow("許可されていないソースパス");
+    });
+
+    it("/data/easy-flow-agent/ のパスをブロックする（エージェントソースコード漏洩防止）", async () => {
+      await expect(
+        saveFile({
+          sourceFilePath: "/data/easy-flow-agent/src/index.ts",
+          filename: "index.ts",
+          mimeType: "text/plain",
+          storageDir: STORAGE_DIR,
+          baseUrl: BASE_URL,
+        }),
+      ).rejects.toThrow("許可されていないソースパス");
+    });
+
+    it("/data/workspace/ のパスは通過する（エージェント作業ディレクトリ）", async () => {
+      await expect(
+        saveFile({
+          sourceFilePath: "/data/workspace/reports/output.csv",
+          filename: "output.csv",
+          mimeType: "text/csv",
+          storageDir: STORAGE_DIR,
+          baseUrl: BASE_URL,
+        }),
+      ).resolves.toMatchObject({ uuid: VALID_UUID });
     });
 
     it("/var/ のパスをブロックする", async () => {

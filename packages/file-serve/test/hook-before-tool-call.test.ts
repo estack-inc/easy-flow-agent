@@ -18,6 +18,7 @@ const baseConfig: FileServeConfig = {
   baseUrl: "https://example.fly.dev",
   ttlDays: 7,
   rateLimit: { windowMs: 60000, maxRequests: 30 },
+  allowedSourceDir: "/data/workspace",
 };
 
 const mockLogger = {

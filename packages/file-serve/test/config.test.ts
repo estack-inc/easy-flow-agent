@@ -196,17 +196,17 @@ describe("loadConfig", () => {
       expect(config.allowedSourceDir).toBe("/tmp/uploads");
     });
 
-    it("allowedSourceDir 未設定 → undefined", () => {
+    it("allowedSourceDir 未設定 → デフォルト /data/workspace", () => {
       const config = loadConfig({ baseUrl: "https://example.com" }, undefined);
-      expect(config.allowedSourceDir).toBeUndefined();
+      expect(config.allowedSourceDir).toBe("/data/workspace");
     });
 
-    it("allowedSourceDir が空文字列 → undefined にフォールバック", () => {
+    it("allowedSourceDir が空文字列 → デフォルト /data/workspace にフォールバック", () => {
       const config = loadConfig(
         { baseUrl: "https://example.com", allowedSourceDir: "" },
         undefined,
       );
-      expect(config.allowedSourceDir).toBeUndefined();
+      expect(config.allowedSourceDir).toBe("/data/workspace");
     });
   });
 });

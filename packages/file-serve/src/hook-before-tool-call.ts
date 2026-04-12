@@ -47,12 +47,6 @@ export type PluginHookBeforeToolCallResult = {
 };
 
 export function createBeforeToolCallHook(config: FileServeConfig, logger: PluginLogger) {
-  if (!config.allowedSourceDir) {
-    logger.warn(
-      "allowedSourceDir が未設定です。本番環境では allowedSourceDir を設定してソースパスを制限することを推奨します。",
-    );
-  }
-
   return async (
     event: PluginHookBeforeToolCallEvent,
     ctx: PluginHookToolContext,

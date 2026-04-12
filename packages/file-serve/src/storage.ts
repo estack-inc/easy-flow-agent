@@ -28,7 +28,11 @@ const BLOCKED_SOURCE_PREFIXES = [
   "/boot/",
   "/dev/",
   "/app/", // アプリソースコード・.env 等の漏洩防止
-  "/data/", // アプリデータ（ストレージ自体も /data/file-serve/ 配下）
+  "/data/openclaw.json", // OpenClaw 設定ファイル
+  "/data/lcm.db", // LCM データベース
+  "/data/file-serve/", // file-serve ストレージ自体の再配信防止
+  "/data/extensions/", // プラグインソースコード
+  "/data/easy-flow-agent/", // エージェントソースコード
   "/var/", // ログ・データベース等
   "/opt/", // オプションパッケージ
   "/usr/", // システムユーティリティ
