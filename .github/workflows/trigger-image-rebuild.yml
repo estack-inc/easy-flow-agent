@@ -1,0 +1,24 @@
+name: Trigger Image Rebuild
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    name: Notify openclaw-templates
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger repository_dispatch
+        env:
+          DISPATCH_TOKEN: ${{ secrets.OPENCLAW_DISPATCH_TOKEN }}
+          REPO_NAME: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          REF: ${{ github.ref }}
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+            https://api.github.com/repos/estack-inc/openclaw-templates/dispatches \
+            -d "{\"event_type\":\"dependency-updated\",\"client_payload\":{\"source\":\"${REPO_NAME}\",\"sha\":\"${SHA}\",\"ref\":\"${REF}\"}}"
