@@ -22,5 +22,6 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
             -H "Content-Type: application/json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
             https://api.github.com/repos/estack-inc/openclaw-templates/dispatches \
             -d "{\"event_type\":\"dependency-updated\",\"client_payload\":{\"source\":\"${REPO_NAME}\",\"sha\":\"${SHA}\",\"ref\":\"${REF}\"}}"
