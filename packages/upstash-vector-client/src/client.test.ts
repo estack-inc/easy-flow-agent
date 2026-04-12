@@ -150,6 +150,22 @@ describe("UpstashVectorClient", () => {
         }),
       );
     });
+
+    it("should escape single quotes and backslashes in category filter", async () => {
+      mockQuery.mockResolvedValueOnce([]);
+
+      await client.query({
+        text: "test",
+        agentId: "mell",
+        filterCategory: "it's a \\test\\",
+      });
+
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filter: "category = 'it\\'s a \\\\test\\\\'",
+        }),
+      );
+    });
   });
 
   describe("delete", () => {
