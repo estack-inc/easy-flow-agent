@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import * as fs from "node:fs";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@easy-flow/pinecone-client", () => ({
   PineconeClient: vi.fn().mockImplementation((config) => ({
@@ -13,6 +14,8 @@ vi.mock("@easy-flow/pinecone-context-engine", () => ({
     ingest: vi.fn(),
   })),
 }));
+
+vi.mock("node:fs");
 
 import { PineconeClient } from "@easy-flow/pinecone-client";
 import { PineconeContextEngine } from "@easy-flow/pinecone-context-engine";
@@ -37,6 +40,10 @@ function createMockApi(pluginConfig: Record<string, unknown> = {}) {
 }
 
 describe("pinecone-memory plugin", () => {
+  beforeEach(() => {
+    vi.mocked(fs.readFileSync).mockReset();
+  });
+
   it("warns and does not register when API key is missing", () => {
     const originalEnv = process.env.PINECONE_API_KEY;
     delete process.env.PINECONE_API_KEY;
@@ -288,6 +295,72 @@ describe("pinecone-memory plugin", () => {
     } else {
       process.env.RAG_TOKEN_BUDGET = originalBudget;
     }
+  });
+
+  describe("config fallback from openclaw.json", () => {
+    it("reads config from openclaw.json when api.pluginConfig is empty", () => {
+      const fallbackConfig = JSON.stringify({
+        plugins: {
+          entries: {
+            "pinecone-memory": {
+              config: {
+                apiKey: "fallback-key",
+                agentId: "fallback-agent",
+                memoryHint: "fallback hint",
+              },
+            },
+          },
+        },
+      });
+      vi.mocked(fs.readFileSync).mockReturnValue(fallbackConfig);
+
+      const api = createMockApi({});
+      register(api as any);
+
+      expect(fs.readFileSync).toHaveBeenCalledWith("/data/openclaw.json", "utf8");
+      expect(api.logger.info).toHaveBeenCalledWith(
+        expect.stringContaining("loaded config from openclaw.json"),
+      );
+      expect(api.registerContextEngine).toHaveBeenCalled();
+      expect(api.logger.info).toHaveBeenCalledWith(
+        expect.stringContaining("agentId: fallback-agent"),
+      );
+    });
+
+    it("does not read openclaw.json when api.pluginConfig has values", () => {
+      const api = createMockApi({ apiKey: "direct-key", agentId: "direct-agent" });
+      register(api as any);
+
+      expect(fs.readFileSync).not.toHaveBeenCalled();
+      expect(api.logger.info).not.toHaveBeenCalledWith(expect.stringContaining("loaded config"));
+    });
+
+    it("falls back gracefully when openclaw.json is unreadable", () => {
+      vi.mocked(fs.readFileSync).mockImplementation(() => {
+        throw new Error("ENOENT");
+      });
+
+      const originalEnv = process.env.PINECONE_API_KEY;
+      delete process.env.PINECONE_API_KEY;
+
+      const api = createMockApi({});
+      register(api as any);
+
+      // Fallback returned empty → warn log
+      expect(api.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("fallback returned no config"),
+      );
+      // No apiKey from fallback or env → plugin disabled
+      expect(api.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("PINECONE_API_KEY not set"),
+      );
+
+      if (originalEnv === undefined) {
+        delete process.env.PINECONE_API_KEY;
+      } else {
+        process.env.PINECONE_API_KEY = originalEnv;
+      }
+    });
   });
 
   it("logs mode: rag when ragEnabled is true via pluginConfig", () => {
