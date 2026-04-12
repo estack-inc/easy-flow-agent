@@ -187,6 +187,42 @@ describe("EmbeddingService", () => {
       expect(embedFn).toHaveBeenCalledTimes(callsBefore + 1);
     });
 
+    it("promotes accessed entry so it is not evicted", async () => {
+      const embedFn = vi.fn().mockImplementation((params: { inputs: string[] }) =>
+        Promise.resolve({
+          data: params.inputs.map((_, i) => ({
+            vectorType: "dense",
+            values: createFakeEmbedding().map((v) => v + i),
+          })),
+        }),
+      );
+      const mockPinecone = createMockPinecone(embedFn);
+      const service = new EmbeddingService(mockPinecone);
+
+      // Fill cache completely: query-0 through query-63
+      for (let i = 0; i < EmbeddingService.QUERY_CACHE_SIZE; i++) {
+        await service.embed([`query-${i}`], "query");
+      }
+      expect(service.cacheSize).toBe(EmbeddingService.QUERY_CACHE_SIZE);
+
+      // Access query-0 to promote it (cache hit, moves to end)
+      const callsAfterFill = embedFn.mock.calls.length;
+      await service.embed(["query-0"], "query");
+      expect(embedFn).toHaveBeenCalledTimes(callsAfterFill); // cache hit
+
+      // Insert query-new — should evict query-1 (oldest non-promoted), NOT query-0
+      await service.embed(["query-new"], "query");
+
+      // query-0 should still be cached (was promoted by get)
+      const callsBefore0 = embedFn.mock.calls.length;
+      await service.embed(["query-0"], "query");
+      expect(embedFn).toHaveBeenCalledTimes(callsBefore0); // still cached
+
+      // query-1 should have been evicted (was the oldest after query-0 was promoted)
+      await service.embed(["query-1"], "query");
+      expect(embedFn).toHaveBeenCalledTimes(callsBefore0 + 1); // re-embedded
+    });
+
     it("clearCache resets the cache", async () => {
       const fakeEmbedding = createFakeEmbedding();
       const embedFn = vi
