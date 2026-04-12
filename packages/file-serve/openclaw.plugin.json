@@ -26,6 +26,7 @@
       },
       "allowedSourceDir": {
         "type": "string",
+        "default": "/data/workspace",
         "description": "ソースファイルの許可ディレクトリ（デフォルト: /data/workspace。このディレクトリ外のファイルは拒否される）"
       }
     },
