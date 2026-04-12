@@ -14,9 +14,10 @@ export type FileServeConfig = {
  * プラグイン設定をロードする。
  * baseUrl 優先順位:
  *   1. pluginConfig.baseUrl（明示指定）
- *   2. apiConfig から取得できる publicUrl
- *   3. 環境変数 FLY_APP_NAME から構成
- *   4. フォールバック: "http://localhost:8080"
+ *   2. pluginConfig.publicUrl（entrypoint.sh 互換エイリアス）
+ *   3. apiConfig から取得できる publicUrl
+ *   4. 環境変数 FLY_APP_NAME から構成
+ *   5. フォールバック: "http://localhost:8080"
  */
 export function loadConfig(
   pluginConfig: Record<string, unknown> | undefined,
@@ -25,6 +26,8 @@ export function loadConfig(
   let baseUrl: string;
   if (typeof pluginConfig?.baseUrl === "string" && pluginConfig.baseUrl) {
     baseUrl = pluginConfig.baseUrl;
+  } else if (typeof pluginConfig?.publicUrl === "string" && pluginConfig.publicUrl) {
+    baseUrl = pluginConfig.publicUrl;
   } else if (typeof apiConfig?.publicUrl === "string" && apiConfig.publicUrl) {
     baseUrl = apiConfig.publicUrl;
   } else if (process.env.FLY_APP_NAME) {
