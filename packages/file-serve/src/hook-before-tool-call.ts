@@ -25,6 +25,39 @@ function buildDownloadText(
   return `📄 ${filename}（${formatFileSize(sizeBytes)}）\n${downloadUrl}\n有効期限: ${ttlDays}日間`;
 }
 
+/**
+ * AI が Flex Message JSON を message パラメータに直接埋め込んだ場合に検出し、
+ * file-serve ダウンロード URL を含む plain text に変換する。
+ * Flex JSON でない場合や file-serve URL が含まれない場合は null を返す。
+ */
+function sanitizeFlexJson(message: string, logger: PluginLogger): string | null {
+  if (!message.startsWith('{"type":"flex"')) return null;
+
+  const urlMatch = message.match(/https?:\/\/[^"\s]+\/files\/[a-f0-9-]+\/[^"\s]+/);
+  if (!urlMatch) return null;
+
+  const downloadUrl = urlMatch[0];
+  const filename = decodeURIComponent(downloadUrl.split("/").pop() || "file");
+
+  // Flex JSON の終端を検出し、後続テキストを保持
+  let depth = 0;
+  let jsonEnd = 0;
+  for (let i = 0; i < message.length; i++) {
+    if (message[i] === "{") depth++;
+    else if (message[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        jsonEnd = i + 1;
+        break;
+      }
+    }
+  }
+  const trailingText = jsonEnd > 0 ? message.slice(jsonEnd).trim() : "";
+
+  logger.info(`Flex JSON を検出、plain text に変換: ${downloadUrl}`);
+  return `📄 ${filename}\n${downloadUrl}${trailingText ? "\n" + trailingText : ""}`;
+}
+
 export type PluginHookBeforeToolCallEvent = {
   toolName: string;
   params: Record<string, unknown>;
@@ -57,11 +90,21 @@ export function createBeforeToolCallHook(config: FileServeConfig, logger: Plugin
     // filePath または media が存在するかチェック
     const sourceFilePath =
       (event.params.filePath as string | undefined) || (event.params.media as string | undefined);
-    if (!sourceFilePath) return undefined;
 
     // LINE チャネルのみ処理
     if (!ctx.sessionKey?.startsWith("line:")) {
       logger.debug?.(`LINE 以外のチャネルはスキップ: ${ctx.sessionKey}`);
+      return undefined;
+    }
+
+    // Flex JSON がメッセージに直接含まれている場合の検出・変換
+    // AI がセッションコンテキストから旧ワークアラウンドを使用するケースに対応
+    if (!sourceFilePath) {
+      const message = event.params.message as string | undefined;
+      if (message) {
+        const sanitized = sanitizeFlexJson(message, logger);
+        if (sanitized) return { params: { ...event.params, message: sanitized } };
+      }
       return undefined;
     }
 
