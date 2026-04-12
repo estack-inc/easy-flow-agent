@@ -1,0 +1,41 @@
+{
+  "name": "pgvector-memory",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./pgvector-memory/index.js",
+      "types": "./pgvector-memory/index.d.ts",
+      "default": "./pgvector-memory/index.js"
+    }
+  },
+  "main": "./pgvector-memory/index.js",
+  "types": "./pgvector-memory/index.d.ts",
+  "openclaw": {
+    "extensions": ["./src/index.ts"]
+  },
+  "files": [
+    "pgvector-memory"
+  ],
+  "scripts": {
+    "build": "tsc && cp openclaw.plugin.json pgvector-memory/openclaw.plugin.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@easy-flow/pgvector-client": "*",
+    "@easy-flow/pinecone-context-engine": "*"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.7"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  }
+}
