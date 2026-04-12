@@ -176,6 +176,32 @@ describe("saveFile / validateSourceFilePath", () => {
       ).rejects.toThrow("許可されていないソースパス");
     });
 
+    it("/data/lcm.db をブロックする（LCM データベース漏洩防止）", async () => {
+      (fs.promises.realpath as ReturnType<typeof vi.fn>).mockResolvedValue("/data/lcm.db");
+
+      await expect(
+        saveFile({
+          sourceFilePath: "/data/lcm.db",
+          filename: "lcm.db",
+          mimeType: "application/octet-stream",
+          storageDir: STORAGE_DIR,
+          baseUrl: BASE_URL,
+        }),
+      ).rejects.toThrow("許可されていないソースパス");
+    });
+
+    it("/data/easy-flow-agent/ のパスをブロックする（エージェントソースコード漏洩防止）", async () => {
+      await expect(
+        saveFile({
+          sourceFilePath: "/data/easy-flow-agent/src/index.ts",
+          filename: "index.ts",
+          mimeType: "text/plain",
+          storageDir: STORAGE_DIR,
+          baseUrl: BASE_URL,
+        }),
+      ).rejects.toThrow("許可されていないソースパス");
+    });
+
     it("/data/workspace/ のパスは通過する（エージェント作業ディレクトリ）", async () => {
       await expect(
         saveFile({

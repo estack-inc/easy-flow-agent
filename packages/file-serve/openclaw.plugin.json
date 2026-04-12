@@ -26,7 +26,7 @@
       },
       "allowedSourceDir": {
         "type": "string",
-        "description": "ソースファイルの許可ディレクトリ（省略時はシステムパスのみブロック）"
+        "description": "ソースファイルの許可ディレクトリ（デフォルト: /data/workspace。このディレクトリ外のファイルは拒否される）"
       }
     },
     "additionalProperties": false
