@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@easy-flow/pinecone-client", () => ({
   PineconeClient: vi.fn().mockImplementation((config) => ({
@@ -294,6 +294,10 @@ describe("pinecone-memory plugin", () => {
   });
 
   describe("config fallback from openclaw.json", () => {
+    beforeEach(() => {
+      vi.mocked(fs.readFileSync).mockReset();
+    });
+
     it("reads config from openclaw.json when api.pluginConfig is empty", () => {
       const fallbackConfig = JSON.stringify({
         plugins: {
@@ -315,7 +319,7 @@ describe("pinecone-memory plugin", () => {
 
       expect(fs.readFileSync).toHaveBeenCalledWith("/data/openclaw.json", "utf8");
       expect(api.logger.info).toHaveBeenCalledWith(
-        expect.stringContaining("using fallback from openclaw.json"),
+        expect.stringContaining("loaded config from openclaw.json"),
       );
       expect(api.registerContextEngine).toHaveBeenCalled();
       expect(api.logger.info).toHaveBeenCalledWith(
@@ -324,12 +328,11 @@ describe("pinecone-memory plugin", () => {
     });
 
     it("does not read openclaw.json when api.pluginConfig has values", () => {
-      vi.mocked(fs.readFileSync).mockClear();
       const api = createMockApi({ apiKey: "direct-key", agentId: "direct-agent" });
       register(api as any);
 
       expect(fs.readFileSync).not.toHaveBeenCalled();
-      expect(api.logger.info).not.toHaveBeenCalledWith(expect.stringContaining("using fallback"));
+      expect(api.logger.info).not.toHaveBeenCalledWith(expect.stringContaining("loaded config"));
     });
 
     it("falls back gracefully when openclaw.json is unreadable", () => {
@@ -343,6 +346,10 @@ describe("pinecone-memory plugin", () => {
       const api = createMockApi({});
       register(api as any);
 
+      // Fallback returned empty → warn log
+      expect(api.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("fallback returned no config"),
+      );
       // No apiKey from fallback or env → plugin disabled
       expect(api.logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("PINECONE_API_KEY not set"),

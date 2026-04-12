@@ -58,9 +58,20 @@ const OPENCLAW_CONFIG_PATH = "/data/openclaw.json";
 export default function register(api: OpenClawPluginApi): void {
   const apiCfg = (api.pluginConfig ?? {}) as PluginConfig;
   const hasApiConfig = Object.keys(apiCfg).length > 0;
-  const cfg: PluginConfig = hasApiConfig ? apiCfg : { ...readConfigFallback(OPENCLAW_CONFIG_PATH) };
-  if (!hasApiConfig) {
-    api.logger.info("pinecone-memory: api.pluginConfig empty — using fallback from openclaw.json");
+  let cfg: PluginConfig;
+  if (hasApiConfig) {
+    cfg = apiCfg;
+  } else {
+    const fallback = readConfigFallback(OPENCLAW_CONFIG_PATH);
+    const hasFallback = Object.keys(fallback).length > 0;
+    cfg = { ...fallback };
+    if (hasFallback) {
+      api.logger.info("pinecone-memory: api.pluginConfig empty — loaded config from openclaw.json");
+    } else {
+      api.logger.warn(
+        "pinecone-memory: api.pluginConfig empty and openclaw.json fallback returned no config",
+      );
+    }
   }
 
   const apiKey = cfg.apiKey ?? process.env.PINECONE_API_KEY;
