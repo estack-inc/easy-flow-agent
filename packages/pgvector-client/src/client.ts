@@ -174,8 +174,9 @@ export class PgVectorClient implements IPineconeClient {
 
   async deleteBySource(agentId: string, sourceFile: string): Promise<void> {
     const namespace = `agent:${agentId}`;
+    const escapedAgentId = agentId.replace(/[%_\\]/g, "\\$&");
     const escapedSourceFile = sourceFile.replace(/[%_\\]/g, "\\$&");
-    const prefix = `${agentId}:${escapedSourceFile}:%`;
+    const prefix = `${escapedAgentId}:${escapedSourceFile}:%`;
 
     const client = await this.getClient();
     try {

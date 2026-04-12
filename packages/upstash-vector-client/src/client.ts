@@ -101,7 +101,9 @@ export class UpstashVectorClient implements IPineconeClient {
     }
 
     const ns = this.index.namespace(`agent:${agentId}`);
-    await ns.delete(ids);
+    for (let i = 0; i < ids.length; i += DELETE_BATCH_SIZE) {
+      await ns.delete(ids.slice(i, i + DELETE_BATCH_SIZE));
+    }
   }
 
   async deleteBySource(agentId: string, sourceFile: string): Promise<void> {
