@@ -13,6 +13,27 @@ describe("loadConfig", () => {
       expect(config.baseUrl).toBe("https://custom.example.com");
     });
 
+    it("pluginConfig.publicUrl が baseUrl の代替として使用される", () => {
+      const config = loadConfig({ publicUrl: "https://entrypoint.example.com" }, undefined);
+      expect(config.baseUrl).toBe("https://entrypoint.example.com");
+    });
+
+    it("pluginConfig.baseUrl が pluginConfig.publicUrl より優先される", () => {
+      const config = loadConfig(
+        { baseUrl: "https://explicit.example.com", publicUrl: "https://entrypoint.example.com" },
+        undefined,
+      );
+      expect(config.baseUrl).toBe("https://explicit.example.com");
+    });
+
+    it("pluginConfig.publicUrl が apiConfig.publicUrl より優先される", () => {
+      const config = loadConfig(
+        { publicUrl: "https://entrypoint.example.com" },
+        { publicUrl: "https://api.example.com" },
+      );
+      expect(config.baseUrl).toBe("https://entrypoint.example.com");
+    });
+
     it("apiConfig.publicUrl が次の優先順位", () => {
       const config = loadConfig(undefined, { publicUrl: "https://api-public.example.com" });
       expect(config.baseUrl).toBe("https://api-public.example.com");
