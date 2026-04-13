@@ -1,4 +1,12 @@
-name: Claude Code Review
+# Codex Code Review
+#
+# PR の変更を OpenAI Codex でレビュー → PR コメント投稿
+#
+# 必要な Secrets:
+#   OPENAI_API_KEY      — OpenAI API キー
+#   AI_REVIEWER_TOKEN   — GitHub PAT（PR レビュー投稿用、省略時 GITHUB_TOKEN）
+
+name: Codex Code Review
 
 on:
   pull_request:
@@ -6,7 +14,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}
+  group: codex-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions:
@@ -32,7 +40,6 @@ jobs:
           echo "Waiting for CI on $SHA ..."
 
           for i in $(seq 1 90); do
-            # Get CI workflow run for this SHA
             RUN=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=1" \
               --jq '.workflow_runs[0] | "\(.status):\(.conclusion // "pending")"' 2>/dev/null || echo "")
 
@@ -58,7 +65,7 @@ jobs:
           echo "Timed out waiting for CI"
           exit 1
 
-  claude-review:
+  codex-review:
     needs: [wait-for-ci]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -80,33 +87,31 @@ jobs:
             echo "Target files changed: $CHANGED"
           fi
 
-      - name: Checkout repository
+      - uses: actions/checkout@v4
         if: steps.check_files.outputs.skip != 'true'
-        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Run Claude Code Review
-        id: claude_review
+      - name: Pre-fetch refs
         if: steps.check_files.outputs.skip != 'true'
-        uses: anthropics/claude-code-action@v1
+        run: |
+          git fetch --no-tags origin \
+            ${{ github.event.pull_request.base.ref }} \
+            +refs/pull/${{ github.event.pull_request.number }}/head
+
+      - name: Run Codex Review
+        id: codex_review
+        if: steps.check_files.outputs.skip != 'true'
+        uses: openai/codex-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
-          track_progress: false
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          output-file: /tmp/review-result.md
+          sandbox: workspace-write
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
             あなたは Easy Flow Agent プロジェクトのシニアコードレビュアーです。
-
-            ## ⚠️ CRITICAL INSTRUCTION — 最重要
-
-            **レビュー中は一切 GitHub へ投稿・コメントしてはならない。**
-            `gh pr comment`、`gh pr review`、インラインコメント等、GitHub への直接投稿は絶対禁止。
-
-            全ての調査・分析が完了した後、**最後に 1 回だけ** `/tmp/review-result.md` に Write ツールで書き出すこと。
-            途中経過・部分結果のファイル書き込みも禁止。後続ステップがこのファイルを一括で PR コメントとして投稿する。
 
             ## レビュー手順（Step 1〜5 を順番に実行、全て完了してから出力）
 
@@ -129,7 +134,7 @@ jobs:
             ### Step 4: 影響範囲の調査
             - 変更されたファイルを全て読み込む
             - インポートされているクラス・インターフェース・親クラスを確認
-            - Grep で関連する呼び出し元・実装クラスを検索
+            - 関連する呼び出し元・実装クラスを検索
             - 対応するテストファイルを確認
 
             ### Step 5: チェック項目の評価
@@ -160,35 +165,21 @@ jobs:
             - 🔴 **重大**: バグ、セキュリティ脆弱性、データ損失リスク、要件未充足（**スキップ不可**）
             - 🟡 **要修正**: コード品質問題、テスト不足、型安全性違反、推奨事項、スタイル提案（**合理的理由があれば PR 説明欄でスキップ可能**）
 
-            ※ 旧「情報提供（🔵）」カテゴリは廃止。推奨事項・スタイル提案も 🟡 として扱う。
-
             ## スキップ判定
 
-            Step 1 で取得した PR body に `## AIレビュースキップ理由` セクションがある場合:
+            PR body に `## AIレビュースキップ理由` セクションがある場合:
             - 各 🟡 指摘について、対応するスキップ理由が記載されているか照合する
-            - 対応するスキップ理由が記載されている 🟡 指摘 → `🟡 (スキップ済)` として扱い、verdict に影響しない
+            - 対応するスキップ理由がある 🟡 指摘 → `🟡 (スキップ済)` として verdict に影響しない
             - スキップ理由が不明確・不合理な場合は通常の 🟡 として扱う
 
             ## レビュー判定ルール
 
-            **🔴 指摘が 1 件でもある場合（スキップ不可）:**
-            → `### レビュー結果: ❌ Changes Requested`
+            🔴 指摘が 1 件でもある → `### レビュー結果: ❌ Changes Requested`
+            スキップされていない 🟡 指摘が 1 件でもある → `### レビュー結果: ❌ Changes Requested`
+            全ての 🟡 がスキップ済み、または指摘なし → `### レビュー結果: ✅ Approved`
 
-            **スキップされていない 🟡 指摘が 1 件でもある場合:**
-            → `### レビュー結果: ❌ Changes Requested`
+            ## 出力形式（最終出力として PR コメントに投稿されます）
 
-            **全ての 🟡 がスキップ済み、または指摘なしの場合:**
-            → `### レビュー結果: ✅ Approved`
-
-            **重要: `gh pr review` コマンドは実行しないこと。** レビュー判定の提出は後続ステップが自動で行う。
-
-            ## 出力手順（全 Step 完了後に 1 回だけ実行）
-
-            Step 1〜5 の全てが完了し、全指摘事項が確定したら、以下のテンプレートに従い
-            `/tmp/review-result.md` を Write ツールで **1 回だけ** 書き出すこと。
-            書き出し後の追記・上書きは禁止。
-
-            ```markdown
             ### 変更の概要
 
             （変更内容の要約を 1〜3 文で記載）
@@ -216,25 +207,15 @@ jobs:
             > ✓ スキップ理由: [PR に記載された理由]
 
             ### レビュー結果: ✅ Approved
-            ```
-            または
-            ```markdown
-            ### レビュー結果: ❌ Changes Requested
-            ```
 
             ## レビュー方針
             - 確信がない指摘は避け、確実な問題のみ指摘する
             - 修正漏れの検出を最優先で行う
-            - 指摘にはファイルパスと行番号を必ず含める（`path/to/file.ts:42` 形式）
-            - **網羅性の確保**: 全ファイルのレビューを完了した後、以下のチェックリストで見落としがないか自己検証すること:
-              1. 全ての変更ファイルに目を通したか？
-              2. 各ファイルのインポート先・呼び出し元を確認したか？
-              3. テストカバレッジの漏れはないか？
-              4. パッケージ間の整合性（依存宣言、バージョン、export パターン）を確認したか？
-
-          claude_args: |
-            --model ${{ vars.AI_REVIEW_MODEL || 'sonnet' }}
-            --allowedTools "Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(grep:*),Bash(find:*),Bash(rg:*),Bash(cat:*),Bash(wc:*),Read,Glob,Grep"
+            - 指摘にはファイルパスと行番号を必ず含める
+            - 全ての問題を 1 回のレビューで網羅的に検出する。小出しにしない
+            - GitHub への直接投稿（gh pr comment, gh pr review）は行わない
+        env:
+          GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Post review comment
         id: post_review
@@ -245,7 +226,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           if [ ! -f /tmp/review-result.md ] || [ ! -s /tmp/review-result.md ]; then
-            echo "::error::Review result file not found or empty — Claude may not have completed the review"
+            echo "::error::Review result file not found or empty — Codex may not have completed the review"
             exit 1
           fi
           gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file /tmp/review-result.md
@@ -253,7 +234,7 @@ jobs:
       - name: Submit review verdict
         if: >
           steps.check_files.outputs.skip != 'true' &&
-          steps.claude_review.conclusion == 'success' &&
+          steps.codex_review.conclusion == 'success' &&
           steps.post_review.conclusion == 'success'
         env:
           GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
@@ -268,7 +249,7 @@ jobs:
             echo "Submitting CHANGES_REQUESTED review"
             gh pr review "$PR_NUMBER" --repo "$REPO" --request-changes \
               --body "🤖 AIレビュー判定: CHANGES_REQUESTED — 詳細はレビューコメントを確認してください。"
-          elif echo "$VERDICT" | grep -qiE 'APPROVED|APPROVE|Approved'; then
+          elif echo "$VERDICT" | grep -qiE 'APPROVED|APPROVE|Approved|✅'; then
             echo "Submitting APPROVED review"
             gh pr review "$PR_NUMBER" --repo "$REPO" --approve \
               --body "🤖 AIレビュー判定: APPROVED ✅"
