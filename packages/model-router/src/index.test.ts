@@ -27,12 +27,15 @@ function createMockApi(pluginConfig: Record<string, unknown> = {}): MockApi {
 }
 
 /** 登録済みの before_model_resolve ハンドラを取得して呼び出す */
-function callHook(api: MockApi, prompt: string) {
+function callHook(
+  api: MockApi,
+  event: { prompt?: string; attachments?: { kind: string; mimeType?: string }[] },
+) {
   const [, handler] = api.registerHook.mock.calls[0] as [
     string[],
-    (e: { prompt: string }, ctx: unknown) => unknown,
+    (e: unknown, ctx: unknown) => unknown,
   ];
-  return handler({ prompt }, {});
+  return handler(event, {});
 }
 
 describe("model-router plugin", () => {
@@ -54,7 +57,7 @@ describe("model-router plugin", () => {
     const api = createMockApi();
     register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
 
-    const result = callHook(api, "おはよう");
+    const result = callHook(api, { prompt: "おはよう" });
 
     expect(result).toEqual({
       modelOverride: "claude-haiku-4-5",
@@ -66,15 +69,143 @@ describe("model-router plugin", () => {
     const api = createMockApi();
     register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
 
-    const result = callHook(api, "このコードをレビューして");
+    const result = callHook(api, { prompt: "このコードをレビューして" });
 
     expect(result).toBeUndefined();
   });
 
+  // ===== ファイルルーティング =====
+
+  it("画像添付 → Gemini Flash にルーティング", () => {
+    const api = createMockApi();
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
+
+    const result = callHook(api, {
+      prompt: "この画像を見て",
+      attachments: [{ kind: "image", mimeType: "image/png" }],
+    });
+
+    expect(result).toEqual({
+      modelOverride: "gemini-2.5-flash",
+      providerOverride: "google",
+    });
+  });
+
+  it("PDF 添付 → Gemini Flash にルーティング", () => {
+    const api = createMockApi();
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
+
+    const result = callHook(api, {
+      prompt: "この資料を要約して",
+      attachments: [{ kind: "document", mimeType: "application/pdf" }],
+    });
+
+    expect(result).toEqual({
+      modelOverride: "gemini-2.5-flash",
+      providerOverride: "google",
+    });
+  });
+
+  it("Excel 添付 → Gemini Flash にルーティング", () => {
+    const api = createMockApi();
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
+
+    const result = callHook(api, {
+      prompt: "売上データを分析して",
+      attachments: [
+        {
+          kind: "document",
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+      ],
+    });
+
+    expect(result).toEqual({
+      modelOverride: "gemini-2.5-flash",
+      providerOverride: "google",
+    });
+  });
+
+  it("ファイル添付がテキスト分類より優先される", () => {
+    const api = createMockApi();
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
+
+    // "おはよう" は preferLight だが、画像添付があるので Gemini にルーティング
+    const result = callHook(api, {
+      prompt: "おはよう",
+      attachments: [{ kind: "image", mimeType: "image/jpeg" }],
+    });
+
+    expect(result).toEqual({
+      modelOverride: "gemini-2.5-flash",
+      providerOverride: "google",
+    });
+  });
+
+  it("添付なし + 軽量テキスト → Haiku", () => {
+    const api = createMockApi();
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
+
+    const result = callHook(api, {
+      prompt: "おはよう",
+      attachments: [],
+    });
+
+    expect(result).toEqual({
+      modelOverride: "claude-haiku-4-5",
+      providerOverride: "anthropic",
+    });
+  });
+
+  it("fileRouting.enabled: false → ファイルルーティング無効", () => {
+    const api = createMockApi({ fileRouting: { enabled: false } });
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
+
+    const result = callHook(api, {
+      prompt: "おはよう",
+      attachments: [{ kind: "image", mimeType: "image/png" }],
+    });
+
+    // ファイルルーティング無効なので、テキスト分類が適用
+    expect(result).toEqual({
+      modelOverride: "claude-haiku-4-5",
+      providerOverride: "anthropic",
+    });
+  });
+
+  it("カスタム fileRouting.rules が適用される", () => {
+    const api = createMockApi({
+      fileRouting: {
+        enabled: true,
+        rules: [
+          {
+            label: "custom-image",
+            mimePatterns: ["image/*"],
+            model: "gemini-2.5-pro",
+            provider: "google",
+          },
+        ],
+      },
+    });
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
+
+    const result = callHook(api, {
+      prompt: "分析して",
+      attachments: [{ kind: "image", mimeType: "image/png" }],
+    });
+
+    expect(result).toEqual({
+      modelOverride: "gemini-2.5-pro",
+      providerOverride: "google",
+    });
+  });
+
+  // ===== 既存テスト（後方互換性） =====
+
   it("logging: true のとき軽量ルーティングで info ログを出力する", () => {
     const api = createMockApi({ logging: true });
     register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
-    callHook(api, "おはよう");
+    callHook(api, { prompt: "おはよう" });
 
     expect(api.logger.info).toHaveBeenCalledWith(
       expect.stringContaining("anthropic/claude-haiku-4-5"),
@@ -87,9 +218,23 @@ describe("model-router plugin", () => {
 
     // info は "plugin registered" のみ呼ばれる
     const infoCallsBefore = api.logger.info.mock.calls.length;
-    callHook(api, "おはよう");
+    callHook(api, { prompt: "おはよう" });
 
     expect(api.logger.info.mock.calls.length).toBe(infoCallsBefore);
+  });
+
+  it("logging: true のときファイルルーティングで info ログを出力する", () => {
+    const api = createMockApi({ logging: true });
+    register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
+    callHook(api, {
+      prompt: "この画像は何？",
+      attachments: [{ kind: "image", mimeType: "image/png" }],
+    });
+
+    expect(api.logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("google/gemini-2.5-flash"),
+    );
+    expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("file: image"));
   });
 
   it("pluginConfig.patterns でデフォルト設定を上書きできる", () => {
@@ -102,7 +247,7 @@ describe("model-router plugin", () => {
     register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
 
     // カスタム preferLight にマッチ → light
-    const lightResult = callHook(api, "hello");
+    const lightResult = callHook(api, { prompt: "hello" });
     expect(lightResult).toEqual({
       modelOverride: "claude-haiku-4-5",
       providerOverride: "anthropic",
@@ -116,7 +261,7 @@ describe("model-router plugin", () => {
       },
     });
     register(api2 as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
-    const defaultResult = callHook(api2, "おはよう");
+    const defaultResult = callHook(api2, { prompt: "おはよう" });
     expect(defaultResult).toBeUndefined();
   });
 

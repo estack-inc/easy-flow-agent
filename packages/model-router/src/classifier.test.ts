@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { classifyMessage } from "./classifier.js";
-import { DEFAULT_CONFIG } from "./config.js";
+import { type AttachmentHint, classifyMessage, matchMimePattern, routeByAttachments } from "./classifier.js";
+import { DEFAULT_CONFIG, DEFAULT_FILE_ROUTING_RULES } from "./config.js";
 
 describe("classifyMessage", () => {
   it("挨拶（短文・preferLight）→ light", () => {
@@ -42,7 +42,6 @@ describe("classifyMessage", () => {
   });
 
   it("英語 forceDefault（code）が preferLight（ok）に勝つ", () => {
-    // "ok" が preferLight にマッチするが "code" が forceDefault にマッチ → default
     expect(classifyMessage("ok, let's write some code", DEFAULT_CONFIG)).toBe("default");
   });
 
@@ -60,5 +59,200 @@ describe("classifyMessage", () => {
 
   it("「〜を確認して」はパターン未一致で default（複雑タスク）", () => {
     expect(classifyMessage("このPRを確認して", DEFAULT_CONFIG)).toBe("default");
+  });
+});
+
+describe("matchMimePattern", () => {
+  it("完全一致", () => {
+    expect(matchMimePattern("image/png", "image/png")).toBe(true);
+  });
+
+  it("不一致", () => {
+    expect(matchMimePattern("image/png", "image/jpeg")).toBe(false);
+  });
+
+  it("ワイルドカード image/*", () => {
+    expect(matchMimePattern("image/png", "image/*")).toBe(true);
+    expect(matchMimePattern("image/jpeg", "image/*")).toBe(true);
+    expect(matchMimePattern("video/mp4", "image/*")).toBe(false);
+  });
+
+  it("ワイルドカード video/*", () => {
+    expect(matchMimePattern("video/mp4", "video/*")).toBe(true);
+    expect(matchMimePattern("video/webm", "video/*")).toBe(true);
+  });
+
+  it("ドットワイルドカード application/vnd.openxmlformats-officedocument.*", () => {
+    expect(
+      matchMimePattern(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.*",
+      ),
+    ).toBe(true);
+    expect(
+      matchMimePattern(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.*",
+      ),
+    ).toBe(true);
+  });
+
+  it("ドットワイルドカード application/vnd.ms-*", () => {
+    expect(matchMimePattern("application/vnd.ms-excel", "application/vnd.ms-*")).toBe(true);
+    expect(matchMimePattern("application/vnd.ms-powerpoint", "application/vnd.ms-*")).toBe(true);
+  });
+
+  it("text/* は CSV/TSV/plain にマッチ", () => {
+    expect(matchMimePattern("text/csv", "text/*")).toBe(true);
+    expect(matchMimePattern("text/plain", "text/*")).toBe(true);
+    expect(matchMimePattern("text/tab-separated-values", "text/*")).toBe(true);
+  });
+});
+
+describe("routeByAttachments", () => {
+  const rules = DEFAULT_FILE_ROUTING_RULES;
+
+  it("画像添付 → gemini-2.5-flash", () => {
+    const attachments: AttachmentHint[] = [{ kind: "image", mimeType: "image/png" }];
+    const result = routeByAttachments(attachments, rules);
+    expect(result).toEqual({
+      model: "gemini-2.5-flash",
+      provider: "google",
+      matchedRule: "image",
+    });
+  });
+
+  it("動画添付 → gemini-2.5-flash", () => {
+    const attachments: AttachmentHint[] = [{ kind: "video", mimeType: "video/mp4" }];
+    const result = routeByAttachments(attachments, rules);
+    expect(result).toEqual({
+      model: "gemini-2.5-flash",
+      provider: "google",
+      matchedRule: "video",
+    });
+  });
+
+  it("音声添付 → gemini-2.5-flash", () => {
+    const attachments: AttachmentHint[] = [{ kind: "audio", mimeType: "audio/mpeg" }];
+    const result = routeByAttachments(attachments, rules);
+    expect(result).toEqual({
+      model: "gemini-2.5-flash",
+      provider: "google",
+      matchedRule: "audio",
+    });
+  });
+
+  it("PDF 添付 → gemini-2.5-flash", () => {
+    const attachments: AttachmentHint[] = [{ kind: "document", mimeType: "application/pdf" }];
+    const result = routeByAttachments(attachments, rules);
+    expect(result).toEqual({
+      model: "gemini-2.5-flash",
+      provider: "google",
+      matchedRule: "document",
+    });
+  });
+
+  it("Excel 添付 → gemini-2.5-flash", () => {
+    const attachments: AttachmentHint[] = [
+      {
+        kind: "document",
+        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      },
+    ];
+    const result = routeByAttachments(attachments, rules);
+    expect(result).toEqual({
+      model: "gemini-2.5-flash",
+      provider: "google",
+      matchedRule: "document",
+    });
+  });
+
+  it("Word 添付 → gemini-2.5-flash", () => {
+    const attachments: AttachmentHint[] = [
+      {
+        kind: "document",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      },
+    ];
+    const result = routeByAttachments(attachments, rules);
+    expect(result).toEqual({
+      model: "gemini-2.5-flash",
+      provider: "google",
+      matchedRule: "document",
+    });
+  });
+
+  it("CSV 添付 → gemini-2.5-flash", () => {
+    const attachments: AttachmentHint[] = [{ kind: "document", mimeType: "text/csv" }];
+    const result = routeByAttachments(attachments, rules);
+    expect(result).toEqual({
+      model: "gemini-2.5-flash",
+      provider: "google",
+      matchedRule: "document",
+    });
+  });
+
+  it("ZIP 添付 → gemini-2.5-flash", () => {
+    const attachments: AttachmentHint[] = [{ kind: "other", mimeType: "application/zip" }];
+    const result = routeByAttachments(attachments, rules);
+    expect(result).toEqual({
+      model: "gemini-2.5-flash",
+      provider: "google",
+      matchedRule: "binary",
+    });
+  });
+
+  it("添付なし → null", () => {
+    expect(routeByAttachments([], rules)).toBeNull();
+  });
+
+  it("mimeType なし → kind ベースのフォールバック", () => {
+    const attachments: AttachmentHint[] = [{ kind: "image" }];
+    const result = routeByAttachments(attachments, rules);
+    expect(result).toEqual({
+      model: "gemini-2.5-flash",
+      provider: "google",
+      matchedRule: "image(kind)",
+    });
+  });
+
+  it("unknown kind + unknown mimeType → null", () => {
+    const attachments: AttachmentHint[] = [
+      { kind: "other", mimeType: "application/x-custom-format" },
+    ];
+    expect(routeByAttachments(attachments, rules)).toBeNull();
+  });
+
+  it("複数添付 → 最初にマッチしたルールが適用", () => {
+    const attachments: AttachmentHint[] = [
+      { kind: "document", mimeType: "text/plain" },
+      { kind: "image", mimeType: "image/png" },
+    ];
+    // image ルールが先に定義されているが、ルール順で評価
+    // rules[0] = image → text/plain はマッチしない → image/png はマッチ
+    const result = routeByAttachments(attachments, rules);
+    expect(result).toEqual({
+      model: "gemini-2.5-flash",
+      provider: "google",
+      matchedRule: "image",
+    });
+  });
+
+  it("カスタムルール → 指定モデルにルーティング", () => {
+    const customRules = [
+      {
+        label: "pdf-only",
+        mimePatterns: ["application/pdf"],
+        model: "gemini-2.5-pro",
+        provider: "google",
+      },
+    ];
+    const attachments: AttachmentHint[] = [{ kind: "document", mimeType: "application/pdf" }];
+    const result = routeByAttachments(attachments, customRules);
+    expect(result).toEqual({
+      model: "gemini-2.5-pro",
+      provider: "google",
+      matchedRule: "pdf-only",
+    });
   });
 });

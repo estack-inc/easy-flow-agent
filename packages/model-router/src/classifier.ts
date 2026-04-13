@@ -1,6 +1,71 @@
-import type { ModelRouterConfig } from "./config.js";
+import type { FileRoutingRule, ModelRouterConfig } from "./config.js";
 
 export type ClassificationResult = "light" | "default";
+
+/** Attachment metadata from the before_model_resolve event (openclaw/openclaw#65754). */
+export type AttachmentHint = {
+  kind: "image" | "video" | "audio" | "document" | "other";
+  mimeType?: string;
+};
+
+/** Result of file-based routing. null means no file routing applies. */
+export type FileRoutingResult = {
+  model: string;
+  provider: string;
+  matchedRule: string;
+} | null;
+
+/**
+ * Check if a MIME type matches a pattern.
+ * Supports exact match and trailing wildcard (e.g. "image/*").
+ */
+export function matchMimePattern(mimeType: string, pattern: string): boolean {
+  if (pattern === mimeType) return true;
+  if (pattern.endsWith("*")) {
+    // "image/*" → "image/", "application/vnd.ms-*" → "application/vnd.ms-"
+    const prefix = pattern.slice(0, -1);
+    return mimeType.startsWith(prefix);
+  }
+  return false;
+}
+
+/**
+ * Determine file-based routing from attachment metadata.
+ * Returns the first matching rule's model/provider, or null if no match.
+ */
+export function routeByAttachments(
+  attachments: ReadonlyArray<AttachmentHint>,
+  rules: FileRoutingRule[],
+): FileRoutingResult {
+  if (attachments.length === 0) return null;
+
+  for (const rule of rules) {
+    for (const attachment of attachments) {
+      const mimeType = attachment.mimeType;
+      if (mimeType && rule.mimePatterns.some((p) => matchMimePattern(mimeType, p))) {
+        return { model: rule.model, provider: rule.provider, matchedRule: rule.label };
+      }
+    }
+  }
+
+  // Fallback: if any attachment exists but no MIME match, route by kind
+  for (const rule of rules) {
+    for (const attachment of attachments) {
+      const kindToMime: Record<string, string> = {
+        image: "image/unknown",
+        video: "video/unknown",
+        audio: "audio/unknown",
+        document: "text/unknown",
+      };
+      const syntheticMime = kindToMime[attachment.kind];
+      if (syntheticMime && rule.mimePatterns.some((p) => matchMimePattern(syntheticMime, p))) {
+        return { model: rule.model, provider: rule.provider, matchedRule: `${rule.label}(kind)` };
+      }
+    }
+  }
+
+  return null;
+}
 
 /**
  * ユーザープロンプトを分類し、軽量モデルで処理可能かを判定する。
