@@ -264,6 +264,62 @@ describe("routeByAttachments", () => {
 });
 
 describe("detectMediaInPrompt", () => {
+  // === [media attached: ...] 形式（OpenClaw 標準） ===
+  it("[media attached: /path (image/png)] → image hint", () => {
+    const hints = detectMediaInPrompt("[media attached: /data/media/abc.png (image/png)]");
+    expect(hints).toEqual([{ kind: "image", mimeType: "image/png" }]);
+  });
+
+  it("[media attached: /path (image/jpeg)] → image hint", () => {
+    const hints = detectMediaInPrompt("prefix\n[media attached: /data/img.jpg (image/jpeg)]\ntext");
+    expect(hints).toEqual([{ kind: "image", mimeType: "image/jpeg" }]);
+  });
+
+  it("[media attached: /path (video/mp4)] → video hint", () => {
+    const hints = detectMediaInPrompt("[media attached: /data/clip.mp4 (video/mp4)]");
+    expect(hints).toEqual([{ kind: "video", mimeType: "video/mp4" }]);
+  });
+
+  it("[media attached: /path (audio/mpeg)] → audio hint", () => {
+    const hints = detectMediaInPrompt("[media attached: /data/voice.mp3 (audio/mpeg)]");
+    expect(hints).toEqual([{ kind: "audio", mimeType: "audio/mpeg" }]);
+  });
+
+  it("[media attached: /path (application/pdf)] → document hint", () => {
+    const hints = detectMediaInPrompt("[media attached: /data/report.pdf (application/pdf)]");
+    expect(hints).toEqual([{ kind: "document", mimeType: "application/pdf" }]);
+  });
+
+  it("[media attached: /path (text/csv)] → document hint", () => {
+    const hints = detectMediaInPrompt("[media attached: /data/data.csv (text/csv)]");
+    expect(hints).toEqual([{ kind: "document", mimeType: "text/csv" }]);
+  });
+
+  it("[media attached N/M: ...] 複数添付形式", () => {
+    const prompt = [
+      "[media attached: 2 files]",
+      "[media attached 1/2: /data/a.png (image/png)]",
+      "[media attached 2/2: /data/b.pdf (application/pdf)]",
+    ].join("\n");
+    const hints = detectMediaInPrompt(prompt);
+    expect(hints).toHaveLength(2);
+    expect(hints[0]).toEqual({ kind: "image", mimeType: "image/png" });
+    expect(hints[1]).toEqual({ kind: "document", mimeType: "application/pdf" });
+  });
+
+  it("[media attached: ...] URL 付き形式", () => {
+    const hints = detectMediaInPrompt(
+      "[media attached: /data/photo.png (image/png) | https://example.com/photo.png]",
+    );
+    expect(hints).toEqual([{ kind: "image", mimeType: "image/png" }]);
+  });
+
+  it("[media attached: /path] MIME なし → 拡張子から推定", () => {
+    const hints = detectMediaInPrompt("[media attached: /data/photo.png]");
+    expect(hints).toEqual([{ kind: "image", mimeType: "image/png" }]);
+  });
+
+  // === MEDIA: 形式（レガシー / フォールバック） ===
   it("MEDIA: /path/to/image.png → image hint", () => {
     const hints = detectMediaInPrompt("Hello\nMEDIA: /tmp/photo.png\nworld");
     expect(hints).toEqual([{ kind: "image", mimeType: "image/png" }]);
@@ -294,12 +350,13 @@ describe("detectMediaInPrompt", () => {
     expect(hints).toEqual([{ kind: "image" }]);
   });
 
-  it("no MEDIA marker → empty", () => {
+  // === 共通 ===
+  it("マーカーなし → empty", () => {
     const hints = detectMediaInPrompt("Just a normal message");
     expect(hints).toEqual([]);
   });
 
-  it("multiple MEDIA markers → multiple hints", () => {
+  it("複数 MEDIA markers → multiple hints", () => {
     const hints = detectMediaInPrompt("MEDIA: /a.png\nMEDIA: /b.pdf");
     expect(hints).toHaveLength(2);
     expect(hints[0]).toEqual({ kind: "image", mimeType: "image/png" });

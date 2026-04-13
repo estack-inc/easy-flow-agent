@@ -68,13 +68,38 @@ export function routeByAttachments(
 }
 
 /**
- * プロンプト内のメディアマーカー（`MEDIA: /path/to/file`）を検出し、
- * AttachmentHint に変換する。
- * OpenClaw のチャネル（LINE 等）は画像をプロンプト内 MEDIA マーカーとして渡すため、
- * before_model_resolve 時点では attachments が空でもプロンプトにメディア参照が含まれる。
+ * プロンプト内のメディアマーカーを検出し、AttachmentHint に変換する。
+ *
+ * OpenClaw は LINE 等のチャネルから受信した画像を以下の形式でプロンプトに埋め込む:
+ *   - `[media attached: /path/to/file (image/png)]`           — 単体添付
+ *   - `[media attached 1/2: /path/to/file (image/png)]`       — 複数添付
+ *   - `[media attached: /path (image/png) | https://url]`     — URL 付き
+ *
+ * before_model_resolve フック発火時点でプロンプトに含まれるため、
+ * attachments が空でもプロンプトからメディア参照を検出できる。
  */
 export function detectMediaInPrompt(prompt: string): AttachmentHint[] {
   const hints: AttachmentHint[] = [];
+
+  // Pattern 1: [media attached: /path (type)] or [media attached N/M: /path (type)]
+  const mediaAttachedRe = /\[media attached(?:\s+\d+\/\d+)?:\s+([^\s\]]+)(?:\s+\(([^)]+)\))?/g;
+  for (const m of prompt.matchAll(mediaAttachedRe)) {
+    const path = m[1] ?? "";
+    // サマリー行 "[media attached: 2 files]" をスキップ
+    if (/^\d+$/.test(path)) continue;
+    const mimeType = m[2]?.trim();
+    if (mimeType) {
+      hints.push({ kind: classifyMimeKind(mimeType), mimeType });
+    } else {
+      // MIME 不明 → 拡張子から推定
+      const inferred = inferMimeFromExt(path.toLowerCase());
+      hints.push(
+        inferred ? { kind: classifyMimeKind(inferred), mimeType: inferred } : { kind: "image" },
+      );
+    }
+  }
+
+  // Pattern 2: MEDIA: /path/to/file (legacy / future format)
   for (const line of prompt.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("MEDIA:")) continue;
@@ -82,19 +107,32 @@ export function detectMediaInPrompt(prompt: string): AttachmentHint[] {
     const raw = afterColon.match(/^`([^`]+)`$/)?.[1] ?? afterColon;
     if (!raw) continue;
     const lower = raw.toLowerCase();
-    if (/\.(png|jpe?g|gif|webp|bmp|svg|tiff?|ico|heic|heif)$/i.test(lower)) {
-      hints.push({ kind: "image", mimeType: inferMimeFromExt(lower) });
-    } else if (/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(lower)) {
-      hints.push({ kind: "video", mimeType: inferMimeFromExt(lower) });
-    } else if (/\.(mp3|wav|ogg|flac|aac|m4a|wma)$/i.test(lower)) {
-      hints.push({ kind: "audio", mimeType: inferMimeFromExt(lower) });
-    } else if (/\.(pdf|docx?|xlsx?|pptx?|csv|tsv|txt)$/i.test(lower)) {
-      hints.push({ kind: "document", mimeType: inferMimeFromExt(lower) });
+    const inferred = inferMimeFromExt(lower);
+    if (inferred) {
+      hints.push({ kind: classifyMimeKind(inferred), mimeType: inferred });
     } else {
       hints.push({ kind: "image" }); // MEDIA: without extension → assume image
     }
   }
+
   return hints;
+}
+
+/** MIME type からメディア種別を分類する */
+function classifyMimeKind(mimeType: string): AttachmentHint["kind"] {
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("audio/")) return "audio";
+  if (
+    mimeType.startsWith("text/") ||
+    mimeType === "application/pdf" ||
+    mimeType.includes("document") ||
+    mimeType.includes("spreadsheet") ||
+    mimeType.includes("presentation")
+  ) {
+    return "document";
+  }
+  return "other";
 }
 
 function inferMimeFromExt(path: string): string | undefined {
