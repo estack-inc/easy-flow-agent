@@ -35,9 +35,11 @@ export default function register(api: OpenClawPluginApi): void {
       const attachments = eventAttachments.length > 0 ? eventAttachments : promptMedia;
 
       if (cfg.logging) {
+        const preview = prompt.slice(0, 200).replace(/\n/g, "\\n");
         api.logger.info(
           `[model-router] hook fired: attachments=${attachments.length}` +
-            `(event=${eventAttachments.length},prompt=${promptMedia.length}), ${prompt.length}chars`,
+            `(event=${eventAttachments.length},prompt=${promptMedia.length}), ${prompt.length}chars` +
+            ` | preview: "${preview}"`,
         );
       }
 
