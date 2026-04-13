@@ -15,7 +15,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@easy-flow/pinecone-client": "1.0.0",
+    "@easy-flow/pgvector-client": "*",
+    "@easy-flow/pinecone-client": "*",
     "picomatch": "^4.0.3"
   },
   "devDependencies": {
