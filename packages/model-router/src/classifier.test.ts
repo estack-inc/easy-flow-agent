@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type AttachmentHint, classifyMessage, matchMimePattern, routeByAttachments } from "./classifier.js";
+import {
+  type AttachmentHint,
+  classifyMessage,
+  matchMimePattern,
+  routeByAttachments,
+} from "./classifier.js";
 import { DEFAULT_CONFIG, DEFAULT_FILE_ROUTING_RULES } from "./config.js";
 
 describe("classifyMessage", () => {
