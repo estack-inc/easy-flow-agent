@@ -16,6 +16,13 @@ type Backend = "pinecone" | "pgvector";
 function createClient(backend: Backend, dryRun: boolean): IPineconeClient {
   if (dryRun) return noopClient();
 
+  if (backend !== "pinecone" && backend !== "pgvector") {
+    console.error(
+      `Error: Invalid --backend value "${backend}". Must be "pinecone" or "pgvector"`,
+    );
+    process.exit(1);
+  }
+
   if (backend === "pgvector") {
     const databaseUrl = process.env.PGVECTOR_DATABASE_URL;
     const geminiApiKey = process.env.GEMINI_API_KEY;

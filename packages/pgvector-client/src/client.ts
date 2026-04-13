@@ -18,7 +18,11 @@ export class PgVectorClient implements IPineconeClient {
   private typesRegistered = false;
 
   constructor(config: { databaseUrl: string; geminiApiKey: string }) {
-    this.pool = new Pool({ connectionString: config.databaseUrl, max: 5 });
+    this.pool = new Pool({
+      connectionString: config.databaseUrl,
+      max: 5,
+      allowExitOnIdle: true,
+    });
     this.embeddingService = new GeminiEmbeddingService(config.geminiApiKey);
   }
 
