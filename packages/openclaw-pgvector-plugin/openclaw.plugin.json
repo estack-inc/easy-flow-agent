@@ -1,0 +1,43 @@
+{
+  "id": "pgvector-memory",
+  "kind": "context-engine",
+  "name": "pgvector Memory",
+  "description": "Long-term vector memory for OpenClaw agents using PostgreSQL pgvector (co-located in Tokyo)",
+  "uiHints": {
+    "databaseUrl": {
+      "label": "Database URL",
+      "sensitive": true,
+      "placeholder": "postgres://user:pass@host:5432/db",
+      "help": "PostgreSQL connection string (or use ${PGVECTOR_DATABASE_URL} env var)"
+    },
+    "geminiApiKey": {
+      "label": "Gemini API Key",
+      "sensitive": true,
+      "placeholder": "AIza...",
+      "help": "Google Gemini API key for embeddings (or use ${GEMINI_API_KEY} env var)"
+    },
+    "agentId": {
+      "label": "Agent ID",
+      "placeholder": "mell",
+      "help": "Unique identifier for this agent (used as namespace prefix)"
+    },
+    "compactAfterDays": {
+      "label": "Compact After Days",
+      "placeholder": "7",
+      "help": "Days after which old turns are compacted into pgvector",
+      "advanced": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "databaseUrl": { "type": "string" },
+      "geminiApiKey": { "type": "string" },
+      "agentId": { "type": "string" },
+      "compactAfterDays": { "type": "number", "minimum": 1, "maximum": 90 },
+      "memoryHint": { "type": "string" },
+      "minQueryTokens": { "type": "number", "minimum": 1 }
+    }
+  }
+}
