@@ -43,6 +43,7 @@ describe("GeminiEmbeddingService", () => {
         {
           content: { role: "user", parts: [{ text: "hello" }] },
           taskType: "RETRIEVAL_DOCUMENT",
+          outputDimensionality: 768,
         },
       ],
     });

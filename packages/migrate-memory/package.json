@@ -2,7 +2,7 @@
   "name": "@easy-flow/migrate-memory",
   "version": "1.0.0",
   "private": true,
-  "description": "CLI tool to migrate MEMORY.md files to Pinecone vector DB",
+  "description": "CLI tool to migrate MEMORY.md files to vector DB (Pinecone or pgvector)",
   "type": "module",
   "bin": {
     "easy-flow": "./dist/cli.js"
@@ -15,7 +15,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@easy-flow/pinecone-client": "1.0.0",
+    "@easy-flow/pgvector-client": "*",
+    "@easy-flow/pinecone-client": "*",
     "picomatch": "^4.0.3"
   },
   "devDependencies": {

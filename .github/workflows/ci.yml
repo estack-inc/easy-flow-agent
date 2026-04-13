@@ -37,5 +37,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Build
+        run: >
+          npm run build
+          -w packages/pinecone-client
+          -w packages/pgvector-client
+          -w packages/upstash-vector-client
+          -w packages/migrate-memory
+          -w packages/file-serve
+
       - name: Run tests
         run: npm test

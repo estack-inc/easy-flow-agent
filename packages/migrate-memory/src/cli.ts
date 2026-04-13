@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 import { parseArgs } from "node:util";
-import { PineconeClient } from "@easy-flow/pinecone-client";
 import { bulkMigrate } from "./bulk-migrator.js";
 import { bulkUpdate } from "./bulk-updater.js";
+import { type Backend, createClient } from "./create-client.js";
 import { MemoryDeleter } from "./deleter.js";
 import { AgentsMigrator } from "./migrate-agents.js";
 import { Migrator } from "./migrator.js";
@@ -13,11 +13,16 @@ function printUsage(): void {
   console.log(`Usage: easy-flow <command> [options]
 
 Commands:
-  migrate-memory    Migrate markdown files to Pinecone
-  agents            Migrate AGENTS.md to Pinecone (section-based chunking)
-  memory-delete     Delete memory from Pinecone
-  bulk-migrate      Bulk migrate all EasyFlow instances to Pinecone
+  migrate-memory    Migrate markdown files to vector DB
+  agents            Migrate AGENTS.md to vector DB (section-based chunking)
+  memory-delete     Delete memory from vector DB
+  bulk-migrate      Bulk migrate all EasyFlow instances
   bulk-update       Bulk update easy-flow-agent on all instances
+
+Environment Variables:
+  PINECONE_API_KEY         Required for pinecone backend
+  PGVECTOR_DATABASE_URL    Required for pgvector backend
+  GEMINI_API_KEY           Required for pgvector backend
 
 Run 'easy-flow <command> --help' for command-specific options.`);
 }
@@ -29,7 +34,8 @@ Options:
   --agent-id <id>            Agent ID (required)
   --source <path>            Source file or directory (repeatable)
   --exclude-pattern <glob>   Exclude files matching glob pattern (repeatable)
-  --dry-run                  Preview without writing to Pinecone
+  --backend <backend>        Vector DB: pinecone (default) or pgvector
+  --dry-run                  Preview without writing
   --force                    Skip pre-flight security checks (NOT RECOMMENDED)
   --help                     Show this help message`);
 }
@@ -42,22 +48,12 @@ Options:
   --keyword <text>    Search by keyword and delete matching chunks (semantic search)
   --source <file>     Delete chunks by exact sourceFile match
   --all               Delete all memory for this agent (DANGEROUS)
+  --backend <backend> Vector DB: pinecone (default) or pgvector
   --dry-run           Preview without deleting
   --help              Show this help message
 
 WARNING: --keyword uses semantic similarity search. Results may include loosely related chunks.
          Always use --dry-run first to preview what will be deleted.`);
-}
-
-function noopClient() {
-  return {
-    upsert: async () => {},
-    query: async () => [] as never[],
-    delete: async () => {},
-    deleteBySource: async () => {},
-    deleteNamespace: async () => {},
-    ensureIndex: async () => {},
-  };
 }
 
 async function runMigrate(args: string[]): Promise<void> {
@@ -67,6 +63,7 @@ async function runMigrate(args: string[]): Promise<void> {
       "agent-id": { type: "string" },
       source: { type: "string", multiple: true },
       "exclude-pattern": { type: "string", multiple: true },
+      backend: { type: "string", default: "pinecone" },
       "dry-run": { type: "boolean", default: false },
       force: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
@@ -82,6 +79,7 @@ async function runMigrate(args: string[]): Promise<void> {
   const agentId = values["agent-id"] as string | undefined;
   const sources = (values.source as string[] | undefined) ?? [];
   const excludePatterns = (values["exclude-pattern"] as string[] | undefined) ?? [];
+  const backend = values.backend as Backend;
   const dryRun = values["dry-run"] as boolean;
   const force = values.force as boolean;
 
@@ -94,18 +92,12 @@ async function runMigrate(args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const apiKey = process.env.PINECONE_API_KEY;
-  if (!apiKey && !dryRun) {
-    console.error("Error: PINECONE_API_KEY environment variable is required");
-    process.exit(1);
-  }
-
   // excludePatterns の **/ 検証
   for (const w of validateExcludePatterns(excludePatterns)) {
     console.warn(`[PREFLIGHT WARN] ${w}`);
   }
 
-  const client = apiKey ? new PineconeClient({ apiKey }) : noopClient();
+  const client = createClient(backend, dryRun);
   const migrator = new Migrator({
     pineconeClient: client,
     agentId,
@@ -142,7 +134,8 @@ function printAgentsUsage(): void {
 Options:
   --file <path>       AGENTS.md file path (required)
   --agent-id <id>     Agent ID (required)
-  --dry-run           Preview chunking without writing to Pinecone
+  --backend <backend> Vector DB: pinecone (default) or pgvector
+  --dry-run           Preview chunking without writing
   --help              Show this help message`);
 }
 
@@ -152,6 +145,7 @@ async function runAgents(args: string[]): Promise<void> {
     options: {
       file: { type: "string" },
       "agent-id": { type: "string" },
+      backend: { type: "string", default: "pinecone" },
       "dry-run": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
@@ -165,6 +159,7 @@ async function runAgents(args: string[]): Promise<void> {
 
   const filePath = values.file as string | undefined;
   const agentId = values["agent-id"] as string | undefined;
+  const backend = values.backend as Backend;
   const dryRun = values["dry-run"] as boolean;
 
   if (!filePath) {
@@ -176,13 +171,7 @@ async function runAgents(args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const apiKey = process.env.PINECONE_API_KEY;
-  if (!apiKey && !dryRun) {
-    console.error("Error: PINECONE_API_KEY environment variable is required");
-    process.exit(1);
-  }
-
-  const client = apiKey ? new PineconeClient({ apiKey }) : noopClient();
+  const client = createClient(backend, dryRun);
   const migrator = new AgentsMigrator({ pineconeClient: client, agentId, dryRun });
 
   const namespace = `agent:${agentId}`;
@@ -203,9 +192,9 @@ async function runAgents(args: string[]): Promise<void> {
     console.log(
       `\n   Total: ${result.chunks} chunks, ~${result.totalTokens.toLocaleString()} tokens`,
     );
-    console.log("   (dry-run: no data written to Pinecone)");
+    console.log(`   (dry-run: no data written to ${backend})`);
   } else {
-    console.log(`📄 Migrating: ${filePath} → Pinecone`);
+    console.log(`📄 Migrating: ${filePath} → ${backend}`);
     console.log(`   Agent ID: ${agentId}`);
     console.log(`   Namespace: ${namespace}\n`);
 
@@ -232,6 +221,7 @@ async function runDelete(args: string[]): Promise<void> {
       keyword: { type: "string" },
       source: { type: "string" },
       all: { type: "boolean", default: false },
+      backend: { type: "string", default: "pinecone" },
       "dry-run": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
@@ -247,6 +237,7 @@ async function runDelete(args: string[]): Promise<void> {
   const keyword = values.keyword as string | undefined;
   const source = values.source as string | undefined;
   const deleteAll = values.all as boolean;
+  const backend = values.backend as Backend;
   const dryRun = values["dry-run"] as boolean;
 
   if (!agentId) {
@@ -261,13 +252,7 @@ async function runDelete(args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const apiKey = process.env.PINECONE_API_KEY;
-  if (!apiKey && !dryRun) {
-    console.error("Error: PINECONE_API_KEY environment variable is required");
-    process.exit(1);
-  }
-
-  const client = apiKey ? new PineconeClient({ apiKey }) : noopClient();
+  const client = createClient(backend, dryRun);
   const deleter = new MemoryDeleter({ pineconeClient: client, agentId, dryRun });
 
   console.log(`${dryRun ? "[DRY RUN] " : ""}Deleting memory for agent: ${agentId}`);
