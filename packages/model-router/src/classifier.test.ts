@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type AttachmentHint,
   classifyMessage,
+  detectMediaInPrompt,
   matchMimePattern,
   routeByAttachments,
 } from "./classifier.js";
@@ -259,5 +260,49 @@ describe("routeByAttachments", () => {
       provider: "google",
       matchedRule: "pdf-only",
     });
+  });
+});
+
+describe("detectMediaInPrompt", () => {
+  it("MEDIA: /path/to/image.png → image hint", () => {
+    const hints = detectMediaInPrompt("Hello\nMEDIA: /tmp/photo.png\nworld");
+    expect(hints).toEqual([{ kind: "image", mimeType: "image/png" }]);
+  });
+
+  it("MEDIA: `backtick path` → image hint", () => {
+    const hints = detectMediaInPrompt("MEDIA: `/data/uploads/screenshot.jpg`");
+    expect(hints).toEqual([{ kind: "image", mimeType: "image/jpeg" }]);
+  });
+
+  it("MEDIA: video.mp4 → video hint", () => {
+    const hints = detectMediaInPrompt("MEDIA: /tmp/clip.mp4");
+    expect(hints).toEqual([{ kind: "video", mimeType: "video/mp4" }]);
+  });
+
+  it("MEDIA: audio.mp3 → audio hint", () => {
+    const hints = detectMediaInPrompt("MEDIA: /tmp/voice.mp3");
+    expect(hints).toEqual([{ kind: "audio", mimeType: "audio/mpeg" }]);
+  });
+
+  it("MEDIA: document.pdf → document hint", () => {
+    const hints = detectMediaInPrompt("MEDIA: /tmp/report.pdf");
+    expect(hints).toEqual([{ kind: "document", mimeType: "application/pdf" }]);
+  });
+
+  it("MEDIA: without extension → assume image", () => {
+    const hints = detectMediaInPrompt("MEDIA: /tmp/unknown_file");
+    expect(hints).toEqual([{ kind: "image" }]);
+  });
+
+  it("no MEDIA marker → empty", () => {
+    const hints = detectMediaInPrompt("Just a normal message");
+    expect(hints).toEqual([]);
+  });
+
+  it("multiple MEDIA markers → multiple hints", () => {
+    const hints = detectMediaInPrompt("MEDIA: /a.png\nMEDIA: /b.pdf");
+    expect(hints).toHaveLength(2);
+    expect(hints[0]).toEqual({ kind: "image", mimeType: "image/png" });
+    expect(hints[1]).toEqual({ kind: "document", mimeType: "application/pdf" });
   });
 });

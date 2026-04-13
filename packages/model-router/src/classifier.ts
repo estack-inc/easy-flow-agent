@@ -68,6 +68,56 @@ export function routeByAttachments(
 }
 
 /**
+ * プロンプト内のメディアマーカー（`MEDIA: /path/to/file`）を検出し、
+ * AttachmentHint に変換する。
+ * OpenClaw のチャネル（LINE 等）は画像をプロンプト内 MEDIA マーカーとして渡すため、
+ * before_model_resolve 時点では attachments が空でもプロンプトにメディア参照が含まれる。
+ */
+export function detectMediaInPrompt(prompt: string): AttachmentHint[] {
+  const hints: AttachmentHint[] = [];
+  for (const line of prompt.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("MEDIA:")) continue;
+    const afterColon = trimmed.slice(6).trim();
+    const raw = afterColon.match(/^`([^`]+)`$/)?.[1] ?? afterColon;
+    if (!raw) continue;
+    const lower = raw.toLowerCase();
+    if (/\.(png|jpe?g|gif|webp|bmp|svg|tiff?|ico|heic|heif)$/i.test(lower)) {
+      hints.push({ kind: "image", mimeType: inferMimeFromExt(lower) });
+    } else if (/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(lower)) {
+      hints.push({ kind: "video", mimeType: inferMimeFromExt(lower) });
+    } else if (/\.(mp3|wav|ogg|flac|aac|m4a|wma)$/i.test(lower)) {
+      hints.push({ kind: "audio", mimeType: inferMimeFromExt(lower) });
+    } else if (/\.(pdf|docx?|xlsx?|pptx?|csv|tsv|txt)$/i.test(lower)) {
+      hints.push({ kind: "document", mimeType: inferMimeFromExt(lower) });
+    } else {
+      hints.push({ kind: "image" }); // MEDIA: without extension → assume image
+    }
+  }
+  return hints;
+}
+
+function inferMimeFromExt(path: string): string | undefined {
+  const ext = path.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
+  if (!ext) return undefined;
+  const map: Record<string, string> = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    mp4: "video/mp4",
+    mov: "video/quicktime",
+    mp3: "audio/mpeg",
+    wav: "audio/wav",
+    pdf: "application/pdf",
+    csv: "text/csv",
+    txt: "text/plain",
+  };
+  return map[ext];
+}
+
+/**
  * ユーザープロンプトを分類し、軽量モデルで処理可能かを判定する。
  *
  * 判定優先順位:
