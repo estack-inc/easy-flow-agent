@@ -1,5 +1,10 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { type AttachmentHint, classifyMessage, routeByAttachments } from "./classifier.js";
+import {
+  type AttachmentHint,
+  classifyMessage,
+  detectMediaInPrompt,
+  routeByAttachments,
+} from "./classifier.js";
 import { DEFAULT_CONFIG, DEFAULT_FILE_ROUTING_RULES, type ModelRouterConfig } from "./config.js";
 
 export default function register(api: OpenClawPluginApi): void {
@@ -24,7 +29,17 @@ export default function register(api: OpenClawPluginApi): void {
     try {
       const e = event as { prompt?: string; attachments?: AttachmentHint[] };
       const prompt = e.prompt ?? "";
-      const attachments = e.attachments ?? [];
+      // attachments: upstream hook event から取得 + プロンプト内 MEDIA: マーカーから補完
+      const eventAttachments = e.attachments ?? [];
+      const promptMedia = detectMediaInPrompt(prompt);
+      const attachments = eventAttachments.length > 0 ? eventAttachments : promptMedia;
+
+      if (cfg.logging) {
+        api.logger.info(
+          `[model-router] hook fired: attachments=${attachments.length}` +
+            `(event=${eventAttachments.length},prompt=${promptMedia.length}), ${prompt.length}chars`,
+        );
+      }
 
       // 1. ファイルルーティング（最優先）
       if (cfg.fileRouting.enabled && attachments.length > 0) {
