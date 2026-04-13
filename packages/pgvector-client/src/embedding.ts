@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI, type TaskType } from "@google/generative-ai";
 
-const MODEL = "text-embedding-004";
+const MODEL = "gemini-embedding-001";
 const BATCH_SIZE = 96;
 
 export class GeminiEmbeddingService {
@@ -27,6 +27,7 @@ export class GeminiEmbeddingService {
         requests: batch.map((text) => ({
           content: { role: "user", parts: [{ text }] },
           taskType,
+          outputDimensionality: GeminiEmbeddingService.DIMENSIONS,
         })),
       });
 
