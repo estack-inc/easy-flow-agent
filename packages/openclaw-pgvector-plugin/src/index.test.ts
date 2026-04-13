@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@easy-flow/pgvector-client", () => ({
@@ -9,6 +10,8 @@ vi.mock("@easy-flow/pinecone-context-engine", () => ({
     info: { id: "pgvector", name: "test", version: "1.0.0" },
   })),
 }));
+
+vi.mock("node:fs");
 
 import { PgVectorClient } from "@easy-flow/pgvector-client";
 import { PineconeContextEngine } from "@easy-flow/pinecone-context-engine";
@@ -37,6 +40,7 @@ describe("openclaw-pgvector-plugin", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(fs.readFileSync).mockReset();
     process.env = { ...originalEnv };
     delete process.env.PGVECTOR_DATABASE_URL;
     delete process.env.GEMINI_API_KEY;
@@ -122,6 +126,110 @@ describe("openclaw-pgvector-plugin", () => {
     expect(PgVectorClient).toHaveBeenCalledWith({
       databaseUrl: "postgres://config@localhost/db",
       geminiApiKey: "config-key",
+    });
+  });
+
+  describe("config fallback from openclaw.json", () => {
+    it("reads config from openclaw.json when api.pluginConfig is empty", () => {
+      const fallbackConfig = JSON.stringify({
+        plugins: {
+          entries: {
+            "pgvector-memory": {
+              config: {
+                databaseUrl: "postgres://fallback@localhost/db",
+                geminiApiKey: "fallback-key",
+                agentId: "fallback-agent",
+              },
+            },
+          },
+        },
+      });
+      vi.mocked(fs.readFileSync).mockReturnValue(fallbackConfig);
+
+      const api = createMockApi();
+      register(api as never);
+
+      expect(fs.readFileSync).toHaveBeenCalledWith("/data/openclaw.json", "utf8");
+      expect(api.registerContextEngine).toHaveBeenCalledWith(
+        "pgvector-memory",
+        expect.any(Function),
+      );
+      expect(api.logger.info).toHaveBeenCalledWith(
+        expect.stringContaining("agentId: fallback-agent"),
+      );
+    });
+
+    it("registers context engine with fallback config values", () => {
+      const fallbackConfig = JSON.stringify({
+        plugins: {
+          entries: {
+            "pgvector-memory": {
+              config: {
+                databaseUrl: "postgres://fallback@localhost/db",
+                geminiApiKey: "fallback-key",
+                agentId: "mell",
+                compactAfterDays: 14,
+              },
+            },
+          },
+        },
+      });
+      vi.mocked(fs.readFileSync).mockReturnValue(fallbackConfig);
+
+      const api = createMockApi();
+      register(api as never);
+
+      const factory = api.getRegisteredFactory();
+      factory?.();
+
+      expect(PgVectorClient).toHaveBeenCalledWith({
+        databaseUrl: "postgres://fallback@localhost/db",
+        geminiApiKey: "fallback-key",
+      });
+      expect(PineconeContextEngine).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: "mell",
+          compactAfterDays: 14,
+        }),
+      );
+    });
+
+    it("does not read openclaw.json when api.pluginConfig has values", () => {
+      const api = createMockApi({
+        databaseUrl: "postgres://config@localhost/db",
+        geminiApiKey: "config-key",
+      });
+      register(api as never);
+
+      expect(fs.readFileSync).not.toHaveBeenCalled();
+    });
+
+    it("disables plugin gracefully when openclaw.json read fails", () => {
+      vi.mocked(fs.readFileSync).mockImplementation(() => {
+        throw new Error("ENOENT: no such file or directory");
+      });
+
+      const api = createMockApi();
+      register(api as never);
+
+      expect(api.logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining("readConfigFallback failed"),
+      );
+      expect(api.logger.warn).toHaveBeenCalledWith(expect.stringContaining("plugin disabled"));
+      expect(api.registerContextEngine).not.toHaveBeenCalled();
+    });
+
+    it("disables plugin when openclaw.json has no pgvector-memory entry", () => {
+      const fallbackConfig = JSON.stringify({
+        plugins: { entries: {} },
+      });
+      vi.mocked(fs.readFileSync).mockReturnValue(fallbackConfig);
+
+      const api = createMockApi();
+      register(api as never);
+
+      expect(api.logger.warn).toHaveBeenCalledWith(expect.stringContaining("plugin disabled"));
+      expect(api.registerContextEngine).not.toHaveBeenCalled();
     });
   });
 });
