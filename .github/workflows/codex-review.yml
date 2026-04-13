@@ -5,6 +5,7 @@
 # 必要な Secrets:
 #   OPENAI_API_KEY      — OpenAI API キー
 #   AI_REVIEWER_TOKEN   — GitHub PAT（PR レビュー投稿用、省略時 GITHUB_TOKEN）
+#   SLACK_WEBHOOK_URL   — Slack 通知用 Webhook URL（省略時は通知スキップ）
 
 name: Codex Code Review
 
@@ -111,7 +112,26 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            あなたは Easy Flow Agent プロジェクトのシニアコードレビュアーです。
+            You are a senior TypeScript/Node.js code reviewer for the **easy-flow-agent** plugin monorepo.
+
+            # Repository Context
+            This is an AI agent plugin monorepo for OpenClaw, built with TypeScript and ESM modules.
+
+            ## Key packages
+            | Package | Role |
+            |---|---|
+            | `packages/pinecone-client` | Low-level Pinecone API wrapper |
+            | `packages/pinecone-context-engine` | Semantic search + RAG engine |
+            | `packages/openclaw-pinecone-plugin` | OpenClaw integration (pinecone-memory) |
+            | `packages/workflow-controller` | Workflow control plugin |
+            | `packages/file-serve` | File delivery plugin |
+            | `packages/migrate-memory` | Memory migration CLI |
+            | `packages/model-router` | Model routing plugin |
+
+            ## Design principles
+            - ESM modules (`"type": "module"` in all packages)
+            - Source-direct reference pattern (no build step, `exports: { ".": "./src/index.ts" }`)
+            - TypeScript strict mode
 
             ## レビュー手順（Step 1〜5 を順番に実行、全て完了してから出力）
 
@@ -140,12 +160,16 @@ jobs:
             ### Step 5: チェック項目の評価
 
             #### [A] 要件充足・影響範囲
+            - OK: 全要件が実装済み、全呼び出し元が更新済み
+            - NG: 実装漏れ、参照切れ、テスト未対応
             - PR description に記載された要件が全て実装されているか
             - メソッド名・シグネチャ変更時: 全呼び出し元が更新されているか
             - インターフェース変更時: 全実装クラスが更新されているか
             - 新機能追加時: 対応するテストが存在するか
 
             #### [B] コード品質（CLAUDE.md 参照）
+            - OK: TypeScript strict 準拠、import に `.js` 拡張子あり、`Set` を JSON 永続化に不使用、Vitest テストあり
+            - NG: `any` 型の使用、`.js` 拡張子なし、`Set` を永続化に使用、テスト未実装
             - 型安全性（TypeScript strict モード準拠）
             - ESM モジュール規約（import パスに `.js` 拡張子）
             - JSON 永続化互換性（`Set` 不使用等）
@@ -153,11 +177,15 @@ jobs:
             - アーキテクチャ（モノレポ構成、パッケージ間依存の妥当性）
 
             #### [C] セキュリティ
+            - OK: console.log/debugger なし、ハードコードされた機密情報なし
+            - NG: 機密情報の漏洩、デバッグ文の残存
             - console.log/debugger が残っていないか
             - 機密情報（API キー等）がハードコードされていないか
             - 入力値のバリデーション
 
             #### [D] GitHub Actions 品質（yml 変更時）
+            - OK: 構文正常、secrets 参照正常、最小権限の permissions
+            - NG: ハードコードされた secrets、過剰な permissions
             - 構文・secrets 参照・パーミッション設定の妥当性
 
             ## 重要度分類（2 段階のみ）
@@ -208,12 +236,16 @@ jobs:
 
             ### レビュー結果: ✅ Approved
 
+            （最終行に必ず以下のいずれかを出力してください。PR コメントからは除去されます。）
+            `<!-- VERDICT:APPROVED -->`  または  `<!-- VERDICT:CHANGES_REQUESTED -->`
+
             ## レビュー方針
             - 確信がない指摘は避け、確実な問題のみ指摘する
             - 修正漏れの検出を最優先で行う
             - 指摘にはファイルパスと行番号を必ず含める
             - 全ての問題を 1 回のレビューで網羅的に検出する。小出しにしない
             - GitHub への直接投稿（gh pr comment, gh pr review）は行わない
+            - 出力の最終行は必ず `<!-- VERDICT:APPROVED -->` または `<!-- VERDICT:CHANGES_REQUESTED -->` にする
         env:
           GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
 
@@ -229,7 +261,9 @@ jobs:
             echo "::error::Review result file not found or empty — Codex may not have completed the review"
             exit 1
           fi
-          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file /tmp/review-result.md
+          # Strip VERDICT marker before posting
+          sed '/^<!-- VERDICT:/d' /tmp/review-result.md > /tmp/review-comment.md
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file /tmp/review-comment.md
 
       - name: Submit review verdict
         if: >
@@ -241,21 +275,35 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          VERDICT=$(grep -E '^### (判定|レビュー結果):' /tmp/review-result.md | head -1 | \
-            sed 's/.*: //' | cut -c1-50)
+          # Primary: machine-readable VERDICT tag
+          VERDICT=$(sed -n 's/^<!-- VERDICT:\([A-Z_]*\) -->/\1/p' /tmp/review-result.md | head -1)
 
-          echo "Verdict line: $VERDICT"
-          if echo "$VERDICT" | grep -qiE 'CHANGES_REQUESTED|Changes Requested|要修正'; then
+          # Fallback: parse header line
+          if [ -z "$VERDICT" ]; then
+            HEADER=$(grep -E '^### (判定|レビュー結果):' /tmp/review-result.md | head -1 | \
+              sed 's/.*: //' | cut -c1-50)
+            echo "Fallback header: $HEADER"
+            if echo "$HEADER" | grep -qiE 'CHANGES_REQUESTED|Changes Requested|要修正'; then
+              VERDICT="CHANGES_REQUESTED"
+            elif echo "$HEADER" | grep -qiE 'APPROVED|APPROVE|Approved|✅'; then
+              VERDICT="APPROVED"
+            fi
+          fi
+
+          echo "Verdict: $VERDICT"
+          if [ "$VERDICT" = "CHANGES_REQUESTED" ]; then
             echo "Submitting CHANGES_REQUESTED review"
             gh pr review "$PR_NUMBER" --repo "$REPO" --request-changes \
-              --body "🤖 AIレビュー判定: CHANGES_REQUESTED — 詳細はレビューコメントを確認してください。"
-          elif echo "$VERDICT" | grep -qiE 'APPROVED|APPROVE|Approved|✅'; then
+              --body "🤖 AIレビュー判定: CHANGES_REQUESTED — 詳細はレビューコメントを確認してください。" \
+              || echo "::warning::Could not submit review"
+          elif [ "$VERDICT" = "APPROVED" ]; then
             echo "Submitting APPROVED review"
             gh pr review "$PR_NUMBER" --repo "$REPO" --approve \
-              --body "🤖 AIレビュー判定: APPROVED ✅"
+              --body "🤖 AIレビュー判定: APPROVED ✅" \
+              || echo "::warning::Could not submit review"
           else
-            echo "Could not determine verdict from: $VERDICT"
-            echo "Skipping review submission"
+            echo "Could not determine verdict from review output"
+            echo "::warning::Could not submit review"
           fi
 
       - name: Notify Slack on Failure
