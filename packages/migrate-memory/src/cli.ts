@@ -17,9 +17,7 @@ function createClient(backend: Backend, dryRun: boolean): IPineconeClient {
   if (dryRun) return noopClient();
 
   if (backend !== "pinecone" && backend !== "pgvector") {
-    console.error(
-      `Error: Invalid --backend value "${backend}". Must be "pinecone" or "pgvector"`,
-    );
+    console.error(`Error: Invalid --backend value "${backend}". Must be "pinecone" or "pgvector"`);
     process.exit(1);
   }
 
