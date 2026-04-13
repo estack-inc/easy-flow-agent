@@ -10,7 +10,7 @@ type MockApi = {
     error: ReturnType<typeof vi.fn>;
     debug: ReturnType<typeof vi.fn>;
   };
-  registerHook: ReturnType<typeof vi.fn>;
+  on: ReturnType<typeof vi.fn>;
 };
 
 function createMockApi(pluginConfig: Record<string, unknown> = {}): MockApi {
@@ -22,7 +22,7 @@ function createMockApi(pluginConfig: Record<string, unknown> = {}): MockApi {
       error: vi.fn(),
       debug: vi.fn(),
     },
-    registerHook: vi.fn(),
+    on: vi.fn(),
   };
 }
 
@@ -31,10 +31,7 @@ function callHook(
   api: MockApi,
   event: { prompt?: string; attachments?: { kind: string; mimeType?: string }[] },
 ) {
-  const [, handler] = api.registerHook.mock.calls[0] as [
-    string[],
-    (e: unknown, ctx: unknown) => unknown,
-  ];
+  const [, handler] = api.on.mock.calls[0] as [string, (e: unknown, ctx: unknown) => unknown];
   return handler(event, {});
 }
 
@@ -43,9 +40,7 @@ describe("model-router plugin", () => {
     const api = createMockApi();
     register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
 
-    expect(api.registerHook).toHaveBeenCalledWith(["before_model_resolve"], expect.any(Function), {
-      name: "model-router-resolve",
-    });
+    expect(api.on).toHaveBeenCalledWith("before_model_resolve", expect.any(Function));
   });
 
   it("登録後に info ログを出力する", () => {
@@ -272,10 +267,7 @@ describe("model-router plugin", () => {
     register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
 
     // ハンドラに null を渡して event.prompt アクセスで例外を発生させる
-    const [, handler] = api.registerHook.mock.calls[0] as [
-      string[],
-      (e: unknown, ctx: unknown) => unknown,
-    ];
+    const [, handler] = api.on.mock.calls[0] as [string, (e: unknown, ctx: unknown) => unknown];
     const result = handler(null, {});
 
     expect(result).toBeUndefined();
