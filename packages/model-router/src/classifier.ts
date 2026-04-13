@@ -83,21 +83,18 @@ export function detectMediaInPrompt(prompt: string): AttachmentHint[] {
 
   // Pattern 1: [media attached: /path (type)] or [media attached N/M: /path (type)]
   const mediaAttachedRe = /\[media attached(?:\s+\d+\/\d+)?:\s+([^\s\]]+)(?:\s+\(([^)]+)\))?/g;
-  let match: RegExpExecArray | null;
-  while ((match = mediaAttachedRe.exec(prompt)) !== null) {
-    const path = match[1] ?? "";
+  for (const m of prompt.matchAll(mediaAttachedRe)) {
+    const path = m[1] ?? "";
     // サマリー行 "[media attached: 2 files]" をスキップ
     if (/^\d+$/.test(path)) continue;
-    const mimeType = match[2]?.trim();
+    const mimeType = m[2]?.trim();
     if (mimeType) {
       hints.push({ kind: classifyMimeKind(mimeType), mimeType });
     } else {
       // MIME 不明 → 拡張子から推定
       const inferred = inferMimeFromExt(path.toLowerCase());
       hints.push(
-        inferred
-          ? { kind: classifyMimeKind(inferred), mimeType: inferred }
-          : { kind: "image" },
+        inferred ? { kind: classifyMimeKind(inferred), mimeType: inferred } : { kind: "image" },
       );
     }
   }
