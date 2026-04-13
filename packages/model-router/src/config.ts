@@ -1,3 +1,15 @@
+/** MIME pattern matching rule for file-based model routing. */
+export type FileRoutingRule = {
+  /** Human-readable label for logging. */
+  label: string;
+  /** MIME type patterns to match (supports trailing wildcard: "image/*"). */
+  mimePatterns: string[];
+  /** Model to route to when matched. */
+  model: string;
+  /** Provider to route to when matched. */
+  provider: string;
+};
+
 export type ModelRouterConfig = {
   defaultModel?: string;
   defaultProvider?: string;
@@ -8,8 +20,51 @@ export type ModelRouterConfig = {
     forceDefault?: string[];
     preferLight?: string[];
   };
+  /** File-based routing rules. Evaluated in order; first match wins. */
+  fileRouting?: {
+    enabled?: boolean;
+    rules?: FileRoutingRule[];
+  };
   logging?: boolean;
 };
+
+export const DEFAULT_FILE_ROUTING_RULES: FileRoutingRule[] = [
+  {
+    label: "image",
+    mimePatterns: ["image/*"],
+    model: "gemini-2.5-flash",
+    provider: "google",
+  },
+  {
+    label: "video",
+    mimePatterns: ["video/*"],
+    model: "gemini-2.5-flash",
+    provider: "google",
+  },
+  {
+    label: "audio",
+    mimePatterns: ["audio/*"],
+    model: "gemini-2.5-flash",
+    provider: "google",
+  },
+  {
+    label: "document",
+    mimePatterns: [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.*",
+      "application/vnd.ms-*",
+      "text/*",
+    ],
+    model: "gemini-2.5-flash",
+    provider: "google",
+  },
+  {
+    label: "binary",
+    mimePatterns: ["application/octet-stream", "application/zip", "application/gzip"],
+    model: "gemini-2.5-flash",
+    provider: "google",
+  },
+];
 
 export const DEFAULT_CONFIG: Required<ModelRouterConfig> = {
   defaultModel: "claude-sonnet-4-6",
@@ -31,7 +86,7 @@ export const DEFAULT_CONFIG: Required<ModelRouterConfig> = {
       "バグ",
       "エラー",
       "仕様",
-      // 英語（preferLight の英語キーワードとの誤分類を防ぐため）
+      // 英語
       "review",
       "code",
       "bug",
@@ -53,6 +108,10 @@ export const DEFAULT_CONFIG: Required<ModelRouterConfig> = {
       "はい",
       "いいえ",
     ],
+  },
+  fileRouting: {
+    enabled: true,
+    rules: DEFAULT_FILE_ROUTING_RULES,
   },
   logging: true,
 };

@@ -2,5 +2,58 @@
   "id": "model-router",
   "kind": "plugin",
   "name": "Model Router",
-  "description": "Routes lightweight messages to Haiku and complex tasks to Sonnet based on rule-based classification"
+  "description": "Routes messages to optimal models: file attachments to Gemini Flash, lightweight text to Haiku, complex tasks to Sonnet",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "defaultModel": {
+        "type": "string",
+        "description": "Default model for complex tasks"
+      },
+      "defaultProvider": {
+        "type": "string",
+        "description": "Default provider"
+      },
+      "lightModel": {
+        "type": "string",
+        "description": "Model for lightweight text messages"
+      },
+      "lightProvider": {
+        "type": "string",
+        "description": "Provider for lightweight text messages"
+      },
+      "maxTokensForLight": {
+        "type": "number",
+        "description": "Max estimated tokens for lightweight routing"
+      },
+      "fileRouting": {
+        "type": "object",
+        "description": "File-based model routing configuration",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Enable file-based routing (requires openclaw with attachments support)"
+          },
+          "rules": {
+            "type": "array",
+            "description": "Routing rules evaluated in order; first match wins",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": { "type": "string" },
+                "mimePatterns": { "type": "array", "items": { "type": "string" } },
+                "model": { "type": "string" },
+                "provider": { "type": "string" }
+              },
+              "required": ["label", "mimePatterns", "model", "provider"]
+            }
+          }
+        }
+      },
+      "logging": {
+        "type": "boolean",
+        "description": "Enable routing decision logging"
+      }
+    }
+  }
 }

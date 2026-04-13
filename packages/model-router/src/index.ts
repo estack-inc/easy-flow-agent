@@ -1,21 +1,47 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { classifyMessage } from "./classifier.js";
-import { DEFAULT_CONFIG, type ModelRouterConfig } from "./config.js";
+import { type AttachmentHint, classifyMessage, routeByAttachments } from "./classifier.js";
+import { DEFAULT_CONFIG, DEFAULT_FILE_ROUTING_RULES, type ModelRouterConfig } from "./config.js";
 
 export default function register(api: OpenClawPluginApi): void {
+  const rawConfig = api.pluginConfig as ModelRouterConfig;
   const cfg: Required<ModelRouterConfig> = {
     ...DEFAULT_CONFIG,
-    ...(api.pluginConfig as ModelRouterConfig),
+    ...rawConfig,
     patterns: {
       ...DEFAULT_CONFIG.patterns,
-      ...((api.pluginConfig as ModelRouterConfig)?.patterns ?? {}),
+      ...(rawConfig?.patterns ?? {}),
+    },
+    fileRouting: {
+      enabled: rawConfig?.fileRouting?.enabled ?? DEFAULT_CONFIG.fileRouting.enabled,
+      rules: rawConfig?.fileRouting?.rules ?? DEFAULT_FILE_ROUTING_RULES,
     },
   };
 
-  // before_model_resolve: プロンプトを分類してモデルをオーバーライド
+  // before_model_resolve: プロンプトと添付ファイルを分析してモデルをオーバーライド
   api.registerHook(["before_model_resolve"], (event: unknown, _ctx: unknown) => {
     try {
-      const prompt = (event as { prompt?: string }).prompt ?? "";
+      const e = event as { prompt?: string; attachments?: AttachmentHint[] };
+      const prompt = e.prompt ?? "";
+      const attachments = e.attachments ?? [];
+
+      // 1. ファイルルーティング（最優先）
+      if (cfg.fileRouting.enabled && attachments.length > 0) {
+        const fileRoute = routeByAttachments(attachments, cfg.fileRouting.rules ?? []);
+        if (fileRoute) {
+          if (cfg.logging) {
+            api.logger.info(
+              `[model-router] → ${fileRoute.provider}/${fileRoute.model}` +
+                ` (file: ${fileRoute.matchedRule}, prompt: "${prompt.slice(0, 40)}${prompt.length > 40 ? "..." : ""}")`,
+            );
+          }
+          return {
+            modelOverride: fileRoute.model,
+            providerOverride: fileRoute.provider,
+          };
+        }
+      }
+
+      // 2. テキストベースのルーティング
       const result = classifyMessage(prompt, cfg);
 
       if (result === "light") {
