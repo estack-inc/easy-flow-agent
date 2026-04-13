@@ -43,7 +43,9 @@ describe("model-router plugin", () => {
     const api = createMockApi();
     register(api as unknown as import("openclaw/plugin-sdk").OpenClawPluginApi);
 
-    expect(api.registerHook).toHaveBeenCalledWith(["before_model_resolve"], expect.any(Function));
+    expect(api.registerHook).toHaveBeenCalledWith(["before_model_resolve"], expect.any(Function), {
+      name: "model-router-resolve",
+    });
   });
 
   it("登録後に info ログを出力する", () => {
