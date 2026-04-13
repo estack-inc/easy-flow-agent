@@ -5,6 +5,7 @@
 # 必要な Secrets:
 #   OPENAI_API_KEY      — OpenAI API キー
 #   AI_REVIEWER_TOKEN   — GitHub PAT（PR レビュー投稿用、省略時 GITHUB_TOKEN）
+#   SLACK_WEBHOOK_URL   — Slack 通知用 Webhook URL（省略時は通知スキップ）
 
 name: Codex Code Review
 
@@ -113,6 +114,24 @@ jobs:
 
             あなたは Easy Flow Agent プロジェクトのシニアコードレビュアーです。
 
+            ## Repository Context
+            This repository is a plugin monorepo for OpenClaw AI agent platform.
+            - Language: TypeScript (strict mode, ESM)
+            - Test framework: Vitest
+            - Package manager: npm workspaces
+
+            | Path | Role |
+            |---|---|
+            | `packages/pinecone-client/` | Low-level Pinecone API wrapper |
+            | `packages/pinecone-context-engine/` | Semantic search + RAG engine |
+            | `packages/openclaw-pinecone-plugin/` | OpenClaw integration (pinecone-memory) |
+            | `packages/workflow-controller/` | Workflow control plugin |
+            | `packages/file-serve/` | File delivery plugin |
+            | `packages/migrate-memory/` | Memory migration CLI |
+            | `packages/model-router/` | Model routing plugin |
+            | `specs/` | Feature specifications |
+            | `.github/workflows/` | CI/CD pipelines |
+
             ## レビュー手順（Step 1〜5 を順番に実行、全て完了してから出力）
 
             ### Step 1: PR と要件の把握
@@ -140,25 +159,20 @@ jobs:
             ### Step 5: チェック項目の評価
 
             #### [A] 要件充足・影響範囲
-            - PR description に記載された要件が全て実装されているか
-            - メソッド名・シグネチャ変更時: 全呼び出し元が更新されているか
-            - インターフェース変更時: 全実装クラスが更新されているか
-            - 新機能追加時: 対応するテストが存在するか
+            - **OK**: PR description の要件が全て実装されている、シグネチャ変更時に全呼び出し元が更新されている、インターフェース変更時に全実装が更新されている、新機能にテストがある
+            - **NG**: 要件の実装漏れ、呼び出し元の更新漏れ、インターフェース実装の不整合、テスト未作成
 
             #### [B] コード品質（CLAUDE.md 参照）
-            - 型安全性（TypeScript strict モード準拠）
-            - ESM モジュール規約（import パスに `.js` 拡張子）
-            - JSON 永続化互換性（`Set` 不使用等）
-            - テスト（Vitest、十分なカバレッジ）
-            - アーキテクチャ（モノレポ構成、パッケージ間依存の妥当性）
+            - **OK**: TypeScript strict モード準拠、ESM import パスに `.js` 拡張子、JSON 永続化互換（Set 不使用）、Vitest テストあり、パッケージ間依存が妥当
+            - **NG**: `any` 型の多用、ESM 規約違反、Set の JSON シリアライズ、テスト不足、循環依存
 
             #### [C] セキュリティ
-            - console.log/debugger が残っていないか
-            - 機密情報（API キー等）がハードコードされていないか
-            - 入力値のバリデーション
+            - **OK**: console.log/debugger が残っていない、機密情報がハードコードされていない、入力値のバリデーションが適切
+            - **NG**: デバッグコードの残存、API キー等のハードコード、バリデーション欠如
 
             #### [D] GitHub Actions 品質（yml 変更時）
-            - 構文・secrets 参照・パーミッション設定の妥当性
+            - **OK**: 構文が正しい、secrets 参照が適切、パーミッション設定が最小権限
+            - **NG**: 構文エラー、secrets の不適切な参照、過剰なパーミッション
 
             ## 重要度分類（2 段階のみ）
 
@@ -179,6 +193,13 @@ jobs:
             全ての 🟡 がスキップ済み、または指摘なし → `### レビュー結果: ✅ Approved`
 
             ## 出力形式（最終出力として PR コメントに投稿されます）
+
+            Filling rules:
+            - 全セクション必須。省略禁止
+            - 指摘事項がない場合は「指摘事項なし。」と記載
+            - 最終行は必ず VERDICT コメント行（後述）
+
+            ---START---
 
             ### 変更の概要
 
@@ -208,6 +229,13 @@ jobs:
 
             ### レビュー結果: ✅ Approved
 
+            <!-- VERDICT:APPROVED -->
+
+            ---END---
+
+            VERDICT 行は `<!-- VERDICT:APPROVED -->` または `<!-- VERDICT:CHANGES_REQUESTED -->` のいずれか。
+            この行は出力の最終行に必ず含めること。
+
             ## レビュー方針
             - 確信がない指摘は避け、確実な問題のみ指摘する
             - 修正漏れの検出を最優先で行う
@@ -229,7 +257,8 @@ jobs:
             echo "::error::Review result file not found or empty — Codex may not have completed the review"
             exit 1
           fi
-          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file /tmp/review-result.md
+          sed '/^<!-- VERDICT:/d' /tmp/review-result.md > /tmp/review-comment.md
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file /tmp/review-comment.md
 
       - name: Submit review verdict
         if: >
@@ -241,20 +270,32 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          VERDICT=$(grep -E '^### (判定|レビュー結果):' /tmp/review-result.md | head -1 | \
-            sed 's/.*: //' | cut -c1-50)
+          # Primary: parse machine-readable VERDICT comment
+          VERDICT=$(sed -n 's/^<!-- VERDICT:\([A-Z_]*\) -->/\1/p' /tmp/review-result.md | head -1)
 
-          echo "Verdict line: $VERDICT"
-          if echo "$VERDICT" | grep -qiE 'CHANGES_REQUESTED|Changes Requested|要修正'; then
+          # Fallback: parse header line
+          if [ -z "$VERDICT" ]; then
+            HEADER=$(grep -E '^### (判定|レビュー結果):' /tmp/review-result.md | head -1 | \
+              sed 's/.*: //' | cut -c1-50)
+            echo "Fallback header: $HEADER"
+            if echo "$HEADER" | grep -qiE 'CHANGES_REQUESTED|Changes Requested|要修正'; then
+              VERDICT="CHANGES_REQUESTED"
+            elif echo "$HEADER" | grep -qiE 'APPROVED|APPROVE|Approved|✅'; then
+              VERDICT="APPROVED"
+            fi
+          fi
+
+          echo "Verdict: $VERDICT"
+          if [ "$VERDICT" = "CHANGES_REQUESTED" ]; then
             echo "Submitting CHANGES_REQUESTED review"
             gh pr review "$PR_NUMBER" --repo "$REPO" --request-changes \
               --body "🤖 AIレビュー判定: CHANGES_REQUESTED — 詳細はレビューコメントを確認してください。"
-          elif echo "$VERDICT" | grep -qiE 'APPROVED|APPROVE|Approved|✅'; then
+          elif [ "$VERDICT" = "APPROVED" ]; then
             echo "Submitting APPROVED review"
             gh pr review "$PR_NUMBER" --repo "$REPO" --approve \
               --body "🤖 AIレビュー判定: APPROVED ✅"
           else
-            echo "Could not determine verdict from: $VERDICT"
+            echo "Could not determine verdict"
             echo "Skipping review submission"
           fi
 
