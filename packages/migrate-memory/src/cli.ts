@@ -1,49 +1,13 @@
 #!/usr/bin/env node
 
 import { parseArgs } from "node:util";
-import { PgVectorClient } from "@easy-flow/pgvector-client";
-import type { IPineconeClient } from "@easy-flow/pinecone-client";
-import { PineconeClient } from "@easy-flow/pinecone-client";
 import { bulkMigrate } from "./bulk-migrator.js";
 import { bulkUpdate } from "./bulk-updater.js";
+import { type Backend, createClient } from "./create-client.js";
 import { MemoryDeleter } from "./deleter.js";
 import { AgentsMigrator } from "./migrate-agents.js";
 import { Migrator } from "./migrator.js";
 import { validateExcludePatterns } from "./preflight.js";
-
-type Backend = "pinecone" | "pgvector";
-
-function createClient(backend: Backend, dryRun: boolean): IPineconeClient {
-  if (dryRun) return noopClient();
-
-  if (backend !== "pinecone" && backend !== "pgvector") {
-    console.error(`Error: Invalid --backend value "${backend}". Must be "pinecone" or "pgvector"`);
-    process.exit(1);
-  }
-
-  if (backend === "pgvector") {
-    const databaseUrl = process.env.PGVECTOR_DATABASE_URL;
-    const geminiApiKey = process.env.GEMINI_API_KEY;
-    if (!databaseUrl) {
-      console.error(
-        "Error: PGVECTOR_DATABASE_URL environment variable is required for pgvector backend",
-      );
-      process.exit(1);
-    }
-    if (!geminiApiKey) {
-      console.error("Error: GEMINI_API_KEY environment variable is required for pgvector backend");
-      process.exit(1);
-    }
-    return new PgVectorClient({ databaseUrl, geminiApiKey });
-  }
-
-  const apiKey = process.env.PINECONE_API_KEY;
-  if (!apiKey) {
-    console.error("Error: PINECONE_API_KEY environment variable is required for pinecone backend");
-    process.exit(1);
-  }
-  return new PineconeClient({ apiKey });
-}
 
 function printUsage(): void {
   console.log(`Usage: easy-flow <command> [options]
@@ -54,9 +18,6 @@ Commands:
   memory-delete     Delete memory from vector DB
   bulk-migrate      Bulk migrate all EasyFlow instances
   bulk-update       Bulk update easy-flow-agent on all instances
-
-Global Options:
-  --backend <pinecone|pgvector>  Vector DB backend (default: pinecone)
 
 Environment Variables:
   PINECONE_API_KEY         Required for pinecone backend
@@ -93,17 +54,6 @@ Options:
 
 WARNING: --keyword uses semantic similarity search. Results may include loosely related chunks.
          Always use --dry-run first to preview what will be deleted.`);
-}
-
-function noopClient() {
-  return {
-    upsert: async () => {},
-    query: async () => [] as never[],
-    delete: async () => {},
-    deleteBySource: async () => {},
-    deleteNamespace: async () => {},
-    ensureIndex: async () => {},
-  };
 }
 
 async function runMigrate(args: string[]): Promise<void> {
