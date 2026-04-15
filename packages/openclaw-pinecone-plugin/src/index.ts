@@ -10,6 +10,7 @@ type PluginConfig = {
   compactAfterDays?: number;
   memoryHint?: string;
   minQueryTokens?: number;
+  maxQueryTokens?: number;
   ragEnabled?: boolean;
   agentsCorePath?: string;
   ragTokenBudget?: number;
@@ -102,6 +103,7 @@ export default function register(api: OpenClawPluginApi): void {
       compactAfterDays,
       memoryHint: cfg.memoryHint,
       minQueryTokens: cfg.minQueryTokens,
+      maxQueryTokens: cfg.maxQueryTokens,
       ragEnabled,
       agentsCorePath,
       ragTokenBudget,

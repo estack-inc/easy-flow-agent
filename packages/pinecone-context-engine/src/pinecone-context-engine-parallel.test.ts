@@ -186,6 +186,36 @@ describe("PineconeContextEngineParallel", () => {
     });
   });
 
+  describe("query truncation", () => {
+    it("maxQueryTokens を超えるクエリが truncation される", async () => {
+      (mockPineconeClient.query as any).mockResolvedValue([]);
+      const consoleSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+
+      const truncEngine = new PineconeContextEngineParallel({
+        pineconeClient: mockPineconeClient,
+        agentId: "test-agent",
+        maxQueryTokens: 500,
+      });
+
+      // ~750 tokens (500 CJK × 1.5)
+      const longMessage = "質".repeat(500);
+      const messages: AgentMessage[] = [
+        { id: "1", role: "user", content: longMessage, timestamp: Date.now() },
+      ];
+
+      const result = await truncEngine.assemble({ sessionId: "s1", messages });
+      // Wait for contextPromise to complete
+      if (result.contextPromise) await result.contextPromise;
+
+      const truncationLog = consoleSpy.mock.calls.find(
+        (call) => typeof call[0] === "string" && call[0].includes("query truncated"),
+      );
+      expect(truncationLog).toBeDefined();
+
+      consoleSpy.mockRestore();
+    });
+  });
+
   describe("ragEnabled warning", () => {
     it("warns when ragEnabled=true is passed", () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});

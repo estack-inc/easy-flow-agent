@@ -21,6 +21,8 @@ export interface PineconeContextEngineParams {
   memoryHint?: string;
   /** Token threshold below which a query is considered "thin". Default: 20 */
   minQueryTokens?: number;
+  /** Maximum tokens for the final query text sent to Embedding API (including memoryHint). 0 = unlimited. Default: 1024 */
+  maxQueryTokens?: number;
 
   // --- RAG mode params ---
   /** RAG モード有効化。Default: false (env: RAG_ENABLED) */

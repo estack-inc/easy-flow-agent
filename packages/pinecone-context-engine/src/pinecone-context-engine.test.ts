@@ -8,6 +8,7 @@ import {
   isQueryThin,
   PineconeContextEngine,
 } from "./pinecone-context-engine.js";
+import { buildQueryWithTruncation, resolveMaxQueryTokens } from "./shared.js";
 import { estimateTokens } from "./token-estimator.js";
 import type { IPineconeClient } from "./types.js";
 
@@ -995,5 +996,231 @@ describe("estimateTokens", () => {
 
   it("returns 0 for empty string", () => {
     expect(estimateTokens("")).toBe(0);
+  });
+});
+
+describe("buildQueryWithTruncation", () => {
+  it("query_tokens < maxQueryTokens の場合 truncation なし", () => {
+    const messages = [
+      { role: "user" as const, content: "Hello world" },
+      { role: "assistant" as const, content: "Hi there" },
+    ];
+    const result = buildQueryWithTruncation(messages, 1024);
+    expect(result.truncated).toBe(false);
+    expect(result.query).toContain("Hello world");
+    expect(result.query).toContain("Hi there");
+    expect(result.turnsUsed).toBe(2);
+  });
+
+  it("query_tokens > maxQueryTokens の場合 truncation 発生、最新ターンが保持される", () => {
+    // 各ターンが ~750 tokens (500 CJK chars × 1.5 = 750)
+    const longText1 = "古".repeat(500);
+    const longText2 = "中".repeat(500);
+    const latestText = "新".repeat(500);
+    const messages = [
+      { role: "user" as const, content: longText1 },
+      { role: "assistant" as const, content: longText2 },
+      { role: "user" as const, content: latestText },
+    ];
+    // maxTokens = 800 — only the latest turn (~750) fits
+    const result = buildQueryWithTruncation(messages, 800);
+    expect(result.truncated).toBe(true);
+    expect(result.query).toContain(latestText);
+    expect(result.query).not.toContain(longText1);
+    expect(result.turnsUsed).toBe(1);
+    expect(result.turnsTotal).toBe(3);
+    expect(result.originalTokens).toBeGreaterThan(800);
+    expect(result.truncatedTokens).toBeLessThanOrEqual(800);
+  });
+
+  it("maxQueryTokens = 0 の場合は無制限（truncation なし）", () => {
+    const longText = "あ".repeat(10000); // ~15000 tokens
+    const messages = [{ role: "user" as const, content: longText }];
+    const result = buildQueryWithTruncation(messages, 0);
+    expect(result.truncated).toBe(false);
+    expect(result.query).toBe(longText);
+    expect(result.originalTokens).toBeGreaterThan(1024);
+  });
+
+  it("セッション履歴が 1 ターンのみ、かつ上限超過の場合テキストを末尾から切り詰め", () => {
+    const longText = "東".repeat(2000); // ~3000 tokens
+    const messages = [{ role: "user" as const, content: longText }];
+    const result = buildQueryWithTruncation(messages, 1024);
+    expect(result.truncated).toBe(true);
+    expect(result.truncatedTokens).toBeLessThanOrEqual(1024);
+    expect(result.turnsUsed).toBe(1);
+    // Text should be a prefix of the original
+    expect(longText.startsWith(result.query)).toBe(true);
+    expect(result.query.length).toBeLessThan(longText.length);
+  });
+
+  it("日本語テキストのトークン推定が CJK 1.5 tokens/char で正しく行われる", () => {
+    // 100 CJK chars × 1.5 = 150 tokens → within 200 budget
+    const japaneseText = "漢".repeat(100);
+    const result = buildQueryWithTruncation(
+      [{ role: "user" as const, content: japaneseText }],
+      200,
+    );
+    expect(result.truncated).toBe(false);
+    expect(result.originalTokens).toBe(150);
+
+    // 200 CJK chars × 1.5 = 300 tokens → exceeds 200 budget
+    const longerText = "漢".repeat(200);
+    const result2 = buildQueryWithTruncation([{ role: "user" as const, content: longerText }], 200);
+    expect(result2.truncated).toBe(true);
+    expect(result2.truncatedTokens).toBeLessThanOrEqual(200);
+  });
+});
+
+describe("PineconeContextEngine - query truncation", () => {
+  it("環境変数 RAG_MAX_QUERY_TOKENS が configSchema より優先される", async () => {
+    const client = createMockClient();
+    client.query.mockResolvedValue([]);
+
+    const originalEnv = process.env.RAG_MAX_QUERY_TOKENS;
+    try {
+      process.env.RAG_MAX_QUERY_TOKENS = "500";
+
+      const engine = new PineconeContextEngine({
+        pineconeClient: client,
+        agentId: "test-agent",
+        maxQueryTokens: 2000, // param は無視される
+      });
+
+      // ~750 tokens (500 CJK × 1.5) — exceeds env limit of 500
+      const longMessage = "質".repeat(500);
+      const messages = [{ role: "user" as const, content: longMessage }];
+      const consoleSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+
+      await engine.assemble({ sessionId: "s1", messages });
+
+      // Truncation should have occurred (env=500 < 750 tokens)
+      const truncationLog = consoleSpy.mock.calls.find(
+        (call) => typeof call[0] === "string" && call[0].includes("query truncated"),
+      );
+      expect(truncationLog).toBeDefined();
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.RAG_MAX_QUERY_TOKENS;
+      } else {
+        process.env.RAG_MAX_QUERY_TOKENS = originalEnv;
+      }
+    }
+  });
+
+  it("truncation + memoryHint の併用: 最終クエリが maxQueryTokens 以内に収まる", async () => {
+    const client = createMockClient();
+    client.query.mockResolvedValue([]);
+
+    const engine = new PineconeContextEngine({
+      pineconeClient: client,
+      agentId: "test-agent",
+      maxQueryTokens: 100,
+      memoryHint: "eSTACK AI agent service",
+      minQueryTokens: 200, // Force thin detection so memoryHint is appended
+    });
+
+    // Short message that fits within 100 token budget
+    const messages = [{ role: "user" as const, content: "あの件どうなった？" }];
+
+    await engine.assemble({ sessionId: "s1", messages });
+
+    const queryParams = client.query.mock.calls[0][0] as QueryParams;
+    // Base query (~14 tokens) + memoryHint (~6 tokens) ≈ 20 tokens < 100
+    // Both fit within budget, so memoryHint is included
+    expect(queryParams.text).toContain("eSTACK AI agent service");
+    // Final query must not exceed maxQueryTokens
+    expect(estimateTokens(queryParams.text)).toBeLessThanOrEqual(100);
+  });
+
+  it("memoryHint が maxQueryTokens を超える場合は memoryHint を除外する", async () => {
+    const client = createMockClient();
+    client.query.mockResolvedValue([]);
+
+    const engine = new PineconeContextEngine({
+      pineconeClient: client,
+      agentId: "test-agent",
+      maxQueryTokens: 20,
+      memoryHint: "eSTACK AI agent service for central holdings corporation",
+      minQueryTokens: 200, // Force thin detection
+    });
+
+    // ~14 tokens base, + memoryHint ~13 tokens = ~27 > 20
+    const messages = [{ role: "user" as const, content: "あの件どうなった？" }];
+
+    await engine.assemble({ sessionId: "s1", messages });
+
+    const queryParams = client.query.mock.calls[0][0] as QueryParams;
+    // memoryHint should be stripped because it would exceed maxQueryTokens
+    expect(queryParams.text).not.toContain("eSTACK AI agent service");
+    expect(estimateTokens(queryParams.text)).toBeLessThanOrEqual(20);
+  });
+
+  it("複数行 memoryHint が maxQueryTokens を超える場合も baseQuery にフォールバックする", async () => {
+    const client = createMockClient();
+    client.query.mockResolvedValue([]);
+
+    const multiLineHint = "eSTACK AI agent\nfor central holdings\ncorporation service";
+    const engine = new PineconeContextEngine({
+      pineconeClient: client,
+      agentId: "test-agent",
+      maxQueryTokens: 20,
+      memoryHint: multiLineHint,
+      minQueryTokens: 200, // Force thin detection
+    });
+
+    const messages = [{ role: "user" as const, content: "あの件どうなった？" }];
+
+    await engine.assemble({ sessionId: "s1", messages });
+
+    const queryParams = client.query.mock.calls[0][0] as QueryParams;
+    // Multi-line memoryHint must be fully stripped
+    expect(queryParams.text).not.toContain("eSTACK AI agent");
+    expect(queryParams.text).not.toContain("central holdings");
+    expect(queryParams.text).not.toContain("corporation service");
+    expect(estimateTokens(queryParams.text)).toBeLessThanOrEqual(20);
+  });
+});
+
+describe("resolveMaxQueryTokens", () => {
+  afterEach(() => {
+    delete process.env.RAG_MAX_QUERY_TOKENS;
+  });
+
+  it("負の RAG_MAX_QUERY_TOKENS はデフォルト値にフォールバックする", () => {
+    process.env.RAG_MAX_QUERY_TOKENS = "-1";
+    expect(resolveMaxQueryTokens()).toBe(1024);
+  });
+
+  it("NaN の RAG_MAX_QUERY_TOKENS はデフォルト値にフォールバックする", () => {
+    process.env.RAG_MAX_QUERY_TOKENS = "abc";
+    expect(resolveMaxQueryTokens()).toBe(1024);
+  });
+
+  it("負の param 値はデフォルト値にフォールバックする", () => {
+    expect(resolveMaxQueryTokens(-5)).toBe(1024);
+  });
+
+  it("env=0 は無制限として扱われる", () => {
+    process.env.RAG_MAX_QUERY_TOKENS = "0";
+    expect(resolveMaxQueryTokens(2000)).toBe(0);
+  });
+
+  it("正の env 値が param より優先される", () => {
+    process.env.RAG_MAX_QUERY_TOKENS = "500";
+    expect(resolveMaxQueryTokens(2000)).toBe(500);
+  });
+
+  it("env 未設定時は param が使用される", () => {
+    expect(resolveMaxQueryTokens(2000)).toBe(2000);
+  });
+
+  it("param=1 は最小値 2 にクランプされる", () => {
+    expect(resolveMaxQueryTokens(1)).toBe(2);
+  });
+
+  it("env=1 は最小値 2 にクランプされる", () => {
+    process.env.RAG_MAX_QUERY_TOKENS = "1";
+    expect(resolveMaxQueryTokens()).toBe(2);
   });
 });

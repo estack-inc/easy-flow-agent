@@ -15,7 +15,7 @@ import { rerankChunks } from "./reranker.js";
 import {
   ASSEMBLE_TIMEOUT_MS,
   buildEnrichedQuery,
-  buildQueryFromRecentTurns,
+  buildQueryWithTruncation,
   buildRagSystemPromptAddition,
   buildSystemPromptAddition,
   DEFAULT_COMPACT_AFTER_DAYS,
@@ -30,6 +30,7 @@ import {
   DEFAULT_TOP_K,
   readAgentsCore,
   readOldTurns,
+  resolveMaxQueryTokens,
   withRetry,
 } from "./shared.js";
 import { estimateTokens } from "./token-estimator.js";
@@ -61,6 +62,7 @@ export class PineconeContextEngine implements ContextEngine {
   private readonly ragTokenBudget: number;
   private readonly ragMinScore: number;
   private readonly ragTopK: number;
+  private readonly maxQueryTokens: number;
 
   constructor(params: PineconeContextEngineParams) {
     this.client = params.pineconeClient;
@@ -81,6 +83,8 @@ export class PineconeContextEngine implements ContextEngine {
     this.ragTokenBudget = params.ragTokenBudget ?? DEFAULT_RAG_TOKEN_BUDGET;
     this.ragMinScore = params.ragMinScore ?? DEFAULT_RAG_MIN_SCORE;
     this.ragTopK = params.ragTopK ?? DEFAULT_RAG_TOP_K;
+
+    this.maxQueryTokens = resolveMaxQueryTokens(params.maxQueryTokens);
   }
 
   async bootstrap(_params: { sessionId: string; sessionFile: string }): Promise<BootstrapResult> {
@@ -169,16 +173,22 @@ export class PineconeContextEngine implements ContextEngine {
     tokenBudget?: number;
   }): Promise<AssembleResult> {
     try {
-      const baseQuery = buildQueryFromRecentTurns(params.messages);
+      const truncation = buildQueryWithTruncation(params.messages, this.maxQueryTokens);
 
-      if (!baseQuery) {
+      if (!truncation.query) {
         return {
           messages: params.messages,
           estimatedTokens: 0,
         };
       }
 
-      const queryText = this.enrichQuery(baseQuery);
+      if (truncation.truncated) {
+        console.info(
+          `[PineconeContextEngine] query truncated: before=${truncation.originalTokens} after=${truncation.truncatedTokens} turns_used=${truncation.turnsUsed} turns_total=${truncation.turnsTotal}`,
+        );
+      }
+
+      const queryText = this.capQuery(this.enrichQuery(truncation.query), truncation.query);
 
       const results = await Promise.race([
         withRetry(() =>
@@ -228,10 +238,17 @@ export class PineconeContextEngine implements ContextEngine {
         ? readAgentsCore(this.agentsCorePath)
         : Promise.resolve("");
 
-      // 2. 検索クエリを生成（同期処理）
-      const baseQuery = buildQueryFromRecentTurns(params.messages);
-      const queryTokens = baseQuery ? estimateTokens(baseQuery) : 0;
+      // 2. 検索クエリを生成（同期処理）+ truncation
+      const truncation = buildQueryWithTruncation(params.messages, this.maxQueryTokens);
+      const baseQuery = truncation.query;
+      const queryTokens = truncation.truncatedTokens;
       const totalBudget = params.tokenBudget ?? this.ragTokenBudget;
+
+      if (truncation.truncated) {
+        console.info(
+          `[PineconeContextEngine] query truncated: before=${truncation.originalTokens} after=${truncation.truncatedTokens} turns_used=${truncation.turnsUsed} turns_total=${truncation.turnsTotal}`,
+        );
+      }
 
       if (!baseQuery) {
         // クエリなし → AGENTS-CORE.md のみ返却
@@ -253,7 +270,7 @@ export class PineconeContextEngine implements ContextEngine {
         return { messages: params.messages, estimatedTokens: 0 };
       }
 
-      const queryText = this.enrichQuery(baseQuery);
+      const queryText = this.capQuery(this.enrichQuery(baseQuery), baseQuery);
 
       // 3. AGENTS-CORE.md と Pinecone セマンティック検索を並列実行
       const pineconePromise = Promise.race([
@@ -441,5 +458,15 @@ export class PineconeContextEngine implements ContextEngine {
 
   private enrichQuery(baseQuery: string): string {
     return buildEnrichedQuery(baseQuery, this.memoryHint, this.minQueryTokens);
+  }
+
+  /**
+   * Ensure the final query text (including memoryHint) does not exceed maxQueryTokens.
+   * If it does, fall back to the base query without memoryHint enrichment.
+   */
+  private capQuery(enrichedQuery: string, baseQuery: string): string {
+    if (this.maxQueryTokens <= 0) return enrichedQuery;
+    if (estimateTokens(enrichedQuery) <= this.maxQueryTokens) return enrichedQuery;
+    return baseQuery;
   }
 }

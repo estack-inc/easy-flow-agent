@@ -37,6 +37,12 @@
       "placeholder": "20",
       "help": "クエリがこのトークン数未満の場合 'thin' と判定（デフォルト: 20）",
       "advanced": true
+    },
+    "maxQueryTokens": {
+      "label": "Max Query Tokens",
+      "placeholder": "1024",
+      "help": "Embedding API に送信するクエリの最大トークン数。0 = 無制限（デフォルト: 1024）",
+      "advanced": true
     }
   },
   "configSchema": {
@@ -55,6 +61,11 @@
         "type": "number",
         "minimum": 1,
         "maximum": 100
+      },
+      "maxQueryTokens": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 10000
       },
       "ragEnabled": {
         "type": "boolean"
