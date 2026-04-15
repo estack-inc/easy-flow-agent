@@ -192,7 +192,9 @@ describe("migrateConversationMemory", () => {
     const upsertedChunks = vi.mocked(opts.pgvectorClient.upsert).mock.calls[0][0];
     expect(upsertedChunks).toHaveLength(2);
     expect(upsertedChunks[0].metadata.sourceType).toBe("session_turn");
-    expect(upsertedChunks[1].metadata.sourceType).toBe("conversation");
+    // "conversation" is normalized to "session_turn" with category "conversation"
+    expect(upsertedChunks[1].metadata.sourceType).toBe("session_turn");
+    expect(upsertedChunks[1].metadata.category).toBe("conversation");
   });
 
   it("should not upsert in dry-run mode", async () => {

@@ -167,18 +167,24 @@ async function migrateNamespace(opts: MigrateOptions, namespace: string): Promis
         continue;
       }
 
+      // Normalize "conversation" to "session_turn" (canonical sourceType for conversation memory)
+      const normalizedSourceType =
+        meta.sourceType === "conversation" ? "session_turn" : meta.sourceType;
+      const normalizedCategory =
+        meta.sourceType === "conversation" ? (meta.category ?? "conversation") : meta.category;
+
       chunksToMigrate.push({
         id,
         text: meta.text,
         metadata: {
           agentId,
           sourceFile: meta.sourceFile,
-          sourceType: meta.sourceType as MemoryChunk["metadata"]["sourceType"],
+          sourceType: normalizedSourceType as MemoryChunk["metadata"]["sourceType"],
           chunkIndex: meta.chunkIndex ?? 0,
           createdAt: meta.createdAt ?? Date.now(),
           turnId: meta.turnId,
           role: meta.role as "user" | "assistant" | undefined,
-          category: meta.category,
+          category: normalizedCategory,
         },
       });
     }
