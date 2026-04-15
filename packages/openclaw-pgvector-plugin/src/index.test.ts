@@ -109,6 +109,46 @@ describe("openclaw-pgvector-plugin", () => {
     expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("agentId: default"));
   });
 
+  it("should pass ragEnabled and agentsCorePath from env vars", () => {
+    process.env.PGVECTOR_DATABASE_URL = "postgres://test@localhost/db";
+    process.env.GEMINI_API_KEY = "test-key";
+    process.env.RAG_ENABLED = "true";
+    process.env.RAG_AGENTS_CORE_PATH = "/data/workspace/AGENTS-CORE.md";
+
+    const api = createMockApi();
+    register(api as never);
+
+    const factory = api.getRegisteredFactory();
+    factory?.();
+
+    expect(PineconeContextEngine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ragEnabled: true,
+        agentsCorePath: "/data/workspace/AGENTS-CORE.md",
+      }),
+    );
+    expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("ragEnabled: true"));
+  });
+
+  it("should default ragEnabled to false when RAG_ENABLED is not set", () => {
+    process.env.PGVECTOR_DATABASE_URL = "postgres://test@localhost/db";
+    process.env.GEMINI_API_KEY = "test-key";
+
+    const api = createMockApi();
+    register(api as never);
+
+    const factory = api.getRegisteredFactory();
+    factory?.();
+
+    expect(PineconeContextEngine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ragEnabled: false,
+        agentsCorePath: undefined,
+      }),
+    );
+    expect(api.logger.info).toHaveBeenCalledWith(expect.stringContaining("ragEnabled: false"));
+  });
+
   it("should prefer plugin config over env vars", () => {
     process.env.PGVECTOR_DATABASE_URL = "postgres://env@localhost/db";
     process.env.GEMINI_API_KEY = "env-key";
