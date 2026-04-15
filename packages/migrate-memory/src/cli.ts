@@ -360,6 +360,7 @@ Text is re-embedded using Gemini (768-dim) since Pinecone uses 1024-dim vectors.
 Options:
   --namespace <ns>      Pinecone namespace to migrate (repeatable, e.g. agent:mell)
                         If not specified, migrates all namespaces from Pinecone
+  --pinecone-host <h>   Pinecone data plane host (auto-detected if omitted)
   --dry-run             Preview without writing to pgvector
   --include-all-types   Include all sourceTypes (not just session_turn/conversation)
   --help                Show this help message
@@ -375,6 +376,7 @@ async function runPineconeToPgvector(args: string[]): Promise<void> {
     args,
     options: {
       namespace: { type: "string", multiple: true },
+      "pinecone-host": { type: "string" },
       "dry-run": { type: "boolean", default: false },
       "include-all-types": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
@@ -398,15 +400,22 @@ async function runPineconeToPgvector(args: string[]): Promise<void> {
 
   const pgvectorClient = createClient("pgvector", dryRun);
 
-  // Discover Pinecone host
-  console.log("🔍 Discovering Pinecone index host...");
-  const indexRes = await fetch("https://api.pinecone.io/indexes", {
-    headers: { "Api-Key": pineconeApiKey },
-  });
+  // Resolve Pinecone host
+  let pineconeHost = values["pinecone-host"] as string | undefined;
 
-  let pineconeHost: string;
+  if (!pineconeHost) {
+    console.log("🔍 Discovering Pinecone index host...");
+    const indexRes = await fetch("https://api.pinecone.io/indexes", {
+      headers: { "Api-Key": pineconeApiKey },
+    });
 
-  if (indexRes.ok) {
+    if (!indexRes.ok) {
+      console.error(
+        `Error: Failed to discover Pinecone host (${indexRes.status}). Specify --pinecone-host explicitly.`,
+      );
+      process.exit(1);
+    }
+
     const indexData = (await indexRes.json()) as {
       indexes: { name: string; host: string }[];
     };
@@ -416,10 +425,6 @@ async function runPineconeToPgvector(args: string[]): Promise<void> {
       process.exit(1);
     }
     pineconeHost = idx.host;
-  } else {
-    // Fallback: try known host
-    pineconeHost = "easy-flow-memory-pban3fu.svc.aped-4627-b74a.pinecone.io";
-    console.log(`  ⚠️ Could not list indexes, using known host: ${pineconeHost}`);
   }
 
   // Discover namespaces if not specified

@@ -29,7 +29,7 @@ interface PineconeVectorMetadata {
   turnId?: string;
 }
 
-interface MigrateOptions {
+export interface MigrateOptions {
   pineconeApiKey: string;
   pineconeHost: string;
   pgvectorClient: IPineconeClient;
@@ -39,7 +39,7 @@ interface MigrateOptions {
   sourceTypes?: string[];
 }
 
-interface MigrateResult {
+export interface MigrateResult {
   namespace: string;
   totalPinecone: number;
   skippedExisting: number;
@@ -48,7 +48,7 @@ interface MigrateResult {
   errors: number;
 }
 
-async function pineconeList(
+export async function pineconeList(
   host: string,
   apiKey: string,
   namespace: string,
@@ -80,7 +80,7 @@ async function pineconeList(
   };
 }
 
-async function pineconeFetch(
+export async function pineconeFetch(
   host: string,
   apiKey: string,
   namespace: string,
