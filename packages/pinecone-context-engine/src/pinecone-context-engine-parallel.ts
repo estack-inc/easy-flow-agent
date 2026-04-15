@@ -184,7 +184,7 @@ export class PineconeContextEngineParallel implements ContextEngine {
       this.memoryHint,
       this.minQueryTokens,
     );
-    const queryText = this.capQuery(enrichedQuery);
+    const queryText = this.capQuery(enrichedQuery, truncation.query);
     const budget = params.tokenBudget ?? this.tokenBudget;
 
     // START PINECONE QUERY IMMEDIATELY - DO NOT AWAIT
@@ -314,15 +314,11 @@ export class PineconeContextEngineParallel implements ContextEngine {
 
   /**
    * Ensure the final query text (including memoryHint) does not exceed maxQueryTokens.
+   * If it does, fall back to the base query without memoryHint enrichment.
    */
-  private capQuery(queryText: string): string {
-    if (this.maxQueryTokens <= 0) return queryText;
-    if (estimateTokens(queryText) <= this.maxQueryTokens) return queryText;
-    const newlineIndex = queryText.lastIndexOf("\n");
-    if (newlineIndex > 0) {
-      const base = queryText.slice(0, newlineIndex);
-      if (estimateTokens(base) <= this.maxQueryTokens) return base;
-    }
-    return queryText;
+  private capQuery(enrichedQuery: string, baseQuery: string): string {
+    if (this.maxQueryTokens <= 0) return enrichedQuery;
+    if (estimateTokens(enrichedQuery) <= this.maxQueryTokens) return enrichedQuery;
+    return baseQuery;
   }
 }

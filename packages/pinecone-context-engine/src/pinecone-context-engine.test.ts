@@ -1155,6 +1155,31 @@ describe("PineconeContextEngine - query truncation", () => {
     expect(queryParams.text).not.toContain("eSTACK AI agent service");
     expect(estimateTokens(queryParams.text)).toBeLessThanOrEqual(20);
   });
+
+  it("複数行 memoryHint が maxQueryTokens を超える場合も baseQuery にフォールバックする", async () => {
+    const client = createMockClient();
+    client.query.mockResolvedValue([]);
+
+    const multiLineHint = "eSTACK AI agent\nfor central holdings\ncorporation service";
+    const engine = new PineconeContextEngine({
+      pineconeClient: client,
+      agentId: "test-agent",
+      maxQueryTokens: 20,
+      memoryHint: multiLineHint,
+      minQueryTokens: 200, // Force thin detection
+    });
+
+    const messages = [{ role: "user" as const, content: "あの件どうなった？" }];
+
+    await engine.assemble({ sessionId: "s1", messages });
+
+    const queryParams = client.query.mock.calls[0][0] as QueryParams;
+    // Multi-line memoryHint must be fully stripped
+    expect(queryParams.text).not.toContain("eSTACK AI agent");
+    expect(queryParams.text).not.toContain("central holdings");
+    expect(queryParams.text).not.toContain("corporation service");
+    expect(estimateTokens(queryParams.text)).toBeLessThanOrEqual(20);
+  });
 });
 
 describe("resolveMaxQueryTokens", () => {

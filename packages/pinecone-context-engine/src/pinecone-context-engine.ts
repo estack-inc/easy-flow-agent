@@ -188,7 +188,7 @@ export class PineconeContextEngine implements ContextEngine {
         );
       }
 
-      const queryText = this.capQuery(this.enrichQuery(truncation.query));
+      const queryText = this.capQuery(this.enrichQuery(truncation.query), truncation.query);
 
       const results = await Promise.race([
         withRetry(() =>
@@ -270,7 +270,7 @@ export class PineconeContextEngine implements ContextEngine {
         return { messages: params.messages, estimatedTokens: 0 };
       }
 
-      const queryText = this.capQuery(this.enrichQuery(baseQuery));
+      const queryText = this.capQuery(this.enrichQuery(baseQuery), baseQuery);
 
       // 3. AGENTS-CORE.md と Pinecone セマンティック検索を並列実行
       const pineconePromise = Promise.race([
@@ -462,17 +462,11 @@ export class PineconeContextEngine implements ContextEngine {
 
   /**
    * Ensure the final query text (including memoryHint) does not exceed maxQueryTokens.
-   * If it does, fall back to the query without memoryHint enrichment.
+   * If it does, fall back to the base query without memoryHint enrichment.
    */
-  private capQuery(queryText: string): string {
-    if (this.maxQueryTokens <= 0) return queryText;
-    if (estimateTokens(queryText) <= this.maxQueryTokens) return queryText;
-    // Strip memoryHint by splitting at the first newline added by buildEnrichedQuery
-    const newlineIndex = queryText.lastIndexOf("\n");
-    if (newlineIndex > 0) {
-      const base = queryText.slice(0, newlineIndex);
-      if (estimateTokens(base) <= this.maxQueryTokens) return base;
-    }
-    return queryText;
+  private capQuery(enrichedQuery: string, baseQuery: string): string {
+    if (this.maxQueryTokens <= 0) return enrichedQuery;
+    if (estimateTokens(enrichedQuery) <= this.maxQueryTokens) return enrichedQuery;
+    return baseQuery;
   }
 }
