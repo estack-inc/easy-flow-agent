@@ -185,37 +185,33 @@ export function buildQueryWithTruncation(
     };
   }
 
-  // Iterate from newest turn, accumulating within budget
+  // Iterate from newest turn, accumulating within budget.
+  // Use estimateTokens on the joined candidate text to avoid
+  // over-counting from per-turn Math.ceil rounding and separator approximation.
   const selected: string[] = [];
-  let usedTokens = 0;
 
   for (let i = texts.length - 1; i >= 0; i--) {
     const text = texts[i];
-    const textTokens = estimateTokens(text);
 
     if (i === texts.length - 1) {
       // Most recent message — always include, truncate text if needed
-      if (textTokens > maxTokens) {
+      if (estimateTokens(text) > maxTokens) {
         selected.push(truncateTextToTokenBudget(text, maxTokens));
-        usedTokens = maxTokens;
       } else {
         selected.push(text);
-        usedTokens = textTokens;
       }
       continue;
     }
 
-    // Account for newline separator (+1 token approximation)
-    const separatorTokens = 1;
-    if (usedTokens + textTokens + separatorTokens > maxTokens) {
+    // Check if adding this turn would exceed the budget
+    const candidate = [text, ...selected].join("\n");
+    if (estimateTokens(candidate) > maxTokens) {
       break;
     }
-    selected.push(text);
-    usedTokens += textTokens + separatorTokens;
+    selected.unshift(text);
   }
 
-  // Reverse to restore chronological order
-  selected.reverse();
+  // selected is already in chronological order (unshift for older, push for newest)
 
   const truncatedQuery = selected.join("\n");
   return {
