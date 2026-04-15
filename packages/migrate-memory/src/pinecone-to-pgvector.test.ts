@@ -221,6 +221,38 @@ describe("migrateConversationMemory", () => {
 
     expect(results[0].migrated).toBe(1);
     expect(opts.pgvectorClient.upsert).not.toHaveBeenCalled();
+    expect(opts.pgvectorClient.ensureIndex).not.toHaveBeenCalled();
+  });
+
+  it("should call ensureIndex before upserting in non-dry-run mode", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ vectors: [{ id: "v1" }] }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        vectors: {
+          v1: {
+            metadata: {
+              agentId: "test",
+              sourceType: "session_turn",
+              sourceFile: "session:abc",
+              chunkIndex: 0,
+              createdAt: 1000,
+              text: "hello",
+            },
+          },
+        },
+      }),
+    );
+
+    const opts = createOptions({ dryRun: false });
+    await migrateConversationMemory(opts);
+
+    expect(opts.pgvectorClient.ensureIndex).toHaveBeenCalledTimes(1);
+    expect(opts.pgvectorClient.upsert).toHaveBeenCalledTimes(1);
+
+    // ensureIndex must be called before upsert
+    const ensureIndexOrder = opts.pgvectorClient.ensureIndex.mock.invocationCallOrder[0];
+    const upsertOrder = opts.pgvectorClient.upsert.mock.invocationCallOrder[0];
+    expect(ensureIndexOrder).toBeLessThan(upsertOrder);
   });
 
   it("should handle empty namespace", async () => {

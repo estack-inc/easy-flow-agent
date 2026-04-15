@@ -240,6 +240,11 @@ export async function migrateConversationMemory(opts: MigrateOptions): Promise<M
   console.log(`Dry run: ${opts.dryRun}`);
   console.log();
 
+  // Ensure pgvector schema exists before upserting (skip in dry-run mode)
+  if (!opts.dryRun) {
+    await opts.pgvectorClient.ensureIndex();
+  }
+
   const results: MigrateResult[] = [];
 
   for (const ns of opts.namespaces) {
