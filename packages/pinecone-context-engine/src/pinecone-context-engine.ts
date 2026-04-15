@@ -15,11 +15,12 @@ import { rerankChunks } from "./reranker.js";
 import {
   ASSEMBLE_TIMEOUT_MS,
   buildEnrichedQuery,
-  buildQueryFromRecentTurns,
+  buildQueryWithTruncation,
   buildRagSystemPromptAddition,
   buildSystemPromptAddition,
   DEFAULT_COMPACT_AFTER_DAYS,
   DEFAULT_INGEST_ROLES,
+  DEFAULT_MAX_QUERY_TOKENS,
   DEFAULT_MIN_QUERY_TOKENS,
   DEFAULT_MIN_SCORE,
   DEFAULT_RAG_MIN_SCORE,
@@ -61,6 +62,7 @@ export class PineconeContextEngine implements ContextEngine {
   private readonly ragTokenBudget: number;
   private readonly ragMinScore: number;
   private readonly ragTopK: number;
+  private readonly maxQueryTokens: number;
 
   constructor(params: PineconeContextEngineParams) {
     this.client = params.pineconeClient;
@@ -81,6 +83,14 @@ export class PineconeContextEngine implements ContextEngine {
     this.ragTokenBudget = params.ragTokenBudget ?? DEFAULT_RAG_TOKEN_BUDGET;
     this.ragMinScore = params.ragMinScore ?? DEFAULT_RAG_MIN_SCORE;
     this.ragTopK = params.ragTopK ?? DEFAULT_RAG_TOP_K;
+
+    // RAG_MAX_QUERY_TOKENS env var > constructor param > default
+    const envMaxQueryTokens = process.env.RAG_MAX_QUERY_TOKENS;
+    const parsedEnv = envMaxQueryTokens !== undefined ? Number(envMaxQueryTokens) : undefined;
+    this.maxQueryTokens =
+      parsedEnv !== undefined && !Number.isNaN(parsedEnv)
+        ? parsedEnv
+        : (params.maxQueryTokens ?? DEFAULT_MAX_QUERY_TOKENS);
   }
 
   async bootstrap(_params: { sessionId: string; sessionFile: string }): Promise<BootstrapResult> {
@@ -169,16 +179,22 @@ export class PineconeContextEngine implements ContextEngine {
     tokenBudget?: number;
   }): Promise<AssembleResult> {
     try {
-      const baseQuery = buildQueryFromRecentTurns(params.messages);
+      const truncation = buildQueryWithTruncation(params.messages, this.maxQueryTokens);
 
-      if (!baseQuery) {
+      if (!truncation.query) {
         return {
           messages: params.messages,
           estimatedTokens: 0,
         };
       }
 
-      const queryText = this.enrichQuery(baseQuery);
+      if (truncation.truncated) {
+        console.info(
+          `[PineconeContextEngine] query truncated: before=${truncation.originalTokens} after=${truncation.truncatedTokens} turns_used=${truncation.turnsUsed} turns_total=${truncation.turnsTotal}`,
+        );
+      }
+
+      const queryText = this.enrichQuery(truncation.query);
 
       const results = await Promise.race([
         withRetry(() =>
@@ -228,10 +244,17 @@ export class PineconeContextEngine implements ContextEngine {
         ? readAgentsCore(this.agentsCorePath)
         : Promise.resolve("");
 
-      // 2. 検索クエリを生成（同期処理）
-      const baseQuery = buildQueryFromRecentTurns(params.messages);
-      const queryTokens = baseQuery ? estimateTokens(baseQuery) : 0;
+      // 2. 検索クエリを生成（同期処理）+ truncation
+      const truncation = buildQueryWithTruncation(params.messages, this.maxQueryTokens);
+      const baseQuery = truncation.query;
+      const queryTokens = truncation.truncatedTokens;
       const totalBudget = params.tokenBudget ?? this.ragTokenBudget;
+
+      if (truncation.truncated) {
+        console.info(
+          `[PineconeContextEngine] query truncated: before=${truncation.originalTokens} after=${truncation.truncatedTokens} turns_used=${truncation.turnsUsed} turns_total=${truncation.turnsTotal}`,
+        );
+      }
 
       if (!baseQuery) {
         // クエリなし → AGENTS-CORE.md のみ返却

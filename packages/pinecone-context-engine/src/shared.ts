@@ -37,6 +37,13 @@ export const DEFAULT_RAG_MIN_SCORE = 0.75;
 export const DEFAULT_RAG_TOP_K = 10;
 
 /**
+ * Default maximum tokens for the query text sent to Embedding API.
+ * Gemini text-embedding-004 accepts up to 2,048 tokens; 1,024 provides
+ * a safety margin while covering normal conversation lengths.
+ */
+export const DEFAULT_MAX_QUERY_TOKENS = 1024;
+
+/**
  * Determine if a query is "thin" — too short or lacking proper nouns to
  * produce good Pinecone vector-search results.
  */
@@ -103,6 +110,121 @@ export function buildQueryFromRecentTurns(messages: AgentMessage[]): string {
     .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)))
     .filter((t) => t.length > 0);
   return texts.join("\n");
+}
+
+export interface TruncationResult {
+  query: string;
+  truncated: boolean;
+  originalTokens: number;
+  truncatedTokens: number;
+  turnsUsed: number;
+  turnsTotal: number;
+}
+
+/**
+ * Build a query from recent turns with token-budget truncation.
+ *
+ * When the full query exceeds `maxTokens`, turns are selected from newest
+ * to oldest. The most recent message is always included (truncated at the
+ * character level if it alone exceeds the budget). `maxTokens <= 0` disables
+ * truncation (unlimited).
+ */
+export function buildQueryWithTruncation(
+  messages: AgentMessage[],
+  maxTokens: number,
+): TruncationResult {
+  const recent = messages.slice(-RECENT_TURNS_FOR_QUERY);
+  const texts = recent
+    .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)))
+    .filter((t) => t.length > 0);
+  const fullQuery = texts.join("\n");
+  const originalTokens = estimateTokens(fullQuery);
+
+  // maxTokens <= 0 means unlimited
+  if (maxTokens <= 0 || originalTokens <= maxTokens) {
+    return {
+      query: fullQuery,
+      truncated: false,
+      originalTokens,
+      truncatedTokens: originalTokens,
+      turnsUsed: texts.length,
+      turnsTotal: messages.length,
+    };
+  }
+
+  // Iterate from newest turn, accumulating within budget
+  const selected: string[] = [];
+  let usedTokens = 0;
+
+  for (let i = texts.length - 1; i >= 0; i--) {
+    const text = texts[i];
+    const textTokens = estimateTokens(text);
+
+    if (i === texts.length - 1) {
+      // Most recent message — always include, truncate text if needed
+      if (textTokens > maxTokens) {
+        selected.push(truncateTextToTokenBudget(text, maxTokens));
+        usedTokens = maxTokens;
+      } else {
+        selected.push(text);
+        usedTokens = textTokens;
+      }
+      continue;
+    }
+
+    // Account for newline separator (+1 token approximation)
+    const separatorTokens = 1;
+    if (usedTokens + textTokens + separatorTokens > maxTokens) {
+      break;
+    }
+    selected.push(text);
+    usedTokens += textTokens + separatorTokens;
+  }
+
+  // Reverse to restore chronological order
+  selected.reverse();
+
+  const truncatedQuery = selected.join("\n");
+  return {
+    query: truncatedQuery,
+    truncated: true,
+    originalTokens,
+    truncatedTokens: estimateTokens(truncatedQuery),
+    turnsUsed: selected.length,
+    turnsTotal: messages.length,
+  };
+}
+
+/**
+ * Truncate text to fit within a token budget by removing characters from the end.
+ */
+function truncateTextToTokenBudget(text: string, maxTokens: number): string {
+  let tokens = 0;
+  let endIndex = 0;
+
+  for (const char of text) {
+    const code = char.codePointAt(0)!;
+    let charTokens: number;
+    if (code <= 0x7f) {
+      charTokens = 0.25;
+    } else if (
+      (code >= 0x3000 && code <= 0x9fff) ||
+      (code >= 0xf900 && code <= 0xfaff) ||
+      (code >= 0xac00 && code <= 0xd7af)
+    ) {
+      charTokens = 1.5;
+    } else if (code >= 0xff00 && code <= 0xffef) {
+      charTokens = 1.0;
+    } else {
+      charTokens = 1.0;
+    }
+
+    if (Math.ceil(tokens + charTokens) > maxTokens) break;
+    tokens += charTokens;
+    endIndex += char.length;
+  }
+
+  return text.slice(0, endIndex);
 }
 
 export async function readOldTurns(
