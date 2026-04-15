@@ -124,7 +124,7 @@ async function migrateNamespace(opts: MigrateOptions, namespace: string): Promis
     errors: 0,
   };
 
-  const sourceTypeFilter = new Set(opts.sourceTypes ?? ["session_turn", "conversation"]);
+  const sourceTypeFilter = opts.sourceTypes ? new Set(opts.sourceTypes) : null;
 
   // Phase 1: List all vector IDs from Pinecone
   console.log(`  📋 Listing vectors in ${namespace}...`);
@@ -155,8 +155,8 @@ async function migrateNamespace(opts: MigrateOptions, namespace: string): Promis
     );
 
     for (const [id, meta] of vectors) {
-      // Filter by sourceType (conversation memory only)
-      if (!sourceTypeFilter.has(meta.sourceType)) {
+      // Filter by sourceType (conversation memory only, unless sourceTypes is null = include all)
+      if (sourceTypeFilter && !sourceTypeFilter.has(meta.sourceType)) {
         result.skippedExisting++;
         continue;
       }

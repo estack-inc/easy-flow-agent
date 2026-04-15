@@ -352,6 +352,41 @@ describe("migrateConversationMemory", () => {
     expect(secondListUrl).toContain("paginationToken=page2token");
   });
 
+  it("should include all sourceTypes when sourceTypes is undefined", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ vectors: [{ id: "v1" }, { id: "v2" }] }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        vectors: {
+          v1: {
+            metadata: {
+              agentId: "test",
+              sourceType: "session_turn",
+              sourceFile: "session:abc",
+              chunkIndex: 0,
+              createdAt: 1000,
+              text: "conversation text",
+            },
+          },
+          v2: {
+            metadata: {
+              agentId: "test",
+              sourceType: "agents_rule",
+              sourceFile: "AGENTS.md",
+              chunkIndex: 0,
+              createdAt: 2000,
+              text: "rule text",
+            },
+          },
+        },
+      }),
+    );
+
+    const results = await migrateConversationMemory(createOptions({ sourceTypes: undefined }));
+
+    expect(results[0].migrated).toBe(2);
+    expect(results[0].skippedExisting).toBe(0);
+  });
+
   it("should migrate multiple namespaces", async () => {
     // Namespace 1: agent:a
     fetchMock.mockResolvedValueOnce(jsonResponse({ vectors: [{ id: "a1" }] }));
