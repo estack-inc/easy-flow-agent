@@ -400,6 +400,10 @@ async function runPineconeToPgvector(args: string[]): Promise<void> {
 
   const pgvectorClient = createClient("pgvector", dryRun);
 
+  if (!dryRun) {
+    await pgvectorClient.ensureIndex();
+  }
+
   // Resolve Pinecone host
   let pineconeHost = values["pinecone-host"] as string | undefined;
 
