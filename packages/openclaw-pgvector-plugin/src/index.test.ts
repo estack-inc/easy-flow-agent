@@ -45,6 +45,8 @@ describe("openclaw-pgvector-plugin", () => {
     delete process.env.PGVECTOR_DATABASE_URL;
     delete process.env.GEMINI_API_KEY;
     delete process.env.OPENCLAW_AGENT_ID;
+    delete process.env.RAG_ENABLED;
+    delete process.env.RAG_AGENTS_CORE_PATH;
   });
 
   afterAll(() => {
