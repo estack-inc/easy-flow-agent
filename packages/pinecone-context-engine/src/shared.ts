@@ -44,24 +44,36 @@ export const DEFAULT_RAG_TOP_K = 10;
 export const DEFAULT_MAX_QUERY_TOKENS = 1024;
 
 /**
+ * Minimum positive value for maxQueryTokens.
+ * CJK characters need ~2 tokens each, so at least 2 tokens are required
+ * to represent a single character query.
+ */
+const MIN_POSITIVE_MAX_QUERY_TOKENS = 2;
+
+/**
  * Resolve the effective maxQueryTokens value from env var, param, and default.
  *
  * Priority: RAG_MAX_QUERY_TOKENS env > param > DEFAULT_MAX_QUERY_TOKENS.
- * Only `0` is treated as "unlimited". Negative values and NaN are ignored
- * (fall through to the next source).
+ * `0` means "unlimited". Negative values and NaN fall through to the next source.
+ * Positive values below MIN_POSITIVE_MAX_QUERY_TOKENS are clamped up.
  */
 export function resolveMaxQueryTokens(paramValue?: number): number {
   const envRaw = process.env.RAG_MAX_QUERY_TOKENS;
   if (envRaw !== undefined) {
     const parsed = Number(envRaw);
     if (!Number.isNaN(parsed) && parsed >= 0) {
-      return parsed;
+      return clampMaxQueryTokens(parsed);
     }
   }
   if (paramValue !== undefined && paramValue >= 0) {
-    return paramValue;
+    return clampMaxQueryTokens(paramValue);
   }
   return DEFAULT_MAX_QUERY_TOKENS;
+}
+
+function clampMaxQueryTokens(value: number): number {
+  if (value === 0) return 0; // unlimited
+  return Math.max(value, MIN_POSITIVE_MAX_QUERY_TOKENS);
 }
 
 /**

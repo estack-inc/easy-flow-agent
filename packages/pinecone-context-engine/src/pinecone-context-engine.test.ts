@@ -1189,4 +1189,13 @@ describe("resolveMaxQueryTokens", () => {
   it("env 未設定時は param が使用される", () => {
     expect(resolveMaxQueryTokens(2000)).toBe(2000);
   });
+
+  it("param=1 は最小値 2 にクランプされる", () => {
+    expect(resolveMaxQueryTokens(1)).toBe(2);
+  });
+
+  it("env=1 は最小値 2 にクランプされる", () => {
+    process.env.RAG_MAX_QUERY_TOKENS = "1";
+    expect(resolveMaxQueryTokens()).toBe(2);
+  });
 });
