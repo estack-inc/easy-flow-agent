@@ -35,14 +35,13 @@ export interface MigrateOptions {
   pgvectorClient: IPineconeClient;
   namespaces: string[];
   dryRun: boolean;
-  skipExisting: boolean;
   sourceTypes?: string[];
 }
 
 export interface MigrateResult {
   namespace: string;
   totalPinecone: number;
-  skippedExisting: number;
+  skippedByFilter: number;
   skippedNoText: number;
   migrated: number;
   errors: number;
@@ -118,7 +117,7 @@ async function migrateNamespace(opts: MigrateOptions, namespace: string): Promis
   const result: MigrateResult = {
     namespace,
     totalPinecone: 0,
-    skippedExisting: 0,
+    skippedByFilter: 0,
     skippedNoText: 0,
     migrated: 0,
     errors: 0,
@@ -157,7 +156,7 @@ async function migrateNamespace(opts: MigrateOptions, namespace: string): Promis
     for (const [id, meta] of vectors) {
       // Filter by sourceType (conversation memory only, unless sourceTypes is null = include all)
       if (sourceTypeFilter && !sourceTypeFilter.has(meta.sourceType)) {
-        result.skippedExisting++;
+        result.skippedByFilter++;
         continue;
       }
 
@@ -197,7 +196,7 @@ async function migrateNamespace(opts: MigrateOptions, namespace: string): Promis
   }
 
   console.log(
-    `  🔍 Conversation memory: ${chunksToMigrate.length} chunks (skipped ${result.skippedExisting} non-conversation, ${result.skippedNoText} no-text)`,
+    `  🔍 Conversation memory: ${chunksToMigrate.length} chunks (skipped ${result.skippedByFilter} non-conversation, ${result.skippedNoText} no-text)`,
   );
 
   if (chunksToMigrate.length === 0) return result;
@@ -248,7 +247,7 @@ export async function migrateConversationMemory(opts: MigrateOptions): Promise<M
     const result = await migrateNamespace(opts, ns);
     results.push(result);
     console.log(
-      `  ✅ Done: ${result.migrated} migrated, ${result.skippedExisting} skipped, ${result.errors} errors`,
+      `  ✅ Done: ${result.migrated} migrated, ${result.skippedByFilter} skipped, ${result.errors} errors`,
     );
   }
 
@@ -266,7 +265,7 @@ export async function migrateConversationMemory(opts: MigrateOptions): Promise<M
 
   for (const r of results) {
     console.log(
-      `${r.namespace.padEnd(30)} ${String(r.totalPinecone).padStart(10)} ${String(r.migrated).padStart(10)} ${String(r.skippedExisting + r.skippedNoText).padStart(10)} ${String(r.errors).padStart(10)}`,
+      `${r.namespace.padEnd(30)} ${String(r.totalPinecone).padStart(10)} ${String(r.migrated).padStart(10)} ${String(r.skippedByFilter + r.skippedNoText).padStart(10)} ${String(r.errors).padStart(10)}`,
     );
     totalMigrated += r.migrated;
     totalErrors += r.errors;

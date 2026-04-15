@@ -131,7 +131,7 @@ describe("migrateConversationMemory", () => {
       pgvectorClient: createMockClient(),
       namespaces: ["agent:test"],
       dryRun: false,
-      skipExisting: true,
+
       sourceTypes: ["session_turn", "conversation"],
       ...overrides,
     };
@@ -186,7 +186,7 @@ describe("migrateConversationMemory", () => {
     expect(results).toHaveLength(1);
     expect(results[0].totalPinecone).toBe(3);
     expect(results[0].migrated).toBe(2);
-    expect(results[0].skippedExisting).toBe(1); // agents_rule skipped
+    expect(results[0].skippedByFilter).toBe(1); // agents_rule skipped
     expect(opts.pgvectorClient.upsert).toHaveBeenCalledTimes(1);
 
     const upsertedChunks = vi.mocked(opts.pgvectorClient.upsert).mock.calls[0][0];
@@ -384,7 +384,7 @@ describe("migrateConversationMemory", () => {
     const results = await migrateConversationMemory(createOptions({ sourceTypes: undefined }));
 
     expect(results[0].migrated).toBe(2);
-    expect(results[0].skippedExisting).toBe(0);
+    expect(results[0].skippedByFilter).toBe(0);
   });
 
   it("should migrate multiple namespaces", async () => {
@@ -444,5 +444,34 @@ describe("migrateConversationMemory", () => {
     expect(results[0].migrated).toBe(1);
     expect(results[1].namespace).toBe("agent:b");
     expect(results[1].migrated).toBe(2);
+  });
+
+  it("should work with idempotent upsert (ON CONFLICT) without skipExisting", async () => {
+    // Simulate two runs of the same data — pgvector upsert is idempotent
+    fetchMock.mockResolvedValueOnce(jsonResponse({ vectors: [{ id: "v1" }] }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        vectors: {
+          v1: {
+            metadata: {
+              agentId: "test",
+              sourceType: "session_turn",
+              sourceFile: "session:abc",
+              chunkIndex: 0,
+              createdAt: 1000,
+              text: "hello",
+            },
+          },
+        },
+      }),
+    );
+
+    const opts = createOptions();
+    const results = await migrateConversationMemory(opts);
+
+    // First run succeeds
+    expect(results[0].migrated).toBe(1);
+    expect(opts.pgvectorClient.upsert).toHaveBeenCalledTimes(1);
+    // No skipExisting option needed — upsert ON CONFLICT handles idempotency at DB level
   });
 });

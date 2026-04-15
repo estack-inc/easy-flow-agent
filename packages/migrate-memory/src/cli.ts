@@ -468,7 +468,6 @@ async function runPineconeToPgvector(args: string[]): Promise<void> {
     pgvectorClient,
     namespaces,
     dryRun,
-    skipExisting: true,
     sourceTypes,
   });
 
