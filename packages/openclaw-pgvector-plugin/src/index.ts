@@ -54,6 +54,8 @@ export default function register(api: OpenClawPluginApi): void {
 
   const agentId = cfg.agentId ?? process.env.OPENCLAW_AGENT_ID ?? "default";
   const compactAfterDays = cfg.compactAfterDays ?? 7;
+  const ragEnabled = process.env.RAG_ENABLED === "true";
+  const agentsCorePath = process.env.RAG_AGENTS_CORE_PATH;
 
   api.registerContextEngine("pgvector-memory", () => {
     const client = new PgVectorClient({ databaseUrl, geminiApiKey });
@@ -63,10 +65,12 @@ export default function register(api: OpenClawPluginApi): void {
       compactAfterDays,
       memoryHint: cfg.memoryHint,
       minQueryTokens: cfg.minQueryTokens,
+      ragEnabled,
+      agentsCorePath,
     });
   });
 
   api.logger.info(
-    `pgvector-memory: registered (agentId: ${agentId}, compactAfterDays: ${compactAfterDays})`,
+    `pgvector-memory: registered (agentId: ${agentId}, compactAfterDays: ${compactAfterDays}, ragEnabled: ${ragEnabled})`,
   );
 }
