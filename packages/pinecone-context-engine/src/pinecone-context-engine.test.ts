@@ -1108,7 +1108,7 @@ describe("PineconeContextEngine - query truncation", () => {
     }
   });
 
-  it("truncation + memoryHint の併用: memoryHint はトークン上限に含まれない", async () => {
+  it("truncation + memoryHint の併用: 最終クエリが maxQueryTokens 以内に収まる", async () => {
     const client = createMockClient();
     client.query.mockResolvedValue([]);
 
@@ -1125,12 +1125,35 @@ describe("PineconeContextEngine - query truncation", () => {
 
     await engine.assemble({ sessionId: "s1", messages });
 
-    // The query passed to Pinecone should include memoryHint
     const queryParams = client.query.mock.calls[0][0] as QueryParams;
+    // Base query (~14 tokens) + memoryHint (~6 tokens) ≈ 20 tokens < 100
+    // Both fit within budget, so memoryHint is included
     expect(queryParams.text).toContain("eSTACK AI agent service");
-    // memoryHint should be appended AFTER truncation check
-    // The base query (~14 tokens) is under 100, so no truncation on the base
-    // memoryHint is added after, and is NOT counted toward the 100 token limit
+    // Final query must not exceed maxQueryTokens
+    expect(estimateTokens(queryParams.text)).toBeLessThanOrEqual(100);
+  });
+
+  it("memoryHint が maxQueryTokens を超える場合は memoryHint を除外する", async () => {
+    const client = createMockClient();
+    client.query.mockResolvedValue([]);
+
+    const engine = new PineconeContextEngine({
+      pineconeClient: client,
+      agentId: "test-agent",
+      maxQueryTokens: 20,
+      memoryHint: "eSTACK AI agent service for central holdings corporation",
+      minQueryTokens: 200, // Force thin detection
+    });
+
+    // ~14 tokens base, + memoryHint ~13 tokens = ~27 > 20
+    const messages = [{ role: "user" as const, content: "あの件どうなった？" }];
+
+    await engine.assemble({ sessionId: "s1", messages });
+
+    const queryParams = client.query.mock.calls[0][0] as QueryParams;
+    // memoryHint should be stripped because it would exceed maxQueryTokens
+    expect(queryParams.text).not.toContain("eSTACK AI agent service");
+    expect(estimateTokens(queryParams.text)).toBeLessThanOrEqual(20);
   });
 });
 

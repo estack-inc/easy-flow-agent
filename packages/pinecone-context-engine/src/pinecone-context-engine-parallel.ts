@@ -27,6 +27,7 @@ import {
   resolveMaxQueryTokens,
   withRetry,
 } from "./shared.js";
+import { estimateTokens } from "./token-estimator.js";
 import type { PineconeContextEngineParams } from "./types.js";
 
 /**
@@ -178,7 +179,12 @@ export class PineconeContextEngineParallel implements ContextEngine {
       );
     }
 
-    const queryText = buildEnrichedQuery(truncation.query, this.memoryHint, this.minQueryTokens);
+    const enrichedQuery = buildEnrichedQuery(
+      truncation.query,
+      this.memoryHint,
+      this.minQueryTokens,
+    );
+    const queryText = this.capQuery(enrichedQuery);
     const budget = params.tokenBudget ?? this.tokenBudget;
 
     // START PINECONE QUERY IMMEDIATELY - DO NOT AWAIT
@@ -304,5 +310,19 @@ export class PineconeContextEngineParallel implements ContextEngine {
 
   async dispose(): Promise<void> {
     // No resources to release
+  }
+
+  /**
+   * Ensure the final query text (including memoryHint) does not exceed maxQueryTokens.
+   */
+  private capQuery(queryText: string): string {
+    if (this.maxQueryTokens <= 0) return queryText;
+    if (estimateTokens(queryText) <= this.maxQueryTokens) return queryText;
+    const newlineIndex = queryText.lastIndexOf("\n");
+    if (newlineIndex > 0) {
+      const base = queryText.slice(0, newlineIndex);
+      if (estimateTokens(base) <= this.maxQueryTokens) return base;
+    }
+    return queryText;
   }
 }
