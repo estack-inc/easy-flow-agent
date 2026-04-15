@@ -20,7 +20,6 @@ import {
   buildSystemPromptAddition,
   DEFAULT_COMPACT_AFTER_DAYS,
   DEFAULT_INGEST_ROLES,
-  DEFAULT_MAX_QUERY_TOKENS,
   DEFAULT_MIN_QUERY_TOKENS,
   DEFAULT_MIN_SCORE,
   DEFAULT_RAG_MIN_SCORE,
@@ -31,6 +30,7 @@ import {
   DEFAULT_TOP_K,
   readAgentsCore,
   readOldTurns,
+  resolveMaxQueryTokens,
   withRetry,
 } from "./shared.js";
 import { estimateTokens } from "./token-estimator.js";
@@ -84,13 +84,7 @@ export class PineconeContextEngine implements ContextEngine {
     this.ragMinScore = params.ragMinScore ?? DEFAULT_RAG_MIN_SCORE;
     this.ragTopK = params.ragTopK ?? DEFAULT_RAG_TOP_K;
 
-    // RAG_MAX_QUERY_TOKENS env var > constructor param > default
-    const envMaxQueryTokens = process.env.RAG_MAX_QUERY_TOKENS;
-    const parsedEnv = envMaxQueryTokens !== undefined ? Number(envMaxQueryTokens) : undefined;
-    this.maxQueryTokens =
-      parsedEnv !== undefined && !Number.isNaN(parsedEnv)
-        ? parsedEnv
-        : (params.maxQueryTokens ?? DEFAULT_MAX_QUERY_TOKENS);
+    this.maxQueryTokens = resolveMaxQueryTokens(params.maxQueryTokens);
   }
 
   async bootstrap(_params: { sessionId: string; sessionFile: string }): Promise<BootstrapResult> {

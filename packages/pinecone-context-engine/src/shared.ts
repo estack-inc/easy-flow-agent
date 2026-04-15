@@ -44,6 +44,27 @@ export const DEFAULT_RAG_TOP_K = 10;
 export const DEFAULT_MAX_QUERY_TOKENS = 1024;
 
 /**
+ * Resolve the effective maxQueryTokens value from env var, param, and default.
+ *
+ * Priority: RAG_MAX_QUERY_TOKENS env > param > DEFAULT_MAX_QUERY_TOKENS.
+ * Only `0` is treated as "unlimited". Negative values and NaN are ignored
+ * (fall through to the next source).
+ */
+export function resolveMaxQueryTokens(paramValue?: number): number {
+  const envRaw = process.env.RAG_MAX_QUERY_TOKENS;
+  if (envRaw !== undefined) {
+    const parsed = Number(envRaw);
+    if (!Number.isNaN(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  if (paramValue !== undefined && paramValue >= 0) {
+    return paramValue;
+  }
+  return DEFAULT_MAX_QUERY_TOKENS;
+}
+
+/**
  * Determine if a query is "thin" — too short or lacking proper nouns to
  * produce good Pinecone vector-search results.
  */

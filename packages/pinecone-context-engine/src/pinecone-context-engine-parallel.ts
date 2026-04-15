@@ -14,7 +14,7 @@ import { EmptyFallbackContextEngine, FallbackContextEngine } from "./fallback-ad
 import {
   ASSEMBLE_TIMEOUT_MS,
   buildEnrichedQuery,
-  buildQueryFromRecentTurns,
+  buildQueryWithTruncation,
   buildSystemPromptAddition,
   DEFAULT_COMPACT_AFTER_DAYS,
   DEFAULT_INGEST_ROLES,
@@ -24,6 +24,7 @@ import {
   DEFAULT_TOKEN_BUDGET,
   DEFAULT_TOP_K,
   readOldTurns,
+  resolveMaxQueryTokens,
   withRetry,
 } from "./shared.js";
 import type { PineconeContextEngineParams } from "./types.js";
@@ -62,6 +63,7 @@ export class PineconeContextEngineParallel implements ContextEngine {
   private readonly defaultCategory: string;
   private readonly memoryHint?: string;
   private readonly minQueryTokens: number;
+  private readonly maxQueryTokens: number;
 
   constructor(params: PineconeContextEngineParams) {
     if (params.ragEnabled) {
@@ -82,6 +84,7 @@ export class PineconeContextEngineParallel implements ContextEngine {
     this.defaultCategory = params.defaultCategory ?? "conversation";
     this.memoryHint = params.memoryHint;
     this.minQueryTokens = params.minQueryTokens ?? DEFAULT_MIN_QUERY_TOKENS;
+    this.maxQueryTokens = resolveMaxQueryTokens(params.maxQueryTokens);
   }
 
   async bootstrap(_params: { sessionId: string; sessionFile: string }): Promise<BootstrapResult> {
@@ -160,16 +163,22 @@ export class PineconeContextEngineParallel implements ContextEngine {
     messages: AgentMessage[];
     tokenBudget?: number;
   }): Promise<ParallelAssembleResult> {
-    const baseQuery = buildQueryFromRecentTurns(params.messages);
+    const truncation = buildQueryWithTruncation(params.messages, this.maxQueryTokens);
 
-    if (!baseQuery) {
+    if (!truncation.query) {
       return {
         messages: params.messages,
         estimatedTokens: 0,
       };
     }
 
-    const queryText = buildEnrichedQuery(baseQuery, this.memoryHint, this.minQueryTokens);
+    if (truncation.truncated) {
+      console.info(
+        `[PineconeContextEngineParallel] query truncated: before=${truncation.originalTokens} after=${truncation.truncatedTokens} turns_used=${truncation.turnsUsed} turns_total=${truncation.turnsTotal}`,
+      );
+    }
+
+    const queryText = buildEnrichedQuery(truncation.query, this.memoryHint, this.minQueryTokens);
     const budget = params.tokenBudget ?? this.tokenBudget;
 
     // START PINECONE QUERY IMMEDIATELY - DO NOT AWAIT

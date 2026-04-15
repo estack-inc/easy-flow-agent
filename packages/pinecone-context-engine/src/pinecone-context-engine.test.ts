@@ -8,7 +8,7 @@ import {
   isQueryThin,
   PineconeContextEngine,
 } from "./pinecone-context-engine.js";
-import { buildQueryWithTruncation } from "./shared.js";
+import { buildQueryWithTruncation, resolveMaxQueryTokens } from "./shared.js";
 import { estimateTokens } from "./token-estimator.js";
 import type { IPineconeClient } from "./types.js";
 
@@ -1131,5 +1131,39 @@ describe("PineconeContextEngine - query truncation", () => {
     // memoryHint should be appended AFTER truncation check
     // The base query (~14 tokens) is under 100, so no truncation on the base
     // memoryHint is added after, and is NOT counted toward the 100 token limit
+  });
+});
+
+describe("resolveMaxQueryTokens", () => {
+  afterEach(() => {
+    delete process.env.RAG_MAX_QUERY_TOKENS;
+  });
+
+  it("負の RAG_MAX_QUERY_TOKENS はデフォルト値にフォールバックする", () => {
+    process.env.RAG_MAX_QUERY_TOKENS = "-1";
+    expect(resolveMaxQueryTokens()).toBe(1024);
+  });
+
+  it("NaN の RAG_MAX_QUERY_TOKENS はデフォルト値にフォールバックする", () => {
+    process.env.RAG_MAX_QUERY_TOKENS = "abc";
+    expect(resolveMaxQueryTokens()).toBe(1024);
+  });
+
+  it("負の param 値はデフォルト値にフォールバックする", () => {
+    expect(resolveMaxQueryTokens(-5)).toBe(1024);
+  });
+
+  it("env=0 は無制限として扱われる", () => {
+    process.env.RAG_MAX_QUERY_TOKENS = "0";
+    expect(resolveMaxQueryTokens(2000)).toBe(0);
+  });
+
+  it("正の env 値が param より優先される", () => {
+    process.env.RAG_MAX_QUERY_TOKENS = "500";
+    expect(resolveMaxQueryTokens(2000)).toBe(500);
+  });
+
+  it("env 未設定時は param が使用される", () => {
+    expect(resolveMaxQueryTokens(2000)).toBe(2000);
   });
 });
