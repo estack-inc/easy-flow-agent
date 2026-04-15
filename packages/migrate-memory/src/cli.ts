@@ -7,17 +7,19 @@ import { type Backend, createClient } from "./create-client.js";
 import { MemoryDeleter } from "./deleter.js";
 import { AgentsMigrator } from "./migrate-agents.js";
 import { Migrator } from "./migrator.js";
+import { migrateConversationMemory, pineconeHeaders } from "./pinecone-to-pgvector.js";
 import { validateExcludePatterns } from "./preflight.js";
 
 function printUsage(): void {
   console.log(`Usage: easy-flow <command> [options]
 
 Commands:
-  migrate-memory    Migrate markdown files to vector DB
-  agents            Migrate AGENTS.md to vector DB (section-based chunking)
-  memory-delete     Delete memory from vector DB
-  bulk-migrate      Bulk migrate all EasyFlow instances
-  bulk-update       Bulk update easy-flow-agent on all instances
+  migrate-memory        Migrate markdown files to vector DB
+  agents                Migrate AGENTS.md to vector DB (section-based chunking)
+  memory-delete         Delete memory from vector DB
+  pinecone-to-pgvector  Migrate conversation memory from Pinecone to pgvector
+  bulk-migrate          Bulk migrate all EasyFlow instances
+  bulk-update           Bulk update easy-flow-agent on all instances
 
 Environment Variables:
   PINECONE_API_KEY         Required for pinecone backend
@@ -346,6 +348,131 @@ async function runBulkUpdate(args: string[]): Promise<void> {
   }
 }
 
+function printPineconeToPgvectorUsage(): void {
+  console.log(`Usage: easy-flow pinecone-to-pgvector [options]
+
+Migrate conversation memory (session_turn) from Pinecone to pgvector.
+AGENTS.md rules (agents_rule, memory_file) are skipped as they are already
+migrated via the 'agents' command.
+
+Text is re-embedded using Gemini (768-dim) since Pinecone uses 1024-dim vectors.
+
+Options:
+  --namespace <ns>      Pinecone namespace to migrate (repeatable, e.g. agent:mell)
+                        If not specified, migrates all namespaces from Pinecone
+  --pinecone-host <h>   Pinecone data plane host (auto-detected if omitted)
+  --dry-run             Preview without writing to pgvector
+  --include-all-types   Include all sourceTypes (not just session_turn/conversation)
+  --help                Show this help message
+
+Environment Variables (all required):
+  PINECONE_API_KEY         Pinecone API key (with list/fetch permissions)
+  PGVECTOR_DATABASE_URL    pgvector connection string
+  GEMINI_API_KEY           Gemini API key for re-embedding`);
+}
+
+async function runPineconeToPgvector(args: string[]): Promise<void> {
+  const { values } = parseArgs({
+    args,
+    options: {
+      namespace: { type: "string", multiple: true },
+      "pinecone-host": { type: "string" },
+      "dry-run": { type: "boolean", default: false },
+      "include-all-types": { type: "boolean", default: false },
+      help: { type: "boolean", default: false },
+    },
+    strict: true,
+  });
+
+  if (values.help) {
+    printPineconeToPgvectorUsage();
+    process.exit(0);
+  }
+
+  const dryRun = values["dry-run"] as boolean;
+  const includeAllTypes = values["include-all-types"] as boolean;
+
+  const pineconeApiKey = process.env.PINECONE_API_KEY;
+  if (!pineconeApiKey) {
+    console.error("Error: PINECONE_API_KEY environment variable is required");
+    process.exit(1);
+  }
+
+  const pgvectorClient = createClient("pgvector", dryRun);
+
+  // Resolve Pinecone host
+  let pineconeHost = values["pinecone-host"] as string | undefined;
+
+  if (!pineconeHost) {
+    console.log("🔍 Discovering Pinecone index host...");
+    const indexRes = await fetch("https://api.pinecone.io/indexes", {
+      headers: pineconeHeaders(pineconeApiKey),
+    });
+
+    if (!indexRes.ok) {
+      console.error(
+        `Error: Failed to discover Pinecone host (${indexRes.status}). Specify --pinecone-host explicitly.`,
+      );
+      process.exit(1);
+    }
+
+    const indexData = (await indexRes.json()) as {
+      indexes: { name: string; host: string }[];
+    };
+    const idx = indexData.indexes.find((i) => i.name === "easy-flow-memory");
+    if (!idx) {
+      console.error("Error: easy-flow-memory index not found in Pinecone");
+      process.exit(1);
+    }
+    pineconeHost = idx.host;
+  }
+
+  // Discover namespaces if not specified
+  let namespaces = (values.namespace as string[] | undefined) ?? [];
+
+  if (namespaces.length === 0) {
+    console.log("📋 Discovering namespaces from Pinecone...");
+    const statsRes = await fetch(`https://${pineconeHost}/describe_index_stats`, {
+      method: "POST",
+      headers: { ...pineconeHeaders(pineconeApiKey), "Content-Type": "application/json" },
+      body: "{}",
+    });
+
+    if (!statsRes.ok) {
+      console.error(`Error: Failed to get Pinecone stats: ${statsRes.status}`);
+      process.exit(1);
+    }
+
+    const stats = (await statsRes.json()) as {
+      namespaces: Record<string, { vectorCount: number }>;
+    };
+    namespaces = Object.keys(stats.namespaces).sort(
+      (a, b) => (stats.namespaces[b].vectorCount ?? 0) - (stats.namespaces[a].vectorCount ?? 0),
+    );
+
+    console.log(`  Found ${namespaces.length} namespaces`);
+    for (const ns of namespaces) {
+      console.log(`    ${ns}: ${stats.namespaces[ns].vectorCount} vectors`);
+    }
+  }
+
+  const sourceTypes = includeAllTypes ? undefined : ["session_turn", "conversation"];
+
+  const results = await migrateConversationMemory({
+    pineconeApiKey,
+    pineconeHost,
+    pgvectorClient,
+    namespaces,
+    dryRun,
+    sourceTypes,
+  });
+
+  const hasErrors = results.some((r) => r.errors > 0);
+  if (hasErrors) {
+    process.exitCode = 1;
+  }
+}
+
 async function main(): Promise<void> {
   const subcommand = process.argv[2];
 
@@ -360,6 +487,8 @@ async function main(): Promise<void> {
     await runAgents(process.argv.slice(3));
   } else if (subcommand === "memory-delete") {
     await runDelete(process.argv.slice(3));
+  } else if (subcommand === "pinecone-to-pgvector") {
+    await runPineconeToPgvector(process.argv.slice(3));
   } else if (subcommand === "bulk-migrate") {
     await runBulkMigrate(process.argv.slice(3));
   } else if (subcommand === "bulk-update") {
