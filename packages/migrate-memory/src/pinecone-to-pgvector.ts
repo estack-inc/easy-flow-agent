@@ -16,6 +16,14 @@ const PINECONE_LIST_LIMIT = 100;
 const PINECONE_FETCH_BATCH = 100;
 const UPSERT_BATCH_SIZE = 50;
 const GEMINI_RATE_LIMIT_DELAY_MS = 200;
+const PINECONE_API_VERSION = "2025-04";
+
+export function pineconeHeaders(apiKey: string): Record<string, string> {
+  return {
+    "Api-Key": apiKey,
+    "X-Pinecone-Api-Version": PINECONE_API_VERSION,
+  };
+}
 
 interface PineconeVectorMetadata {
   agentId: string;
@@ -61,7 +69,7 @@ export async function pineconeList(
   }
 
   const res = await fetch(url.toString(), {
-    headers: { "Api-Key": apiKey },
+    headers: pineconeHeaders(apiKey),
   });
 
   if (!res.ok) {
@@ -92,7 +100,7 @@ export async function pineconeFetch(
   }
 
   const res = await fetch(url.toString(), {
-    headers: { "Api-Key": apiKey },
+    headers: pineconeHeaders(apiKey),
   });
 
   if (!res.ok) {

@@ -7,7 +7,7 @@ import { type Backend, createClient } from "./create-client.js";
 import { MemoryDeleter } from "./deleter.js";
 import { AgentsMigrator } from "./migrate-agents.js";
 import { Migrator } from "./migrator.js";
-import { migrateConversationMemory } from "./pinecone-to-pgvector.js";
+import { migrateConversationMemory, pineconeHeaders } from "./pinecone-to-pgvector.js";
 import { validateExcludePatterns } from "./preflight.js";
 
 function printUsage(): void {
@@ -406,7 +406,7 @@ async function runPineconeToPgvector(args: string[]): Promise<void> {
   if (!pineconeHost) {
     console.log("🔍 Discovering Pinecone index host...");
     const indexRes = await fetch("https://api.pinecone.io/indexes", {
-      headers: { "Api-Key": pineconeApiKey },
+      headers: pineconeHeaders(pineconeApiKey),
     });
 
     if (!indexRes.ok) {
@@ -434,7 +434,7 @@ async function runPineconeToPgvector(args: string[]): Promise<void> {
     console.log("📋 Discovering namespaces from Pinecone...");
     const statsRes = await fetch(`https://${pineconeHost}/describe_index_stats`, {
       method: "POST",
-      headers: { "Api-Key": pineconeApiKey, "Content-Type": "application/json" },
+      headers: { ...pineconeHeaders(pineconeApiKey), "Content-Type": "application/json" },
       body: "{}",
     });
 

@@ -54,7 +54,9 @@ describe("pineconeList", () => {
     expect(result.nextToken).toBe("token123");
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("host.pinecone.io/vectors/list"),
-      expect.objectContaining({ headers: { "Api-Key": "api-key" } }),
+      expect.objectContaining({
+        headers: { "Api-Key": "api-key", "X-Pinecone-Api-Version": "2025-04" },
+      }),
     );
   });
 
