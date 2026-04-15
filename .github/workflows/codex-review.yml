@@ -105,6 +105,7 @@ jobs:
         if: steps.check_files.outputs.skip != 'true'
         uses: openai/codex-action@v1
         with:
+          model: gpt-5.4
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           output-file: /tmp/review-result.md
           sandbox: workspace-write
