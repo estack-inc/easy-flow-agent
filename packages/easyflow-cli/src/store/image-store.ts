@@ -8,7 +8,8 @@ export class ImageStore {
   private storeDir: string;
 
   constructor(storeDir?: string) {
-    this.storeDir = storeDir ?? path.join(os.homedir(), ".easyflow", "images");
+    this.storeDir =
+      storeDir ?? process.env.EASYFLOW_STORE_DIR ?? path.join(os.homedir(), ".easyflow", "images");
   }
 
   async save(ref: string, data: ImageData): Promise<StoredImage> {

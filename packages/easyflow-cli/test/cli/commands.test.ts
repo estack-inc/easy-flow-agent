@@ -51,12 +51,15 @@ describe("CLI commands", () => {
     });
 
     it("config set → config get で値が取得できる", async () => {
-      const { ConfigManager } = await import("../../src/config/manager.js");
-      const manager = new ConfigManager(tmpDir);
+      const { stdout: setOut } = await runCli(["config", "set", "registry", "custom.io"], {
+        EASYFLOW_CONFIG_DIR: tmpDir,
+      });
+      expect(setOut).toContain("registry = custom.io");
 
-      await manager.set("registry", "custom.io");
-      const value = await manager.get("registry");
-      expect(value).toBe("custom.io");
+      const { stdout: getOut } = await runCli(["config", "get", "registry"], {
+        EASYFLOW_CONFIG_DIR: tmpDir,
+      });
+      expect(getOut.trim()).toBe("custom.io");
     });
   });
 

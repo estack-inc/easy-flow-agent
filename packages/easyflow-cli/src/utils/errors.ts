@@ -1,7 +1,7 @@
 export class EasyflowError extends Error {
   constructor(
     message: string,
-    public readonly cause?: string,
+    public readonly reason?: string,
     public readonly hint?: string,
   ) {
     super(message);
@@ -12,8 +12,8 @@ export class EasyflowError extends Error {
 export function handleError(error: unknown): never {
   if (error instanceof EasyflowError) {
     console.error(`Error: ${error.message}`);
-    if (error.cause) {
-      console.error(`\n  原因: ${error.cause}`);
+    if (error.reason) {
+      console.error(`\n  原因: ${error.reason}`);
     }
     if (error.hint) {
       console.error(`  対処: ${error.hint}`);

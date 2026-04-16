@@ -9,7 +9,8 @@ export class ConfigManager {
   private configDir: string;
 
   constructor(configDir?: string) {
-    this.configDir = configDir ?? path.join(os.homedir(), ".easyflow");
+    this.configDir =
+      configDir ?? process.env.EASYFLOW_CONFIG_DIR ?? path.join(os.homedir(), ".easyflow");
     this.configPath = path.join(this.configDir, "config.json");
   }
 
@@ -50,6 +51,11 @@ export class ConfigManager {
   }
 }
 
+/**
+ * ドット記法でネストされた値を取得する。
+ * 注意: キー自体にドットを含む場合（例: "ghcr.io"）は区切り文字と区別できない。
+ * Phase 1 の制限事項として、FQDN をキーに使う場合は構造を工夫する必要がある。
+ */
 function getNestedValue(obj: Record<string, unknown>, key: string): unknown {
   const parts = key.split(".");
   let current: unknown = obj;

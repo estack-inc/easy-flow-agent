@@ -23,6 +23,7 @@ export class Logger {
     if (this.options.noColor) {
       return message;
     }
+    // TODO: Phase 2 でカラー出力（chalk 等）を追加
     return message;
   }
 }

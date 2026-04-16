@@ -1,2 +1,2 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
 import "../src/cli/index.ts";

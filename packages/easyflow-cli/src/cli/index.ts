@@ -1,6 +1,5 @@
 import { Command } from "commander";
-import { registerConfigCommand } from "./commands/config.js";
-import { registerImagesCommand } from "./commands/images.js";
+import { registerConfigCommand, registerImagesCommand } from "./commands/index.js";
 
 const program = new Command();
 
