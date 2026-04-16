@@ -141,6 +141,13 @@ describe("ImageStore", () => {
     await expect(store.save("org/agent:release/canary", data)).rejects.toThrow("Invalid ref");
   });
 
+  it("空セグメントを含む ref は拒否される", async () => {
+    const data = createTestImageData();
+    await expect(store.save("org//agent:1.0.0", data)).rejects.toThrow("Invalid ref");
+    await expect(store.save("org/agent/:1.0.0", data)).rejects.toThrow("Invalid ref");
+    await expect(store.save("/agent:1.0.0", data)).rejects.toThrow("Invalid ref");
+  });
+
   it("パストラバーサルを含む layer 名は save で拒否される", async () => {
     const data = createTestImageData();
     data.layers.set("../../etc/passwd", Buffer.from("bad"));

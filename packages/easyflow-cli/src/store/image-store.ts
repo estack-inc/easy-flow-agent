@@ -271,9 +271,16 @@ export class ImageStore {
         throw new Error(`Invalid ref: "${ref}" — path traversal segments are not allowed`);
       }
     }
+    // nameWithOrg の各パスセグメントが空でないことを検証（org//name 等を拒否）
+    const nameWithOrg = ref.split(":")[0];
+    const allSegments = nameWithOrg.split("/");
+    for (const seg of allSegments) {
+      if (seg === "" || seg === "." || seg === "..") {
+        throw new Error(`Invalid ref: "${ref}" — empty or traversal path segment`);
+      }
+    }
     // org/name は英数字、ハイフン、アンダースコア、ドット、スラッシュのみ許可
     const namePattern = /^[a-zA-Z0-9./_-]+$/;
-    const nameWithOrg = ref.split(":")[0];
     if (!namePattern.test(nameWithOrg)) {
       throw new Error(`Invalid ref: "${ref}" — contains disallowed characters`);
     }
