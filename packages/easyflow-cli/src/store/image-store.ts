@@ -6,8 +6,8 @@ import type { ImageData, ImageMetadata, StoredImage } from "./types.js";
 
 /** ref ツリーのルートディレクトリ名。digest ディレクトリ (sha256-*) との衝突を回避する。 */
 const REFS_DIR = "refs";
-/** org なし ref を保存する際の sentinel ディレクトリ名 */
-const NO_ORG_SENTINEL = "_noorg";
+/** org なし ref を保存する際の sentinel ディレクトリ名。validateRef が許可しない文字を含み、ユーザー ref と衝突しない。 */
+const NO_ORG_SENTINEL = "~noorg";
 
 export class ImageStore {
   private storeDir: string;

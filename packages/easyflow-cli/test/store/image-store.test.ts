@@ -192,4 +192,25 @@ describe("ImageStore", () => {
     const storedB = await store.save("org/b:1.0.0", dataB);
     expect(storedA.digest).not.toBe(storedB.digest);
   });
+
+  it("sha256- で始まる org 名の ref が save/list で正しく扱われる", async () => {
+    const ref = "sha256-tools/agent:1.0.0";
+    await store.save(ref, createTestImageData("sha256-org"));
+    const images = await store.list();
+    expect(images.length).toBe(1);
+    expect(images[0].ref).toBe(ref);
+
+    const loaded = await store.load(ref);
+    expect(loaded).not.toBeNull();
+  });
+
+  it("org なし ref と _ org の ref が衝突しない", async () => {
+    await store.save("agent:latest", createTestImageData("no-org"));
+    await store.save("_/agent:latest", createTestImageData("underscore-org"));
+
+    const images = await store.list();
+    expect(images.length).toBe(2);
+    const refs = images.map((img) => img.ref).sort();
+    expect(refs).toEqual(["_/agent:latest", "agent:latest"]);
+  });
 });
