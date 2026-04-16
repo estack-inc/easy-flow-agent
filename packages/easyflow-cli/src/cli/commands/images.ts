@@ -34,8 +34,13 @@ export function registerImagesCommand(program: Command): void {
   images
     .command("rm <ref>")
     .description("イメージを削除")
-    .action(async (ref: string) => {
+    .action(async (ref: string, _opts: unknown, cmd: Command) => {
       try {
+        const dryRun = cmd.optsWithGlobals().dryRun === true;
+        if (dryRun) {
+          console.log(`[dry-run] 削除対象: ${ref}`);
+          return;
+        }
         const store = new ImageStore();
         const removed = await store.remove(ref);
         if (removed) {
@@ -52,8 +57,13 @@ export function registerImagesCommand(program: Command): void {
   images
     .command("prune")
     .description("未使用イメージを削除")
-    .action(async () => {
+    .action(async (_opts: unknown, cmd: Command) => {
       try {
+        const dryRun = cmd.optsWithGlobals().dryRun === true;
+        if (dryRun) {
+          console.log("[dry-run] prune をスキップしました");
+          return;
+        }
         const store = new ImageStore();
         const result = await store.prune();
         console.log(`${result.removed} 件削除しました (${formatBytes(result.freedBytes)} 解放)`);

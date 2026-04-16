@@ -95,4 +95,43 @@ describe("CLI commands", () => {
       expect(stdout).toContain("0 件削除しました");
     });
   });
+
+  describe("--dry-run", () => {
+    let tmpDir: string;
+
+    beforeEach(async () => {
+      tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyflow-dryrun-test-"));
+    });
+
+    afterEach(async () => {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("config set --dry-run で設定が保存されない", async () => {
+      const { stdout } = await runCli(
+        ["--dry-run", "config", "set", "auth[example.com].token", "secret"],
+        { EASYFLOW_CONFIG_DIR: tmpDir },
+      );
+      expect(stdout).toContain("[dry-run]");
+
+      const { stdout: getOut } = await runCli(["config", "get", "auth[example.com].token"], {
+        EASYFLOW_CONFIG_DIR: tmpDir,
+      });
+      expect(getOut).toContain("未設定");
+    });
+
+    it("images rm --dry-run で削除されない", async () => {
+      const { stdout } = await runCli(["--dry-run", "images", "rm", "org/agent:1.0.0"], {
+        EASYFLOW_STORE_DIR: tmpDir,
+      });
+      expect(stdout).toContain("[dry-run]");
+    });
+
+    it("images prune --dry-run で削除されない", async () => {
+      const { stdout } = await runCli(["--dry-run", "images", "prune"], {
+        EASYFLOW_STORE_DIR: tmpDir,
+      });
+      expect(stdout).toContain("[dry-run]");
+    });
+  });
 });
