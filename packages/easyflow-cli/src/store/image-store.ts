@@ -4,12 +4,22 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ImageData, ImageMetadata, StoredImage } from "./types.js";
 
+/** ref ツリーのルートディレクトリ名。digest ディレクトリ (sha256-*) との衝突を回避する。 */
+const REFS_DIR = "refs";
+/** org なし ref を保存する際の sentinel ディレクトリ名 */
+const NO_ORG_SENTINEL = "_noorg";
+
 export class ImageStore {
   private storeDir: string;
 
   constructor(storeDir?: string) {
     this.storeDir =
       storeDir ?? process.env.EASYFLOW_STORE_DIR ?? path.join(os.homedir(), ".easyflow", "images");
+  }
+
+  /** ref ツリーのベースパスを返す */
+  private get refsDir(): string {
+    return path.join(this.storeDir, REFS_DIR);
   }
 
   async save(ref: string, data: ImageData): Promise<StoredImage> {
@@ -38,7 +48,7 @@ export class ImageStore {
     }
 
     const { org, name, tag } = ImageStore.parseRef(ref);
-    const tagDir = path.join(this.storeDir, org, name, tag);
+    const tagDir = path.join(this.refsDir, org, name, tag);
     await fs.mkdir(path.dirname(tagDir), { recursive: true });
 
     // Remove existing symlink if present
@@ -68,7 +78,7 @@ export class ImageStore {
   async load(ref: string): Promise<ImageData | null> {
     ImageStore.validateRef(ref);
     const { org, name, tag } = ImageStore.parseRef(ref);
-    const tagDir = path.join(this.storeDir, org, name, tag);
+    const tagDir = path.join(this.refsDir, org, name, tag);
 
     try {
       const realDir = await fs.realpath(tagDir);
@@ -99,7 +109,7 @@ export class ImageStore {
   async remove(ref: string): Promise<boolean> {
     ImageStore.validateRef(ref);
     const { org, name, tag } = ImageStore.parseRef(ref);
-    const tagDir = path.join(this.storeDir, org, name, tag);
+    const tagDir = path.join(this.refsDir, org, name, tag);
 
     try {
       const realDir = await fs.realpath(tagDir);
@@ -126,7 +136,7 @@ export class ImageStore {
     const result: StoredImage[] = [];
 
     try {
-      await this.collectRefsRecursive(this.storeDir, [], result);
+      await this.collectRefsRecursive(this.refsDir, [], result);
     } catch {
       // store directory doesn't exist yet
     }
@@ -135,8 +145,7 @@ export class ImageStore {
   }
 
   /**
-   * org/name/ ディレクトリを再帰走査し、タグ symlink を起点に StoredImage を構築する。
-   * digest ディレクトリ（sha256-*）はスキップして ref 側のみを列挙する。
+   * refs/ ディレクトリを再帰走査し、タグ symlink を起点に StoredImage を構築する。
    */
   private async collectRefsRecursive(
     dir: string,
@@ -176,15 +185,14 @@ export class ImageStore {
         } catch {
           // broken symlink — skip
         }
-      } else if (entry.isDirectory() && !entry.name.startsWith("sha256-")) {
+      } else if (entry.isDirectory()) {
         await this.collectRefsRecursive(fullPath, [...pathSegments, entry.name], result);
       }
     }
   }
 
   private buildRef(pathSegments: string[], tag: string): string {
-    // parseRef() は org なし ref を "_" として保存するため、復元時に除去する
-    const filtered = pathSegments.filter((s) => s !== "_");
+    const filtered = pathSegments.filter((s) => s !== NO_ORG_SENTINEL);
     const nameWithOrg = filtered.join("/");
     return `${nameWithOrg}:${tag}`;
   }
@@ -219,7 +227,7 @@ export class ImageStore {
     const [nameWithOrg, tag = "latest"] = ref.split(":");
     const parts = nameWithOrg.split("/");
     if (parts.length < 2) {
-      return { org: "_", name: parts[0], tag };
+      return { org: NO_ORG_SENTINEL, name: parts[0], tag };
     }
     return { org: parts[0], name: parts.slice(1).join("/"), tag };
   }
@@ -252,8 +260,14 @@ export class ImageStore {
       throw new Error(`Invalid ref: "${ref}" — at most one ":" is allowed`);
     }
     const { org, name, tag } = ImageStore.parseRef(ref);
-    for (const segment of [org, name, tag]) {
+    for (const segment of [name, tag]) {
       if (segment === "" || segment === "." || segment === ".." || segment.includes("..")) {
+        throw new Error(`Invalid ref: "${ref}" — path traversal segments are not allowed`);
+      }
+    }
+    // org は NO_ORG_SENTINEL（内部値）以外の空チェック
+    if (org !== NO_ORG_SENTINEL) {
+      if (org === "" || org === "." || org === ".." || org.includes("..")) {
         throw new Error(`Invalid ref: "${ref}" — path traversal segments are not allowed`);
       }
     }
@@ -333,14 +347,19 @@ export class ImageStore {
   private async hasSymlinksTo(targetDir: string): Promise<boolean> {
     try {
       const normalizedTarget = await fs.realpath(targetDir);
-      return await this.findSymlinksRecursive(this.storeDir, normalizedTarget);
+      return await this.findSymlinksRecursive(this.refsDir, normalizedTarget);
     } catch {
       return false;
     }
   }
 
   private async findSymlinksRecursive(dir: string, targetDir: string): Promise<boolean> {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
+    let entries: Awaited<ReturnType<typeof fs.readdir<{ withFileTypes: true }>>>;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return false;
+    }
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isSymbolicLink()) {
@@ -350,7 +369,7 @@ export class ImageStore {
         } catch {
           // broken symlink
         }
-      } else if (entry.isDirectory() && !entry.name.startsWith("sha256-")) {
+      } else if (entry.isDirectory()) {
         const found = await this.findSymlinksRecursive(fullPath, targetDir);
         if (found) return true;
       }
