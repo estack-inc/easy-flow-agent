@@ -82,10 +82,15 @@ export async function ingestDocument(opts: IngestDocumentOptions): Promise<Inges
   return { filePath, sourceFile, agentId, totalChunks: chunks.length, category };
 }
 
+export interface IngestDocumentsResult {
+  results: IngestDocumentResult[];
+  errors: { filePath: string; error: Error }[];
+}
+
 export async function ingestDocuments(
-  opts: Omit<IngestDocumentOptions, "filePath"> & { filePaths: string[] },
-): Promise<IngestDocumentResult[]> {
-  const { filePaths, agentId, pgvectorClient, category, sourceFile, dryRun } = opts;
+  opts: Omit<IngestDocumentOptions, "filePath" | "sourceFile"> & { filePaths: string[] },
+): Promise<IngestDocumentsResult> {
+  const { filePaths, agentId, pgvectorClient, category, dryRun } = opts;
 
   console.log(`\n${"=".repeat(60)}`);
   console.log("ドキュメント事前登録");
@@ -99,24 +104,30 @@ export async function ingestDocuments(
   }
 
   const results: IngestDocumentResult[] = [];
+  const errors: { filePath: string; error: Error }[] = [];
 
   for (const filePath of filePaths) {
-    const result = await ingestDocument({
-      filePath,
-      agentId,
-      pgvectorClient,
-      category,
-      sourceFile,
-      dryRun,
-    });
-    results.push(result);
+    try {
+      const result = await ingestDocument({
+        filePath,
+        agentId,
+        pgvectorClient,
+        category,
+        dryRun,
+      });
+      results.push(result);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error(`   ❌ Failed: ${filePath} — ${error.message}`);
+      errors.push({ filePath, error });
+    }
   }
 
   // Summary
   const totalChunks = results.reduce((sum, r) => sum + r.totalChunks, 0);
   console.log(`\n${"=".repeat(60)}`);
-  console.log(`完了: ${results.length} sources, ${totalChunks} chunks`);
+  console.log(`完了: ${results.length} 成功, ${errors.length} 失敗, ${totalChunks} chunks`);
   console.log(`${"=".repeat(60)}`);
 
-  return results;
+  return { results, errors };
 }

@@ -271,13 +271,14 @@ describe("ingestDocuments", () => {
     await writeFile(file2, "# Document two\n\nContent here");
 
     const client = createMockClient();
-    const results = await ingestDocuments({
+    const { results, errors } = await ingestDocuments({
       filePaths: [file1, file2],
       agentId: "test-agent",
       pgvectorClient: client,
     });
 
     expect(results).toHaveLength(2);
+    expect(errors).toHaveLength(0);
     expect(results[0].totalChunks).toBe(1);
     expect(results[1].totalChunks).toBe(1);
     expect(client.upsert).toHaveBeenCalledTimes(2);
@@ -311,5 +312,33 @@ describe("ingestDocuments", () => {
     });
 
     expect(client.ensureIndex).not.toHaveBeenCalled();
+  });
+
+  it("should continue processing remaining files when one fails", async () => {
+    const file1 = join(tmpDir, "doc1.txt");
+    const file2 = join(tmpDir, "doc2.txt");
+    await writeFile(file1, "First document");
+    await writeFile(file2, "Second document");
+
+    const client = createMockClient();
+    // Make upsert fail on first call, succeed on second
+    let callCount = 0;
+    client.upsert.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) throw new Error("DB connection lost");
+      return Promise.resolve();
+    });
+
+    const { results, errors } = await ingestDocuments({
+      filePaths: [file1, file2],
+      agentId: "test-agent",
+      pgvectorClient: client,
+    });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].filePath).toBe(file1);
+    expect(errors[0].error.message).toBe("DB connection lost");
+    expect(results).toHaveLength(1);
+    expect(results[0].filePath).toBe(file2);
   });
 });

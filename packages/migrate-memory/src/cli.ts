@@ -549,13 +549,17 @@ async function runIngestDocument(args: string[]): Promise<void> {
 
   const pgvectorClient = createClient("pgvector", dryRun);
 
-  await ingestDocuments({
+  const { errors } = await ingestDocuments({
     filePaths,
     agentId,
     pgvectorClient,
     category,
     dryRun,
   });
+
+  if (errors.length > 0) {
+    process.exit(1);
+  }
 }
 
 async function main(): Promise<void> {
