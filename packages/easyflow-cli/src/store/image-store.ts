@@ -166,7 +166,9 @@ export class ImageStore {
   }
 
   private buildRef(pathSegments: string[], tag: string): string {
-    const nameWithOrg = pathSegments.join("/");
+    // parseRef() は org なし ref を "_" として保存するため、復元時に除去する
+    const filtered = pathSegments.filter((s) => s !== "_");
+    const nameWithOrg = filtered.join("/");
     return `${nameWithOrg}:${tag}`;
   }
 

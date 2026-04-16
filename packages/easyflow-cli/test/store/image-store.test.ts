@@ -108,6 +108,13 @@ describe("ImageStore", () => {
     expect(refs).toEqual(["org/agent:1.0.0", "org/agent:latest"]);
   });
 
+  it("単一セグメント ref の save → list で ref が維持される", async () => {
+    await store.save("agent:latest", createTestImageData("single-seg"));
+    const images = await store.list();
+    expect(images.length).toBe(1);
+    expect(images[0].ref).toBe("agent:latest");
+  });
+
   it("同一 ref を別 digest で上書きした場合、list に古い ref が残らない", async () => {
     await store.save("org/agent:1.0.0", createTestImageData("v1"));
     await store.save("org/agent:1.0.0", createTestImageData("v2"));
