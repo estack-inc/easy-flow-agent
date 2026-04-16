@@ -5,6 +5,7 @@ import { bulkMigrate } from "./bulk-migrator.js";
 import { bulkUpdate } from "./bulk-updater.js";
 import { type Backend, createClient } from "./create-client.js";
 import { MemoryDeleter } from "./deleter.js";
+import { ingestDocuments } from "./ingest-document.js";
 import { AgentsMigrator } from "./migrate-agents.js";
 import { Migrator } from "./migrator.js";
 import { migrateConversationMemory, pineconeHeaders } from "./pinecone-to-pgvector.js";
@@ -16,6 +17,7 @@ function printUsage(): void {
 Commands:
   migrate-memory        Migrate markdown files to vector DB
   agents                Migrate AGENTS.md to vector DB (section-based chunking)
+  ingest-document       Ingest text/markdown documents into vector DB
   memory-delete         Delete memory from vector DB
   pinecone-to-pgvector  Migrate conversation memory from Pinecone to pgvector
   bulk-migrate          Bulk migrate all EasyFlow instances
@@ -473,6 +475,77 @@ async function runPineconeToPgvector(args: string[]): Promise<void> {
   }
 }
 
+function printIngestDocumentUsage(): void {
+  console.log(`Usage: easy-flow ingest-document [options] <file...>
+
+Ingest text/markdown documents into pgvector for RAG retrieval.
+
+Arguments:
+  <file...>             One or more file paths to ingest (.txt, .md, .markdown, .text)
+
+Options:
+  --namespace <name>    Agent namespace (e.g. "agent:mell") [required]
+  --category <name>     Document category for filtering (e.g. "manual", "faq", "policy")
+  --dry-run             Show what would be ingested without writing to DB
+  --help                Show this help message
+
+Environment Variables:
+  PGVECTOR_DATABASE_URL  Required
+  GEMINI_API_KEY         Required
+
+Examples:
+  easy-flow ingest-document --namespace agent:mell manual.md
+  easy-flow ingest-document --namespace agent:mell --category faq faq.txt guide.md
+  easy-flow ingest-document --namespace agent:mell --dry-run *.md`);
+}
+
+async function runIngestDocument(args: string[]): Promise<void> {
+  const { values, positionals } = parseArgs({
+    args,
+    allowPositionals: true,
+    options: {
+      namespace: { type: "string" },
+      category: { type: "string" },
+      "dry-run": { type: "boolean", default: false },
+      help: { type: "boolean", default: false },
+    },
+    strict: true,
+  });
+
+  if (values.help) {
+    printIngestDocumentUsage();
+    process.exit(0);
+  }
+
+  const namespace = values.namespace as string | undefined;
+  if (!namespace) {
+    console.error("Error: --namespace is required (e.g. --namespace agent:mell)");
+    process.exit(1);
+  }
+
+  // Extract agentId from namespace (e.g. "agent:mell" → "mell")
+  const agentId = namespace.startsWith("agent:") ? namespace.slice(6) : namespace;
+
+  const filePaths = positionals;
+  if (filePaths.length === 0) {
+    console.error("Error: At least one file path is required");
+    process.exit(1);
+  }
+
+  const dryRun = values["dry-run"] as boolean;
+  const category = values.category as string | undefined;
+
+  const pgvectorClient = createClient("pgvector", dryRun);
+
+  await ingestDocuments({
+    filePaths,
+    agentId,
+    pgvectorClient,
+    category,
+    dryRun,
+  });
+}
+
 async function main(): Promise<void> {
   const subcommand = process.argv[2];
 
@@ -485,6 +558,8 @@ async function main(): Promise<void> {
     await runMigrate(process.argv.slice(3));
   } else if (subcommand === "agents") {
     await runAgents(process.argv.slice(3));
+  } else if (subcommand === "ingest-document") {
+    await runIngestDocument(process.argv.slice(3));
   } else if (subcommand === "memory-delete") {
     await runDelete(process.argv.slice(3));
   } else if (subcommand === "pinecone-to-pgvector") {
