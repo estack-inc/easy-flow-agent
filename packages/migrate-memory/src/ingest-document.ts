@@ -87,25 +87,36 @@ export async function ingestDocument(opts: IngestDocumentOptions): Promise<Inges
   if (dryRun) {
     console.log("   [DRY RUN] Would delete existing + upsert chunks");
   } else {
-    // Safe atomic-like replace:
-    // 1. Validate new chunks via upsert (embedding generation + DB write)
-    // 2. Delete all chunks for this source (old + newly inserted)
-    // 3. Re-insert validated chunks (no embedding re-generation, idempotent)
+    // Safe replace using staging sourceFile:
+    // 1. Upsert new chunks with a staging sourceFile (embedding + DB write)
+    // 2. Delete old chunks (original sourceFile) — only after step 1 succeeds
+    // 3. Delete staging chunks (cleanup)
+    // 4. Upsert final chunks with real sourceFile
     //
-    // If step 1 fails → existing data preserved, no deletion occurred
-    // If step 2 fails → duplicates exist but no data loss
-    // Step 3 uses already-validated chunks, so failure risk is minimal (DB-only)
+    // If step 1 fails → no data loss (old chunks untouched, no staging residue)
+    // If step 2/3/4 fails → staging chunks exist as readable backup
+    const stagingSourceFile = `${sourceFile}:staging:${Date.now()}`;
+    const stagingChunks = chunks.map((c) => ({
+      ...c,
+      metadata: { ...c.metadata, sourceFile: stagingSourceFile },
+    }));
+
+    // Step 1: Validate embedding generation + DB write with staging name
     try {
-      await pgvectorClient.upsert(chunks);
+      await pgvectorClient.upsert(stagingChunks);
     } catch (err) {
-      // Upsert failed (e.g. embedding API error) — do NOT delete existing data
       throw new Error(
-        `Upsert validation failed for ${filePath}, existing data preserved: ${err instanceof Error ? err.message : String(err)}`,
+        `Upsert failed for ${filePath}, existing data preserved: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    // Upsert succeeded → safe to replace
+
+    // Step 2: Delete old production chunks (safe — staging backup exists)
     await pgvectorClient.deleteBySource(agentId, sourceFile);
+
+    // Step 3-4: Promote staging → production
     await pgvectorClient.upsert(chunks);
+    await pgvectorClient.deleteBySource(agentId, stagingSourceFile);
+
     console.log(`   ✅ Replaced with ${chunks.length} chunks`);
   }
 

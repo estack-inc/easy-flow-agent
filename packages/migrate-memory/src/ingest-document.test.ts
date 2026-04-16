@@ -159,7 +159,7 @@ describe("ingestDocument", () => {
     expect(client.deleteBySource).not.toHaveBeenCalled();
   });
 
-  it("should validate upsert before deleting old chunks (safe replace)", async () => {
+  it("should use staging pattern for safe replace", async () => {
     const filePath = join(tmpDir, "doc.txt");
     await writeFile(filePath, "updated content");
 
@@ -170,17 +170,25 @@ describe("ingestDocument", () => {
       pgvectorClient: client,
     });
 
-    // Safe replace: upsert (validate) → delete → upsert (final)
+    // Safe replace: staging upsert → delete old → production upsert → delete staging
     expect(client.upsert).toHaveBeenCalledTimes(2);
-    expect(client.deleteBySource).toHaveBeenCalledTimes(1);
+    expect(client.deleteBySource).toHaveBeenCalledTimes(2);
+
+    // First upsert uses staging sourceFile
+    const stagingChunks = client.upsert.mock.calls[0][0];
+    expect(stagingChunks[0].metadata.sourceFile).toContain(":staging:");
+
+    // Second upsert uses production sourceFile
+    const productionChunks = client.upsert.mock.calls[1][0];
+    expect(productionChunks[0].metadata.sourceFile).not.toContain(":staging:");
+
+    // Verify ordering: staging upsert before any delete
     const firstUpsertOrder = client.upsert.mock.invocationCallOrder[0];
-    const deleteOrder = client.deleteBySource.mock.invocationCallOrder[0];
-    const secondUpsertOrder = client.upsert.mock.invocationCallOrder[1];
-    expect(firstUpsertOrder).toBeLessThan(deleteOrder);
-    expect(deleteOrder).toBeLessThan(secondUpsertOrder);
+    const firstDeleteOrder = client.deleteBySource.mock.invocationCallOrder[0];
+    expect(firstUpsertOrder).toBeLessThan(firstDeleteOrder);
   });
 
-  it("should preserve existing data when upsert fails", async () => {
+  it("should preserve existing data when staging upsert fails", async () => {
     const filePath = join(tmpDir, "doc.txt");
     await writeFile(filePath, "content");
 
@@ -189,9 +197,9 @@ describe("ingestDocument", () => {
 
     await expect(
       ingestDocument({ filePath, agentId: "test-agent", pgvectorClient: client }),
-    ).rejects.toThrow("Upsert validation failed");
+    ).rejects.toThrow("Upsert failed");
 
-    // deleteBySource should NOT have been called
+    // deleteBySource should NOT have been called — existing data preserved
     expect(client.deleteBySource).not.toHaveBeenCalled();
   });
 
