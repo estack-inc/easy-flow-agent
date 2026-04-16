@@ -496,6 +496,7 @@ Options:
   --namespace <name>    Agent namespace (e.g. "agent:mell") [required]
   --category <name>     Document category for filtering (e.g. "manual", "faq", "policy")
   --dry-run             Show what would be ingested without writing to DB
+  --force               Skip secret detection preflight check
   --help                Show this help message
 
 Environment Variables:

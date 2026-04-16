@@ -128,6 +128,14 @@ async function extractUrl(url: string): Promise<string> {
     return body;
   }
 
+  // Reject non-HTML content types (e.g. image, PDF, binary)
+  const ALLOWED_HTML_TYPES = ["text/html", "application/xhtml+xml"];
+  if (!ALLOWED_HTML_TYPES.some((t) => contentType.includes(t))) {
+    throw new Error(
+      `Unsupported content type: ${contentType}. Only HTML, text/plain, and text/csv URLs are supported.`,
+    );
+  }
+
   // HTML → text extraction
   const cheerio = await import("cheerio");
   const $ = cheerio.load(body);

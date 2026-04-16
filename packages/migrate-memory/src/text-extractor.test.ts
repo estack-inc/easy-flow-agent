@@ -129,6 +129,20 @@ describe("extractText", () => {
     vi.unstubAllGlobals();
   });
 
+  it("should reject unsupported URL content types", async () => {
+    const fetchMock = vi.fn<(input: string | URL | Request) => Promise<Response>>();
+    fetchMock.mockResolvedValueOnce(
+      new Response("binary data", { headers: { "content-type": "image/png" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(extractText("https://example.com/image.png")).rejects.toThrow(
+      "Unsupported content type",
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it("should extract text from .docx file via mammoth", async () => {
     vi.doMock("mammoth", () => ({
       default: {
