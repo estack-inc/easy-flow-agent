@@ -50,6 +50,7 @@ export class ConfigManager {
    * 例: `auth[ghcr.io].token` (✓)  `auth.ghcr.io.token` (✗ — ドットで分割される)
    */
   async get(key: string): Promise<string | undefined> {
+    validateFqdnKeyFormat(key);
     const config = await this.load();
     const value = getNestedValue(config, key);
     if (value === undefined || value === null) {
@@ -63,6 +64,7 @@ export class ConfigManager {
 
   /** @see {@link get} — FQDN を含むキーにはブラケット記法を使用すること */
   async set(key: string, value: string): Promise<void> {
+    validateFqdnKeyFormat(key);
     const config = await this.load();
     setNestedValue(config, key, value);
     await this.save(config);
@@ -71,6 +73,18 @@ export class ConfigManager {
   async ensureConfigDir(): Promise<void> {
     await fs.mkdir(this.configDir, { recursive: true, mode: 0o700 });
     await fs.chmod(this.configDir, 0o700);
+  }
+}
+
+/** auth キーの FQDN にドット記法が使われている場合を拒否する */
+const FQDN_RECORD_KEYS = new Set(["auth"]);
+
+function validateFqdnKeyFormat(key: string): void {
+  const parts = parseKeyPath(key);
+  if (parts.length >= 2 && FQDN_RECORD_KEYS.has(parts[0]) && !key.includes("[")) {
+    throw new Error(
+      `"${key}" — FQDN を含むキーにはブラケット記法を使用してください (例: auth[ghcr.io].token)`,
+    );
   }
 }
 

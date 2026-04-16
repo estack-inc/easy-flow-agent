@@ -255,7 +255,8 @@ export class ImageStore {
       return false;
     }
     const relative = normalized.slice(storePrefix.length);
-    return relative.startsWith("sha256-");
+    // store 直下の sha256-* ディレクトリそのものであること（サブディレクトリは拒否）
+    return relative.startsWith("sha256-") && !relative.includes(path.sep);
   }
 
   /** ref の各セグメントがストアパス外にトラバーサルしないことを検証する */
