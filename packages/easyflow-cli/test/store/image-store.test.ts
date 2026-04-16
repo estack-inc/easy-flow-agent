@@ -97,4 +97,23 @@ describe("ImageStore", () => {
     const loaded = await store.load("nonexistent/agent:1.0.0");
     expect(loaded).toBeNull();
   });
+
+  it("同一 digest に複数 ref を付けた場合、list で全 ref が返る", async () => {
+    const data = createTestImageData("shared-content");
+    await store.save("org/agent:1.0.0", data);
+    await store.save("org/agent:latest", data);
+
+    const images = await store.list();
+    const refs = images.map((img) => img.ref).sort();
+    expect(refs).toEqual(["org/agent:1.0.0", "org/agent:latest"]);
+  });
+
+  it("同一 ref を別 digest で上書きした場合、list に古い ref が残らない", async () => {
+    await store.save("org/agent:1.0.0", createTestImageData("v1"));
+    await store.save("org/agent:1.0.0", createTestImageData("v2"));
+
+    const images = await store.list();
+    expect(images.length).toBe(1);
+    expect(images[0].ref).toBe("org/agent:1.0.0");
+  });
 });

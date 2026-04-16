@@ -110,25 +110,64 @@ export class ImageStore {
     const result: StoredImage[] = [];
 
     try {
-      const entries = await fs.readdir(this.storeDir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        // Digest directories start with "sha256-"
-        if (entry.name.startsWith("sha256-")) {
-          const imageJsonPath = path.join(this.storeDir, entry.name, "image.json");
-          try {
-            const raw = await fs.readFile(imageJsonPath, "utf-8");
-            result.push(JSON.parse(raw) as StoredImage);
-          } catch {
-            // skip if image.json is missing
-          }
-        }
-      }
+      await this.collectRefsRecursive(this.storeDir, [], result);
     } catch {
       // store directory doesn't exist yet
     }
 
     return result;
+  }
+
+  /**
+   * org/name/ ディレクトリを再帰走査し、タグ symlink を起点に StoredImage を構築する。
+   * digest ディレクトリ（sha256-*）はスキップして ref 側のみを列挙する。
+   */
+  private async collectRefsRecursive(
+    dir: string,
+    pathSegments: string[],
+    result: StoredImage[],
+  ): Promise<void> {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        // This is a tag symlink → resolve to digest dir and build StoredImage
+        try {
+          const realDir = await fs.realpath(fullPath);
+          const tag = entry.name;
+          const ref = this.buildRef(pathSegments, tag);
+          const imageJsonPath = path.join(realDir, "image.json");
+          try {
+            const raw = await fs.readFile(imageJsonPath, "utf-8");
+            const stored = JSON.parse(raw) as StoredImage;
+            // Override ref with current symlink's ref (may differ from image.json)
+            result.push({ ...stored, ref });
+          } catch {
+            // image.json missing — build minimal StoredImage from digest dir
+            const digest = path.basename(realDir).replace("-", ":");
+            const size = await this.computeDirSize(realDir);
+            const configPath = path.join(realDir, "config.json");
+            let metadata = this.extractMetadata({});
+            try {
+              const configRaw = JSON.parse(await fs.readFile(configPath, "utf-8"));
+              metadata = this.extractMetadata(configRaw);
+            } catch {
+              // no config.json
+            }
+            result.push({ ref, digest, size, createdAt: new Date().toISOString(), metadata });
+          }
+        } catch {
+          // broken symlink — skip
+        }
+      } else if (entry.isDirectory() && !entry.name.startsWith("sha256-")) {
+        await this.collectRefsRecursive(fullPath, [...pathSegments, entry.name], result);
+      }
+    }
+  }
+
+  private buildRef(pathSegments: string[], tag: string): string {
+    const nameWithOrg = pathSegments.join("/");
+    return `${nameWithOrg}:${tag}`;
   }
 
   async prune(): Promise<{ removed: number; freedBytes: number }> {

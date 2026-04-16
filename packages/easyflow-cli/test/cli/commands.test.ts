@@ -7,15 +7,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
 
-const BIN_PATH = path.resolve(import.meta.dirname, "../../bin/easyflow.mjs");
-const TSX_PATH = path.resolve(import.meta.dirname, "../../../../node_modules/.bin/tsx");
+const ENTRY_PATH = path.resolve(import.meta.dirname, "../../src/cli/index.ts");
 
 async function runCli(
   args: string[],
   env?: Record<string, string>,
 ): Promise<{ stdout: string; stderr: string }> {
   try {
-    const result = await execFileAsync(TSX_PATH, [BIN_PATH, ...args], {
+    const result = await execFileAsync(process.execPath, ["--import", "tsx", ENTRY_PATH, ...args], {
       env: { ...process.env, ...env },
       timeout: 10000,
     });
