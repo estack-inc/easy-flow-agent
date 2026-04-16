@@ -160,6 +160,22 @@ describe("validateSchema", () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
+  it("semver メジャーバージョンの先頭ゼロはエラー", () => {
+    const data = createValidAgentfile({
+      metadata: { name: "test-agent", version: "01.2.3", description: "test", author: "test" },
+    });
+    const errors = validateSchema(data);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it("semver pre-release の数値識別子の先頭ゼロはエラー", () => {
+    const data = createValidAgentfile({
+      metadata: { name: "test-agent", version: "1.0.0-01", description: "test", author: "test" },
+    });
+    const errors = validateSchema(data);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
   it("identity.soul が未指定でエラー", () => {
     const data = {
       apiVersion: "easyflow/v1",

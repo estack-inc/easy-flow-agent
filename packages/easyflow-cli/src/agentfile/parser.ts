@@ -251,29 +251,51 @@ export async function parseAgentfile(content: string, options: ParseOptions): Pr
   let resolvedBase: string | undefined;
 
   if (templateFile) {
-    const templateContent = readFileSync(templateFile, "utf-8");
-    const templateRaw = yaml.load(templateContent);
-
-    if (templateRaw && typeof templateRaw === "object") {
-      // テンプレート自体のバリデーション
-      const templateSchemaErrors = validateSchema(templateRaw);
-      if (templateSchemaErrors.length > 0) {
-        throw new AgentfileParseError(
-          `Base template validation failed: ${templateSchemaErrors.map((e) => e.message).join(", ")}`,
-          templateSchemaErrors,
-        );
-      }
-
-      // テンプレート内の相対パスを子の basedir 基準に変換
-      const templateDir = dirname(templateFile);
-      const parentAgentfile = resolveTemplatePaths(
-        templateRaw as Agentfile,
-        templateDir,
-        options.basedir,
+    let templateRaw: unknown;
+    try {
+      const templateContent = readFileSync(templateFile, "utf-8");
+      templateRaw = yaml.load(templateContent);
+    } catch (e) {
+      throw new AgentfileParseError(
+        `Base template parse error: ${e instanceof Error ? e.message : String(e)}`,
+        [
+          {
+            path: "/base",
+            message: `Base template parse error: ${e instanceof Error ? e.message : String(e)}`,
+            keyword: "baseTemplateParse",
+          },
+        ],
       );
-      agentfile = mergeAgentfiles(parentAgentfile, agentfile);
-      resolvedBase = baseValue;
     }
+
+    if (!templateRaw || typeof templateRaw !== "object") {
+      throw new AgentfileParseError(`Base template must be a YAML object: ${templateFile}`, [
+        {
+          path: "/base",
+          message: "Base template must be a YAML object",
+          keyword: "baseTemplateType",
+        },
+      ]);
+    }
+
+    // テンプレート自体のバリデーション
+    const templateSchemaErrors = validateSchema(templateRaw);
+    if (templateSchemaErrors.length > 0) {
+      throw new AgentfileParseError(
+        `Base template validation failed: ${templateSchemaErrors.map((e) => e.message).join(", ")}`,
+        templateSchemaErrors,
+      );
+    }
+
+    // テンプレート内の相対パスを子の basedir 基準に変換
+    const templateDir = dirname(templateFile);
+    const parentAgentfile = resolveTemplatePaths(
+      templateRaw as Agentfile,
+      templateDir,
+      options.basedir,
+    );
+    agentfile = mergeAgentfiles(parentAgentfile, agentfile);
+    resolvedBase = baseValue;
   } else if (agentfile.base) {
     // base が明示指定されているのにテンプレートが見つからない場合はエラー
     throw new AgentfileParseError(

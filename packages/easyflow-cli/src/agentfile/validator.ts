@@ -17,12 +17,19 @@ function createAjv(): Ajv {
   const ajv = new Ajv({ allErrors: true });
   addFormats(ajv);
 
+  // SemVer 2.0.0 準拠: 数値識別子の先頭ゼロを禁止
+  const NUMERIC = "0|[1-9]\\d*";
+  const PRE_RELEASE_ID = `(?:${NUMERIC}|[0-9a-zA-Z-]*[a-zA-Z-][0-9a-zA-Z-]*)`;
+  const BUILD_ID = "[0-9a-zA-Z-]+";
+  const SEMVER_RE = new RegExp(
+    `^(${NUMERIC})\\.(${NUMERIC})\\.(${NUMERIC})` +
+      `(?:-(${PRE_RELEASE_ID}(?:\\.${PRE_RELEASE_ID})*))?` +
+      `(?:\\+(${BUILD_ID}(?:\\.${BUILD_ID})*))?$`,
+  );
+
   ajv.addFormat("semver", {
     type: "string",
-    validate: (value: string) =>
-      /^\d+\.\d+\.\d+(-[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?(\+[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?$/.test(
-        value,
-      ),
+    validate: (value: string) => SEMVER_RE.test(value),
   });
 
   return ajv;
