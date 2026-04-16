@@ -59,7 +59,11 @@ export async function ingestDocument(opts: IngestDocumentOptions): Promise<Inges
   console.log(`   Text length: ${text.length} chars`);
 
   if (text.trim().length === 0) {
-    console.log("   ⚠️  Empty file, skipping");
+    console.log("   ⚠️  Empty file");
+    if (!dryRun) {
+      await pgvectorClient.deleteBySource(agentId, sourceFile);
+      console.log("   🗑️  Deleted existing chunks for this source");
+    }
     return { filePath, sourceFile, agentId, totalChunks: 0, category };
   }
 

@@ -194,7 +194,7 @@ describe("ingestDocument", () => {
     expect(result2.sourceFile).toContain("sub2/manual.txt");
   });
 
-  it("should skip empty files", async () => {
+  it("should delete existing chunks and skip upsert for empty files", async () => {
     const filePath = join(tmpDir, "empty.txt");
     await writeFile(filePath, "   ");
 
@@ -207,6 +207,22 @@ describe("ingestDocument", () => {
 
     expect(result.totalChunks).toBe(0);
     expect(client.upsert).not.toHaveBeenCalled();
+    expect(client.deleteBySource).toHaveBeenCalledTimes(1);
+  });
+
+  it("should not delete in dry-run mode for empty files", async () => {
+    const filePath = join(tmpDir, "empty.txt");
+    await writeFile(filePath, "   ");
+
+    const client = createMockClient();
+    await ingestDocument({
+      filePath,
+      agentId: "test-agent",
+      pgvectorClient: client,
+      dryRun: true,
+    });
+
+    expect(client.deleteBySource).not.toHaveBeenCalled();
   });
 
   it("should create multiple chunks for large documents", async () => {
