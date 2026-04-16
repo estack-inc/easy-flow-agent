@@ -176,4 +176,20 @@ describe("ImageStore", () => {
 
     await fs.rm(outsideDir, { recursive: true, force: true });
   });
+
+  it("layer 名境界が異なるデータは別 digest になる", async () => {
+    const dataA: ImageData = {
+      manifest: { schemaVersion: 2 },
+      config: { name: "a", version: "1.0.0", description: "", tools: [], channels: [] },
+      layers: new Map([["a", Buffer.from("bc")]]),
+    };
+    const dataB: ImageData = {
+      manifest: { schemaVersion: 2 },
+      config: { name: "a", version: "1.0.0", description: "", tools: [], channels: [] },
+      layers: new Map([["ab", Buffer.from("c")]]),
+    };
+    const storedA = await store.save("org/a:1.0.0", dataA);
+    const storedB = await store.save("org/b:1.0.0", dataB);
+    expect(storedA.digest).not.toBe(storedB.digest);
+  });
 });

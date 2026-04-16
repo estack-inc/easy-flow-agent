@@ -66,4 +66,33 @@ describe("CLI commands", () => {
     const { stderr } = await runCli(["build"]);
     expect(stderr).toContain("easyflow build は現在未実装です。");
   });
+
+  describe("images", () => {
+    let storeDir: string;
+
+    beforeEach(async () => {
+      storeDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyflow-images-cli-test-"));
+    });
+
+    afterEach(async () => {
+      await fs.rm(storeDir, { recursive: true, force: true });
+    });
+
+    it("images — 空ストアでメッセージが表示される", async () => {
+      const { stdout } = await runCli(["images"], { EASYFLOW_STORE_DIR: storeDir });
+      expect(stdout).toContain("ローカルイメージはありません");
+    });
+
+    it("images rm — 存在しない ref でエラーメッセージが出る", async () => {
+      const { stderr } = await runCli(["images", "rm", "org/x:1.0.0"], {
+        EASYFLOW_STORE_DIR: storeDir,
+      });
+      expect(stderr).toContain("イメージが見つかりません");
+    });
+
+    it("images prune — 空ストアで 0 件と表示される", async () => {
+      const { stdout } = await runCli(["images", "prune"], { EASYFLOW_STORE_DIR: storeDir });
+      expect(stdout).toContain("0 件削除しました");
+    });
+  });
 });

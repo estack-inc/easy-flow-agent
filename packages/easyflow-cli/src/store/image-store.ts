@@ -284,11 +284,17 @@ export class ImageStore {
 
   private serializeImageData(data: ImageData): Buffer {
     const parts: Buffer[] = [];
-    parts.push(Buffer.from(JSON.stringify(data.manifest)));
-    parts.push(Buffer.from(JSON.stringify(data.config)));
+    const pushWithLength = (buf: Buffer): void => {
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(buf.length, 0);
+      parts.push(len);
+      parts.push(buf);
+    };
+    pushWithLength(Buffer.from(JSON.stringify(data.manifest)));
+    pushWithLength(Buffer.from(JSON.stringify(data.config)));
     for (const [key, value] of data.layers) {
-      parts.push(Buffer.from(key));
-      parts.push(value);
+      pushWithLength(Buffer.from(key));
+      pushWithLength(value);
     }
     return Buffer.concat(parts);
   }
