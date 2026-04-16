@@ -15,12 +15,16 @@ export class ConfigManager {
   }
 
   async load(): Promise<EasyflowConfig> {
+    let raw: string;
     try {
-      const raw = await fs.readFile(this.configPath, "utf-8");
-      return JSON.parse(raw) as EasyflowConfig;
-    } catch {
-      return structuredClone(DEFAULT_CONFIG);
+      raw = await fs.readFile(this.configPath, "utf-8");
+    } catch (error: unknown) {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        return structuredClone(DEFAULT_CONFIG);
+      }
+      throw error;
     }
+    return JSON.parse(raw) as EasyflowConfig;
   }
 
   async save(config: EasyflowConfig): Promise<void> {
@@ -51,13 +55,58 @@ export class ConfigManager {
   }
 }
 
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}
+
 /**
- * ドット記法でネストされた値を取得する。
- * 注意: キー自体にドットを含む場合（例: "ghcr.io"）は区切り文字と区別できない。
- * Phase 1 の制限事項として、FQDN をキーに使う場合は構造を工夫する必要がある。
+ * キー文字列をパスセグメントに分解する。
+ * ブラケット記法をサポートし、キー内のドットを保護する。
+ * 例:
+ *   "registry"                  → ["registry"]
+ *   "auth[ghcr.io].token"       → ["auth", "ghcr.io", "token"]
+ *   "auth.local.token"          → ["auth", "local", "token"]
  */
+function parseKeyPath(key: string): string[] {
+  const parts: string[] = [];
+  let i = 0;
+  while (i < key.length) {
+    if (key[i] === "[") {
+      const close = key.indexOf("]", i + 1);
+      if (close === -1) {
+        parts.push(key.slice(i));
+        break;
+      }
+      parts.push(key.slice(i + 1, close));
+      i = close + 1;
+      if (i < key.length && key[i] === ".") {
+        i++;
+      }
+    } else {
+      const dot = key.indexOf(".", i);
+      const bracket = key.indexOf("[", i);
+      let end: number;
+      if (dot === -1 && bracket === -1) {
+        end = key.length;
+      } else if (dot === -1) {
+        end = bracket;
+      } else if (bracket === -1) {
+        end = dot;
+      } else {
+        end = Math.min(dot, bracket);
+      }
+      parts.push(key.slice(i, end));
+      i = end;
+      if (i < key.length && key[i] === ".") {
+        i++;
+      }
+    }
+  }
+  return parts;
+}
+
 function getNestedValue(obj: Record<string, unknown>, key: string): unknown {
-  const parts = key.split(".");
+  const parts = parseKeyPath(key);
   let current: unknown = obj;
   for (const part of parts) {
     if (current === null || current === undefined || typeof current !== "object") {
@@ -69,7 +118,7 @@ function getNestedValue(obj: Record<string, unknown>, key: string): unknown {
 }
 
 function setNestedValue(obj: Record<string, unknown>, key: string, value: string): void {
-  const parts = key.split(".");
+  const parts = parseKeyPath(key);
   let current: Record<string, unknown> = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
