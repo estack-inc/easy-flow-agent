@@ -93,6 +93,20 @@ describe("ImageStore", () => {
     expect(result.freedBytes).toBeGreaterThan(0);
   });
 
+  it("パストラバーサルを含む ref を拒否する", async () => {
+    await expect(store.save("../../tmp/x:tag", createTestImageData())).rejects.toThrow(
+      "不正な ref",
+    );
+    await expect(store.load("../escape:latest")).rejects.toThrow("不正な ref");
+    await expect(store.remove("../escape:latest")).rejects.toThrow("不正な ref");
+  });
+
+  it("パストラバーサルを含む layer 名を拒否する", async () => {
+    const data = createTestImageData();
+    data.layers.set("../../etc/passwd", Buffer.from("malicious"));
+    await expect(store.save("org/agent:1.0.0", data)).rejects.toThrow("不正な layer 名");
+  });
+
   it("存在しない ref の load → null", async () => {
     const loaded = await store.load("nonexistent/agent:1.0.0");
     expect(loaded).toBeNull();

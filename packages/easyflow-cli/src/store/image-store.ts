@@ -13,6 +13,11 @@ export class ImageStore {
   }
 
   async save(ref: string, data: ImageData): Promise<StoredImage> {
+    ImageStore.validateRef(ref);
+    for (const layerName of data.layers.keys()) {
+      ImageStore.validateLayerName(layerName);
+    }
+
     await fs.mkdir(this.storeDir, { recursive: true });
 
     const digest = ImageStore.computeDigest(this.serializeImageData(data));
@@ -61,6 +66,7 @@ export class ImageStore {
   }
 
   async load(ref: string): Promise<ImageData | null> {
+    ImageStore.validateRef(ref);
     const { org, name, tag } = ImageStore.parseRef(ref);
     const tagDir = path.join(this.storeDir, org, name, tag);
 
@@ -88,6 +94,7 @@ export class ImageStore {
   }
 
   async remove(ref: string): Promise<boolean> {
+    ImageStore.validateRef(ref);
     const { org, name, tag } = ImageStore.parseRef(ref);
     const tagDir = path.join(this.storeDir, org, name, tag);
 
@@ -228,6 +235,32 @@ export class ImageStore {
       name.includes("..")
     ) {
       throw new Error(`Invalid layer name: "${name}"`);
+    }
+  }
+
+  /** ref の各セグメントがストアパス外にトラバーサルしないことを検証する */
+  static validateRef(ref: string): void {
+    const { org, name, tag } = ImageStore.parseRef(ref);
+    for (const segment of [org, name, tag]) {
+      if (segment === "" || segment === "." || segment === ".." || segment.includes("/..")) {
+        throw new Error(`不正な ref: "${ref}" — パストラバーサルを含むセグメントは許可されません`);
+      }
+    }
+    // 正規化後もストアパス配下に収まることを保証するため、
+    // 各セグメントは英数字、ハイフン、アンダースコア、ドット、スラッシュのみ許可
+    const safePattern = /^[a-zA-Z0-9._\-/]+$/;
+    const nameWithOrg = ref.split(":")[0];
+    if (!safePattern.test(nameWithOrg) || (tag && !safePattern.test(tag))) {
+      throw new Error(`不正な ref: "${ref}" — 許可されていない文字が含まれています`);
+    }
+  }
+
+  /** layer 名がレイヤーディレクトリ外にトラバーサルしないことを検証する */
+  static validateLayerName(name: string): void {
+    if (name === "" || name === "." || name === ".." || name.includes("/") || name.includes("\\")) {
+      throw new Error(
+        `不正な layer 名: "${name}" — ファイル名のみ許可されます（パス区切りは不可）`,
+      );
     }
   }
 
