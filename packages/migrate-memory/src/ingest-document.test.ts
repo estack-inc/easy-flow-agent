@@ -90,8 +90,9 @@ describe("ingestDocument", () => {
     });
 
     expect(result.totalChunks).toBe(1);
-    expect(result.sourceFile).toBe("doc:manual.txt");
+    expect(result.sourceFile).toBe(`doc:${filePath}`);
     expect(result.agentId).toBe("test-agent");
+    expect(client.deleteBySource).toHaveBeenCalledWith("test-agent", `doc:${filePath}`);
     expect(client.upsert).toHaveBeenCalledTimes(1);
 
     const chunks = client.upsert.mock.calls[0][0];
@@ -144,6 +145,53 @@ describe("ingestDocument", () => {
 
     expect(result.totalChunks).toBe(1);
     expect(client.upsert).not.toHaveBeenCalled();
+    expect(client.deleteBySource).not.toHaveBeenCalled();
+  });
+
+  it("should call deleteBySource before upsert to remove stale chunks", async () => {
+    const filePath = join(tmpDir, "doc.txt");
+    await writeFile(filePath, "updated content");
+
+    const client = createMockClient();
+    await ingestDocument({
+      filePath,
+      agentId: "test-agent",
+      pgvectorClient: client,
+    });
+
+    // deleteBySource must be called before upsert
+    expect(client.deleteBySource).toHaveBeenCalledTimes(1);
+    expect(client.upsert).toHaveBeenCalledTimes(1);
+    const deleteOrder = client.deleteBySource.mock.invocationCallOrder[0];
+    const upsertOrder = client.upsert.mock.invocationCallOrder[0];
+    expect(deleteOrder).toBeLessThan(upsertOrder);
+  });
+
+  it("should use absolute path as sourceFile to avoid same-name collisions", async () => {
+    const file1 = join(tmpDir, "sub1", "manual.txt");
+    const file2 = join(tmpDir, "sub2", "manual.txt");
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(join(tmpDir, "sub1"), { recursive: true });
+    await mkdir(join(tmpDir, "sub2"), { recursive: true });
+    await writeFile(file1, "content from sub1");
+    await writeFile(file2, "content from sub2");
+
+    const client = createMockClient();
+    const result1 = await ingestDocument({
+      filePath: file1,
+      agentId: "test-agent",
+      pgvectorClient: client,
+    });
+    const result2 = await ingestDocument({
+      filePath: file2,
+      agentId: "test-agent",
+      pgvectorClient: client,
+    });
+
+    // Different absolute paths produce different sourceFile values
+    expect(result1.sourceFile).not.toBe(result2.sourceFile);
+    expect(result1.sourceFile).toContain("sub1/manual.txt");
+    expect(result2.sourceFile).toContain("sub2/manual.txt");
   });
 
   it("should skip empty files", async () => {

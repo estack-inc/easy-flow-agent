@@ -3,11 +3,11 @@
  *
  * テキスト / Markdown ファイルを読み込み、チャンク分割 → pgvector upsert する。
  * sourceType は "document" を使用し、category でドキュメント種別を区別する。
- * 同一ファイルの再登録時は ON CONFLICT で上書き（冪等）。
+ * 同一ファイルの再登録時は deleteBySource → upsert で古いチャンクを残さない。
  */
 
 import { readFile } from "node:fs/promises";
-import { basename, extname } from "node:path";
+import { extname, resolve } from "node:path";
 import type { IPineconeClient } from "@easy-flow/pinecone-client";
 import { TextChunker } from "@easy-flow/pinecone-client";
 
@@ -48,7 +48,7 @@ export async function extractText(filePath: string): Promise<string> {
 
 export async function ingestDocument(opts: IngestDocumentOptions): Promise<IngestDocumentResult> {
   const { filePath, agentId, pgvectorClient, category, dryRun } = opts;
-  const sourceFile = opts.sourceFile ?? `doc:${basename(filePath)}`;
+  const sourceFile = opts.sourceFile ?? `doc:${resolve(filePath)}`;
 
   console.log(`\n📄 Ingesting: ${filePath}`);
   console.log(`   Agent: ${agentId}`);
@@ -75,10 +75,11 @@ export async function ingestDocument(opts: IngestDocumentOptions): Promise<Inges
   console.log(`   Chunks: ${chunks.length}`);
 
   if (dryRun) {
-    console.log("   [DRY RUN] Would upsert chunks");
+    console.log("   [DRY RUN] Would delete existing + upsert chunks");
   } else {
+    await pgvectorClient.deleteBySource(agentId, sourceFile);
     await pgvectorClient.upsert(chunks);
-    console.log(`   ✅ Upserted ${chunks.length} chunks`);
+    console.log(`   ✅ Replaced with ${chunks.length} chunks`);
   }
 
   return { filePath, sourceFile, agentId, totalChunks: chunks.length, category };
