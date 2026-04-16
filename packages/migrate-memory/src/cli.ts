@@ -519,6 +519,7 @@ async function runIngestDocument(args: string[]): Promise<void> {
       namespace: { type: "string" },
       category: { type: "string" },
       "dry-run": { type: "boolean", default: false },
+      force: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
     strict: true,
@@ -545,6 +546,7 @@ async function runIngestDocument(args: string[]): Promise<void> {
   }
 
   const dryRun = values["dry-run"] as boolean;
+  const force = values.force as boolean;
   const category = values.category as string | undefined;
 
   const pgvectorClient = createClient("pgvector", dryRun);
@@ -555,6 +557,7 @@ async function runIngestDocument(args: string[]): Promise<void> {
     pgvectorClient,
     category,
     dryRun,
+    force,
   });
 
   if (errors.length > 0) {

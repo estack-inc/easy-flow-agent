@@ -70,6 +70,22 @@ export async function runPreflight(files: string[]): Promise<{
   return { results, hasSecrets };
 }
 
+/**
+ * Check extracted text content for secret patterns.
+ * Returns an array of detected secret names (empty if clean).
+ */
+export function checkTextForSecrets(text: string): string[] {
+  const detected: string[] = [];
+  for (const line of text.split("\n")) {
+    for (const { name, pattern } of SECRET_PATTERNS) {
+      if (pattern.test(line) && !detected.includes(name)) {
+        detected.push(name);
+      }
+    }
+  }
+  return detected;
+}
+
 export function validateExcludePatterns(patterns: string[]): string[] {
   const warnings: string[] = [];
   for (const p of patterns) {

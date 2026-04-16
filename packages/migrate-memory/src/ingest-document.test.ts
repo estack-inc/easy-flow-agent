@@ -103,7 +103,8 @@ describe("ingestDocument", () => {
     expect(result.sourceFile).toBe(`doc:${filePath}`);
     expect(result.agentId).toBe("test-agent");
     expect(client.deleteBySource).toHaveBeenCalledWith("test-agent", `doc:${filePath}`);
-    expect(client.upsert).toHaveBeenCalledTimes(1);
+    // 2 upsert calls: validate + final (safe replace pattern)
+    expect(client.upsert).toHaveBeenCalledTimes(2);
 
     const chunks = client.upsert.mock.calls[0][0];
     expect(chunks[0].metadata.sourceType).toBe("document");
@@ -158,7 +159,7 @@ describe("ingestDocument", () => {
     expect(client.deleteBySource).not.toHaveBeenCalled();
   });
 
-  it("should call deleteBySource before upsert to remove stale chunks", async () => {
+  it("should validate upsert before deleting old chunks (safe replace)", async () => {
     const filePath = join(tmpDir, "doc.txt");
     await writeFile(filePath, "updated content");
 
@@ -169,12 +170,49 @@ describe("ingestDocument", () => {
       pgvectorClient: client,
     });
 
-    // deleteBySource must be called before upsert
+    // Safe replace: upsert (validate) → delete → upsert (final)
+    expect(client.upsert).toHaveBeenCalledTimes(2);
     expect(client.deleteBySource).toHaveBeenCalledTimes(1);
-    expect(client.upsert).toHaveBeenCalledTimes(1);
+    const firstUpsertOrder = client.upsert.mock.invocationCallOrder[0];
     const deleteOrder = client.deleteBySource.mock.invocationCallOrder[0];
-    const upsertOrder = client.upsert.mock.invocationCallOrder[0];
-    expect(deleteOrder).toBeLessThan(upsertOrder);
+    const secondUpsertOrder = client.upsert.mock.invocationCallOrder[1];
+    expect(firstUpsertOrder).toBeLessThan(deleteOrder);
+    expect(deleteOrder).toBeLessThan(secondUpsertOrder);
+  });
+
+  it("should preserve existing data when upsert fails", async () => {
+    const filePath = join(tmpDir, "doc.txt");
+    await writeFile(filePath, "content");
+
+    const client = createMockClient();
+    client.upsert.mockRejectedValueOnce(new Error("Embedding API error"));
+
+    await expect(
+      ingestDocument({ filePath, agentId: "test-agent", pgvectorClient: client }),
+    ).rejects.toThrow("Upsert validation failed");
+
+    // deleteBySource should NOT have been called
+    expect(client.deleteBySource).not.toHaveBeenCalled();
+  });
+
+  it("should reject documents containing secrets unless force is set", async () => {
+    const filePath = join(tmpDir, "secrets.txt");
+    await writeFile(filePath, "password: my_secret_pw123\nother content");
+
+    const client = createMockClient();
+
+    await expect(
+      ingestDocument({ filePath, agentId: "test-agent", pgvectorClient: client }),
+    ).rejects.toThrow("Secret detected");
+
+    // With force, should succeed
+    const result = await ingestDocument({
+      filePath,
+      agentId: "test-agent",
+      pgvectorClient: client,
+      force: true,
+    });
+    expect(result.totalChunks).toBeGreaterThan(0);
   });
 
   it("should use absolute path as sourceFile to avoid same-name collisions", async () => {
@@ -248,7 +286,7 @@ describe("ingestDocument", () => {
     });
 
     expect(result.totalChunks).toBe(3); // ceil(2500/900) = 3
-    expect(client.upsert).toHaveBeenCalledTimes(1);
+    expect(client.upsert).toHaveBeenCalledTimes(2); // validate + final
     expect(client.upsert.mock.calls[0][0]).toHaveLength(3);
   });
 });
@@ -281,7 +319,7 @@ describe("ingestDocuments", () => {
     expect(errors).toHaveLength(0);
     expect(results[0].totalChunks).toBe(1);
     expect(results[1].totalChunks).toBe(1);
-    expect(client.upsert).toHaveBeenCalledTimes(2);
+    expect(client.upsert).toHaveBeenCalledTimes(4); // 2 per file (validate + final)
   });
 
   it("should call ensureIndex in non-dry-run mode", async () => {
@@ -337,7 +375,7 @@ describe("ingestDocuments", () => {
 
     expect(errors).toHaveLength(1);
     expect(errors[0].filePath).toBe(file1);
-    expect(errors[0].error.message).toBe("DB connection lost");
+    expect(errors[0].error.message).toContain("DB connection lost");
     expect(results).toHaveLength(1);
     expect(results[0].filePath).toBe(file2);
   });

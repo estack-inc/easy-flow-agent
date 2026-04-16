@@ -123,8 +123,8 @@ async function extractUrl(url: string): Promise<string> {
   const contentType = res.headers.get("content-type") ?? "";
   const body = await res.text();
 
-  // Google Docs export returns plain text
-  if (contentType.includes("text/plain")) {
+  // Google Docs export returns plain text, Google Sheets returns CSV
+  if (contentType.includes("text/plain") || contentType.includes("text/csv")) {
     return body;
   }
 

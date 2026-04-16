@@ -199,15 +199,17 @@ describe("extractText", () => {
     vi.doUnmock("pdf-parse");
   });
 
-  it("should convert Google Sheets URL to csv export", async () => {
+  it("should convert Google Sheets URL to csv export and preserve CSV structure", async () => {
+    const csvData = "col1,col2\nval1,val2\nval3,val4";
     const fetchMock = vi.fn<(input: string | URL | Request) => Promise<Response>>();
     fetchMock.mockResolvedValueOnce(
-      new Response("col1,col2\nval1,val2", { headers: { "content-type": "text/plain" } }),
+      new Response(csvData, { headers: { "content-type": "text/csv; charset=utf-8" } }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
     const text = await extractText("https://docs.google.com/spreadsheets/d/abc123/edit");
-    expect(text).toBe("col1,col2\nval1,val2");
+    // CSV should be preserved as-is, not processed through HTML parser
+    expect(text).toBe(csvData);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://docs.google.com/spreadsheets/d/abc123/export?format=csv",
       expect.any(Object),
