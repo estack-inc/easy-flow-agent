@@ -99,9 +99,11 @@ async function extractPptx(filePath: string): Promise<string> {
 
 /** PDF からテキスト抽出 */
 async function extractPdf(filePath: string): Promise<string> {
+  const { readFile } = await import("node:fs/promises");
   const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse();
-  const result = await parser.loadPDF(filePath);
+  const data = await readFile(filePath);
+  const parser = new PDFParse({ data: new Uint8Array(data) });
+  const result = await parser.getText();
   return result.text;
 }
 
