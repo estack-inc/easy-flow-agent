@@ -1,0 +1,24 @@
+{
+  "name": "@easy-flow/easyflow-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI エージェントのビルド・配布・デプロイ CLI",
+  "type": "module",
+  "exports": {
+    ".": "./src/cli/index.ts"
+  },
+  "bin": {
+    "easyflow": "./bin/easyflow.mjs"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^13.0.0",
+    "ora": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "vitest": "^3.0.0"
+  }
+}
