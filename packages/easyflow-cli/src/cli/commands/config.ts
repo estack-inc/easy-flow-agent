@@ -7,7 +7,7 @@ export function registerConfigCommand(program: Command): void {
 
   config
     .command("get <key>")
-    .description("設定値を取得")
+    .description("設定値を取得（FQDN はブラケット記法: auth[ghcr.io].token）")
     .action(async (key: string) => {
       try {
         const manager = new ConfigManager();
@@ -24,7 +24,7 @@ export function registerConfigCommand(program: Command): void {
 
   config
     .command("set <key> <value>")
-    .description("設定値を変更")
+    .description("設定値を変更（FQDN はブラケット記法: auth[ghcr.io].token）")
     .action(async (key: string, value: string) => {
       try {
         const manager = new ConfigManager();

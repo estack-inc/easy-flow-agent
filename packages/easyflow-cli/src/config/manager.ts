@@ -23,11 +23,15 @@ export class ConfigManager {
     try {
       raw = await fs.readFile(this.configPath, "utf-8");
     } catch (error: unknown) {
+      // ファイルが存在しない場合のみデフォルトにフォールバックする。
+      // 権限エラー等は throw する。
       if (isNodeError(error) && error.code === "ENOENT") {
         return structuredClone(DEFAULT_CONFIG);
       }
       throw error;
     }
+    // JSON parse error は try-catch の外なのでそのまま利用者に返る。
+    // テスト: "壊れた config.json → JSON parse error をそのまま投げる"
     return JSON.parse(raw) as EasyflowConfig;
   }
 
