@@ -14,6 +14,10 @@ export class ConfigManager {
     this.configPath = path.join(this.configDir, "config.json");
   }
 
+  /**
+   * 設定ファイルを読み込む。ファイルが存在しない場合のみデフォルトを返す。
+   * JSON parse error や権限エラーはそのまま throw する。
+   */
   async load(): Promise<EasyflowConfig> {
     let raw: string;
     try {
@@ -32,6 +36,11 @@ export class ConfigManager {
     await fs.writeFile(this.configPath, JSON.stringify(config, null, 2), "utf-8");
   }
 
+  /**
+   * ドット区切りまたはブラケット記法でネストキーの値を取得する。
+   * FQDN を含むキーにはブラケット記法を使用すること。
+   * 例: `auth[ghcr.io].token` (✓)  `auth.ghcr.io.token` (✗ — ドットで分割される)
+   */
   async get(key: string): Promise<string | undefined> {
     const config = await this.load();
     const value = getNestedValue(config, key);
@@ -44,6 +53,7 @@ export class ConfigManager {
     return String(value);
   }
 
+  /** @see {@link get} — FQDN を含むキーにはブラケット記法を使用すること */
   async set(key: string, value: string): Promise<void> {
     const config = await this.load();
     setNestedValue(config, key, value);

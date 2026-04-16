@@ -39,6 +39,14 @@ describe("ConfigManager", () => {
     expect(config.auth["ghcr.io"]).toEqual({ token: "abc" });
   });
 
+  it("ドット記法で FQDN を渡すとキーが分割され型定義と一致しない", async () => {
+    // ドット記法は FQDN を意図通りに保存できない（ブラケット記法を使うべき）
+    await manager.set("auth.ghcr.io.token", "bad");
+    const config = await manager.load();
+    // auth["ghcr"] → { io: { token: "bad" } } という不正な構造になる
+    expect(config.auth["ghcr.io"]).toBeUndefined();
+  });
+
   it("存在しないキー → undefined", async () => {
     const value = await manager.get("unknown.key");
     expect(value).toBeUndefined();
