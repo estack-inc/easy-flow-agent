@@ -476,12 +476,21 @@ async function runPineconeToPgvector(args: string[]): Promise<void> {
 }
 
 function printIngestDocumentUsage(): void {
-  console.log(`Usage: easy-flow ingest-document [options] <file...>
+  console.log(`Usage: easy-flow ingest-document [options] <source...>
 
-Ingest text/markdown documents into pgvector for RAG retrieval.
+Ingest documents into pgvector for RAG retrieval.
 
 Arguments:
-  <file...>             One or more file paths to ingest (.txt, .md, .markdown, .text)
+  <source...>           One or more file paths or URLs to ingest
+
+Supported formats:
+  Text/Markdown         .txt, .md, .markdown, .text
+  Office                .docx, .xlsx, .pptx
+  PDF                   .pdf
+  URL                   http:// or https:// (HTML pages)
+  Google Docs           https://docs.google.com/document/d/...
+  Google Sheets         https://docs.google.com/spreadsheets/d/...
+  Google Slides         https://docs.google.com/presentation/d/...
 
 Options:
   --namespace <name>    Agent namespace (e.g. "agent:mell") [required]
@@ -495,7 +504,10 @@ Environment Variables:
 
 Examples:
   easy-flow ingest-document --namespace agent:mell manual.md
-  easy-flow ingest-document --namespace agent:mell --category faq faq.txt guide.md
+  easy-flow ingest-document --namespace agent:mell --category faq faq.txt guide.docx
+  easy-flow ingest-document --namespace agent:mell report.pdf slides.pptx data.xlsx
+  easy-flow ingest-document --namespace agent:mell https://example.com/page
+  easy-flow ingest-document --namespace agent:mell https://docs.google.com/document/d/xxx
   easy-flow ingest-document --namespace agent:mell --dry-run *.md`);
 }
 

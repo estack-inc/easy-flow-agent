@@ -28,10 +28,20 @@ describe("isSupportedExtension", () => {
     expect(isSupportedExtension("file.text")).toBe(true);
   });
 
+  it("should accept office and PDF files", () => {
+    expect(isSupportedExtension("file.pdf")).toBe(true);
+    expect(isSupportedExtension("file.docx")).toBe(true);
+    expect(isSupportedExtension("file.xlsx")).toBe(true);
+    expect(isSupportedExtension("file.pptx")).toBe(true);
+  });
+
+  it("should accept URLs", () => {
+    expect(isSupportedExtension("https://example.com")).toBe(true);
+  });
+
   it("should reject unsupported extensions", () => {
-    expect(isSupportedExtension("file.pdf")).toBe(false);
-    expect(isSupportedExtension("file.docx")).toBe(false);
     expect(isSupportedExtension("file.csv")).toBe(false);
+    expect(isSupportedExtension("file.jpg")).toBe(false);
   });
 });
 
@@ -61,9 +71,9 @@ describe("extractText", () => {
   });
 
   it("should throw for unsupported file type", async () => {
-    const filePath = join(tmpDir, "test.pdf");
-    await writeFile(filePath, "data");
-    await expect(extractText(filePath)).rejects.toThrow("Unsupported file type: .pdf");
+    const filePath = join(tmpDir, "test.csv");
+    await writeFile(filePath, "a,b,c");
+    await expect(extractText(filePath)).rejects.toThrow("Unsupported file type: .csv");
   });
 });
 
