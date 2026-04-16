@@ -81,7 +81,8 @@ describe("parseAgentfile", () => {
 
     // 親の sources (base-docs) + 子の sources (child-docs)
     expect(result.agentfile.knowledge?.sources).toHaveLength(2);
-    expect(result.agentfile.knowledge?.sources[0].path).toBe("./base-docs");
+    // テンプレートと子が同じディレクトリにあるため、パスは同じ相対形式で保持される
+    expect(result.agentfile.knowledge?.sources[0].path).toBe("base-docs");
     expect(result.agentfile.knowledge?.sources[1].path).toBe("./child-docs");
   });
 
@@ -141,7 +142,7 @@ metadata:
   version: "1.0.0"
   description: "test"
   author: test
-base: infra
+base: estack-inc/nonexistent:latest
 identity:
   name: "Test"
   soul: "Test agent."

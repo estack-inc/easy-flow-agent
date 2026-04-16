@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import type { Agentfile } from "./types.js";
@@ -14,7 +14,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const BUILTIN_TEMPLATES_DIR = join(__dirname, "../../templates");
 
 /** base 短縮名の一覧 */
-const SHORT_BASE_NAMES = ["monitor", "executive-assistant", "infra"];
+const SHORT_BASE_NAMES = ["monitor"];
 
 export interface ParseOptions {
   /** Agentfile のディレクトリ（相対パス解決用） */
@@ -99,6 +99,39 @@ function deepMerge(
     }
   }
   return result;
+}
+
+/**
+ * テンプレート内の相対パスを子 Agentfile の basedir 基準に変換する。
+ * テンプレートが別ディレクトリにある場合、相対パスを正しく解決するために必要。
+ */
+function resolveTemplatePaths(
+  parent: Agentfile,
+  templateDir: string,
+  childBasedir: string,
+): Agentfile {
+  const resolved = structuredClone(parent);
+
+  const rebase = (p: string): string => {
+    const abs = resolve(templateDir, p);
+    return relative(childBasedir, abs) || ".";
+  };
+
+  if (resolved.knowledge?.sources) {
+    for (const source of resolved.knowledge.sources) {
+      source.path = rebase(source.path);
+    }
+  }
+  if (resolved.agents_core?.file) {
+    resolved.agents_core.file = rebase(resolved.agents_core.file);
+  }
+  if (resolved.tools?.custom) {
+    for (const tool of resolved.tools.custom) {
+      tool.path = rebase(tool.path);
+    }
+  }
+
+  return resolved;
 }
 
 /**
@@ -231,7 +264,13 @@ export async function parseAgentfile(content: string, options: ParseOptions): Pr
         );
       }
 
-      const parentAgentfile = templateRaw as Agentfile;
+      // テンプレート内の相対パスを子の basedir 基準に変換
+      const templateDir = dirname(templateFile);
+      const parentAgentfile = resolveTemplatePaths(
+        templateRaw as Agentfile,
+        templateDir,
+        options.basedir,
+      );
       agentfile = mergeAgentfiles(parentAgentfile, agentfile);
       resolvedBase = baseValue;
     }

@@ -49,7 +49,7 @@
           "pattern": "^[a-z0-9-]+/[a-z0-9-]+:[a-z0-9._-]+$"
         },
         {
-          "enum": ["monitor", "executive-assistant", "infra"]
+          "enum": ["monitor"]
         }
       ]
     },
