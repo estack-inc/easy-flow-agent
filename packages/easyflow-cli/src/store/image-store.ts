@@ -224,15 +224,15 @@ export class ImageStore {
       }
     }
     // org/name は英数字、ハイフン、アンダースコア、ドット、スラッシュのみ許可
-    const namePattern = /^[a-zA-Z0-9._\-/]+$/;
+    const namePattern = /^[a-zA-Z0-9./_-]+$/;
     const nameWithOrg = ref.split(":")[0];
     if (!namePattern.test(nameWithOrg)) {
       throw new Error(`Invalid ref: "${ref}" — contains disallowed characters`);
     }
     // tag はスラッシュ不可（ディレクトリ階層と混同されるため）
-    const tagPattern = /^[a-zA-Z0-9._\-]+$/;
+    const tagPattern = /^[a-zA-Z0-9._-]+$/;
     if (tag && !tagPattern.test(tag)) {
-      throw new Error(`Invalid ref: "${ref}" — tag must not contain "/""`);
+      throw new Error(`Invalid ref: "${ref}" — tag must not contain "/"`);
     }
   }
 
