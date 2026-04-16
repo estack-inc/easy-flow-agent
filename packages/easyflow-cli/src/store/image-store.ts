@@ -193,7 +193,12 @@ export class ImageStore {
   }
 
   private buildRef(pathSegments: string[], tag: string): string {
-    const filtered = pathSegments.filter((s) => s !== NO_ORG_SENTINEL && s !== "tags");
+    // symlink の直上は必ず "tags" ディレクトリなので末尾 1 つだけ除去
+    const withoutTrailingTags =
+      pathSegments.length > 0 && pathSegments[pathSegments.length - 1] === "tags"
+        ? pathSegments.slice(0, -1)
+        : pathSegments;
+    const filtered = withoutTrailingTags.filter((s) => s !== NO_ORG_SENTINEL);
     const nameWithOrg = filtered.join("/");
     return `${nameWithOrg}:${tag}`;
   }

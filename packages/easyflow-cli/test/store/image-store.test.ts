@@ -220,4 +220,11 @@ describe("ImageStore", () => {
     const refs = images.map((img) => img.ref).sort();
     expect(refs).toEqual(["_/agent:latest", "agent:latest"]);
   });
+
+  it("name に tags を含む ref が list で正しく復元される", async () => {
+    await store.save("org/tags:1.0.0", createTestImageData("tags-name"));
+    const images = await store.list();
+    expect(images.length).toBe(1);
+    expect(images[0].ref).toBe("org/tags:1.0.0");
+  });
 });
