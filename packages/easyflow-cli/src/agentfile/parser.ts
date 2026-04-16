@@ -235,9 +235,19 @@ export async function parseAgentfile(content: string, options: ParseOptions): Pr
       agentfile = mergeAgentfiles(parentAgentfile, agentfile);
       resolvedBase = baseValue;
     }
+  } else if (agentfile.base) {
+    // base が明示指定されているのにテンプレートが見つからない場合はエラー
+    throw new AgentfileParseError(
+      `Base template not found: ${agentfile.base} (resolved as "${templateName}.yaml")`,
+      [
+        {
+          path: "/base",
+          message: `Base template not found: ${agentfile.base}`,
+          keyword: "baseTemplateNotFound",
+        },
+      ],
+    );
   }
-
-  // base フィールドはマージ後の結果からは除外しない（元の宣言を保持）
 
   // 4. セマンティックバリデーション
   const semanticErrors = validateSemantic(agentfile, options);

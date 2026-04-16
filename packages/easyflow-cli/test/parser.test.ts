@@ -131,4 +131,47 @@ describe("parseAgentfile", () => {
       expect(err.errors[0].keyword).toBe("yamlParse");
     }
   });
+
+  it("base が明示指定されテンプレートが見つからない場合エラー", async () => {
+    const content = `
+apiVersion: easyflow/v1
+kind: Agent
+metadata:
+  name: test-agent
+  version: "1.0.0"
+  description: "test"
+  author: test
+base: infra
+identity:
+  name: "Test"
+  soul: "Test agent."
+channels:
+  webchat:
+    enabled: true
+`;
+    // templatePaths を空ディレクトリに指定してテンプレートが見つからない状況を再現
+    await expect(
+      parseAgentfile(content, { basedir: fixturesDir, templatePaths: [fixturesDir] }),
+    ).rejects.toThrow(AgentfileParseError);
+
+    try {
+      await parseAgentfile(content, { basedir: fixturesDir, templatePaths: [fixturesDir] });
+      expect.fail("Should have thrown");
+    } catch (e) {
+      const err = e as AgentfileParseError;
+      expect(err.errors[0].keyword).toBe("baseTemplateNotFound");
+      expect(err.errors[0].path).toBe("/base");
+    }
+  });
+
+  it("組み込みテンプレートで base 継承が動作する", async () => {
+    // templatePaths を指定せず、組み込みテンプレートディレクトリを使用
+    const content = readFixture("valid-minimal.yaml");
+    const result = await parseAgentfile(content, { basedir: fixturesDir });
+
+    // base 省略時はデフォルト monitor テンプレートが組み込みから解決される
+    expect(result.resolvedBase).toBe("monitor");
+    // 組み込み monitor テンプレートの tools がマージされる
+    expect(result.agentfile.tools?.builtin).toContain("workflow-controller");
+  });
 });
