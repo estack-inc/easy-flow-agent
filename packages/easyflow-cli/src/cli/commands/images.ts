@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import { ImageStore } from "../../store/image-store.js";
+
 import { handleError } from "../../utils/errors.js";
 
 export function registerImagesCommand(program: Command): void {
@@ -34,9 +35,9 @@ export function registerImagesCommand(program: Command): void {
   images
     .command("rm <ref>")
     .description("イメージを削除")
-    .action(async (ref: string, _opts: unknown, cmd: Command) => {
+    .action(async (ref: string) => {
       try {
-        const dryRun = cmd.optsWithGlobals().dryRun === true;
+        const dryRun = program.opts().dryRun === true;
         if (dryRun) {
           console.log(`[dry-run] 削除対象: ${ref}`);
           return;
@@ -57,9 +58,9 @@ export function registerImagesCommand(program: Command): void {
   images
     .command("prune")
     .description("未使用イメージを削除")
-    .action(async (_opts: unknown, cmd: Command) => {
+    .action(async () => {
       try {
-        const dryRun = cmd.optsWithGlobals().dryRun === true;
+        const dryRun = program.opts().dryRun === true;
         if (dryRun) {
           console.log("[dry-run] prune をスキップしました");
           return;

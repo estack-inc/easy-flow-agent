@@ -25,9 +25,9 @@ export function registerConfigCommand(program: Command): void {
   config
     .command("set <key> <value>")
     .description("設定値を変更（FQDN はブラケット記法: auth[ghcr.io].token）")
-    .action(async (key: string, value: string, _opts: unknown, cmd: Command) => {
+    .action(async (key: string, value: string) => {
       try {
-        const dryRun = cmd.optsWithGlobals().dryRun === true;
+        const dryRun = program.opts().dryRun === true;
         if (dryRun) {
           console.log(`[dry-run] ${key} = ${value}`);
           return;

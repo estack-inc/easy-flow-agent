@@ -13,8 +13,9 @@ export class ImageStore {
   private storeDir: string;
 
   constructor(storeDir?: string) {
-    this.storeDir =
-      storeDir ?? process.env.EASYFLOW_STORE_DIR ?? path.join(os.homedir(), ".easyflow", "images");
+    this.storeDir = path.resolve(
+      storeDir ?? process.env.EASYFLOW_STORE_DIR ?? path.join(os.homedir(), ".easyflow", "images"),
+    );
   }
 
   /** ref ツリーのベースパスを返す */
