@@ -209,36 +209,30 @@ export class ImageStore {
   static parseRef(ref: string): { org: string; name: string; tag: string } {
     const [nameWithOrg, tag = "latest"] = ref.split(":");
     const parts = nameWithOrg.split("/");
-    const result =
-      parts.length < 2
-        ? { org: "_", name: parts[0], tag }
-        : { org: parts[0], name: parts.slice(1).join("/"), tag };
-    ImageStore.validatePathSegments(result.org, result.name, result.tag);
-    return result;
-  }
-
-  private static validatePathSegments(...segments: string[]): void {
-    for (const seg of segments) {
-      if (!seg || seg === "." || seg === ".." || seg.includes("..") || path.isAbsolute(seg)) {
-        throw new Error(`Invalid ref segment: "${seg}"`);
-      }
+    if (parts.length < 2) {
+      return { org: "_", name: parts[0], tag };
     }
+    return { org: parts[0], name: parts.slice(1).join("/"), tag };
   }
 
   /** ref の各セグメントがストアパス外にトラバーサルしないことを検証する */
   static validateRef(ref: string): void {
     const { org, name, tag } = ImageStore.parseRef(ref);
     for (const segment of [org, name, tag]) {
-      if (segment === "" || segment === "." || segment === ".." || segment.includes("/..")) {
+      if (segment === "" || segment === "." || segment === ".." || segment.includes("..")) {
         throw new Error(`Invalid ref: "${ref}" — path traversal segments are not allowed`);
       }
     }
-    // 正規化後もストアパス配下に収まることを保証するため、
-    // 各セグメントは英数字、ハイフン、アンダースコア、ドット、スラッシュのみ許可
-    const safePattern = /^[a-zA-Z0-9._\-/]+$/;
+    // org/name は英数字、ハイフン、アンダースコア、ドット、スラッシュのみ許可
+    const namePattern = /^[a-zA-Z0-9._\-/]+$/;
     const nameWithOrg = ref.split(":")[0];
-    if (!safePattern.test(nameWithOrg) || (tag && !safePattern.test(tag))) {
+    if (!namePattern.test(nameWithOrg)) {
       throw new Error(`Invalid ref: "${ref}" — contains disallowed characters`);
+    }
+    // tag はスラッシュ不可（ディレクトリ階層と混同されるため）
+    const tagPattern = /^[a-zA-Z0-9._\-]+$/;
+    if (tag && !tagPattern.test(tag)) {
+      throw new Error(`Invalid ref: "${ref}" — tag must not contain "/""`);
     }
   }
 

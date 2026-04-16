@@ -129,10 +129,16 @@ describe("ImageStore", () => {
     expect(pruned.freedBytes).toBeGreaterThan(0);
   });
 
-  it("パストラバーサルを含む ref は拒否される", () => {
-    expect(() => ImageStore.parseRef("../../tmp/x:tag")).toThrow("Invalid ref segment");
-    expect(() => ImageStore.parseRef("org/../etc:tag")).toThrow("Invalid ref segment");
-    expect(() => ImageStore.parseRef(":tag")).toThrow("Invalid ref segment");
+  it("パストラバーサルを含む ref は拒否される", async () => {
+    const data = createTestImageData();
+    await expect(store.save("../../tmp/x:tag", data)).rejects.toThrow("Invalid ref");
+    await expect(store.load("org/../etc:tag")).rejects.toThrow("Invalid ref");
+    await expect(store.remove("../escape:latest")).rejects.toThrow("Invalid ref");
+  });
+
+  it("tag にスラッシュを含む ref は拒否される", async () => {
+    const data = createTestImageData();
+    await expect(store.save("org/agent:release/canary", data)).rejects.toThrow("Invalid ref");
   });
 
   it("パストラバーサルを含む layer 名は save で拒否される", async () => {
