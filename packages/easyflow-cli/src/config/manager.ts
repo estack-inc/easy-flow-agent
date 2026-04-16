@@ -117,8 +117,19 @@ function getNestedValue(obj: Record<string, unknown>, key: string): unknown {
   return current;
 }
 
+const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+function validateKeySegments(parts: string[]): void {
+  for (const part of parts) {
+    if (DANGEROUS_KEYS.has(part)) {
+      throw new Error(`Dangerous config key segment: "${part}"`);
+    }
+  }
+}
+
 function setNestedValue(obj: Record<string, unknown>, key: string, value: string): void {
   const parts = parseKeyPath(key);
+  validateKeySegments(parts);
   let current: Record<string, unknown> = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];

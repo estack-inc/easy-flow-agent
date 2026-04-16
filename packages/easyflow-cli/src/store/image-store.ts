@@ -28,6 +28,7 @@ export class ImageStore {
     const layersDir = path.join(digestDir, "layers");
     await fs.mkdir(layersDir, { recursive: true });
     for (const [name, buffer] of data.layers) {
+      ImageStore.validateLayerName(name);
       await fs.writeFile(path.join(layersDir, name), buffer);
     }
 
@@ -201,10 +202,33 @@ export class ImageStore {
   static parseRef(ref: string): { org: string; name: string; tag: string } {
     const [nameWithOrg, tag = "latest"] = ref.split(":");
     const parts = nameWithOrg.split("/");
-    if (parts.length < 2) {
-      return { org: "_", name: parts[0], tag };
+    const result =
+      parts.length < 2
+        ? { org: "_", name: parts[0], tag }
+        : { org: parts[0], name: parts.slice(1).join("/"), tag };
+    ImageStore.validatePathSegments(result.org, result.name, result.tag);
+    return result;
+  }
+
+  private static validatePathSegments(...segments: string[]): void {
+    for (const seg of segments) {
+      if (!seg || seg === "." || seg === ".." || seg.includes("..") || path.isAbsolute(seg)) {
+        throw new Error(`Invalid ref segment: "${seg}"`);
+      }
     }
-    return { org: parts[0], name: parts.slice(1).join("/"), tag };
+  }
+
+  private static validateLayerName(name: string): void {
+    if (
+      !name ||
+      name.includes("/") ||
+      name.includes("\\") ||
+      name === "." ||
+      name === ".." ||
+      name.includes("..")
+    ) {
+      throw new Error(`Invalid layer name: "${name}"`);
+    }
   }
 
   static computeDigest(data: Buffer): string {

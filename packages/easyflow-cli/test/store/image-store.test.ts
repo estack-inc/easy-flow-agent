@@ -128,4 +128,16 @@ describe("ImageStore", () => {
     expect(pruned.removed).toBe(1);
     expect(pruned.freedBytes).toBeGreaterThan(0);
   });
+
+  it("パストラバーサルを含む ref は拒否される", () => {
+    expect(() => ImageStore.parseRef("../../tmp/x:tag")).toThrow("Invalid ref segment");
+    expect(() => ImageStore.parseRef("org/../etc:tag")).toThrow("Invalid ref segment");
+    expect(() => ImageStore.parseRef(":tag")).toThrow("Invalid ref segment");
+  });
+
+  it("パストラバーサルを含む layer 名は save で拒否される", async () => {
+    const data = createTestImageData();
+    data.layers.set("../../etc/passwd", Buffer.from("bad"));
+    await expect(store.save("org/agent:1.0.0", data)).rejects.toThrow("Invalid layer name");
+  });
 });

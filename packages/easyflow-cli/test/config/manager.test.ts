@@ -58,4 +58,13 @@ describe("ConfigManager", () => {
 
     await expect(manager.load()).rejects.toThrow(SyntaxError);
   });
+
+  it("__proto__ キーで prototype pollution が起きない", async () => {
+    await expect(manager.set("__proto__.polluted", "yes")).rejects.toThrow(
+      "Dangerous config key segment",
+    );
+    await expect(manager.set("constructor.polluted", "yes")).rejects.toThrow(
+      "Dangerous config key segment",
+    );
+  });
 });
