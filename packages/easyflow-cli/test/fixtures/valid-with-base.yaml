@@ -1,0 +1,30 @@
+apiVersion: easyflow/v1
+kind: Agent
+metadata:
+  name: child-agent
+  version: "1.0.0"
+  description: "ベース継承テスト用エージェント"
+  author: test
+base: monitor
+identity:
+  name: "カスタムモニター"
+  soul: "あなたはカスタマイズされた監視エージェントです。"
+knowledge:
+  sources:
+    - path: ./child-docs
+      type: customer_doc
+      description: "子のドキュメント"
+tools:
+  builtin:
+    - workflow-controller
+    - file-serve
+channels:
+  slack:
+    enabled: true
+  webchat:
+    enabled: true
+config:
+  model:
+    thinking: "claude-opus-4-6"
+  rag:
+    enabled: true

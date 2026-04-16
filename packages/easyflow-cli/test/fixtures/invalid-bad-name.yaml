@@ -1,0 +1,13 @@
+apiVersion: easyflow/v1
+kind: Agent
+metadata:
+  name: "Bad Agent Name!"
+  version: "1.0.0"
+  description: "不正な名前のエージェント"
+  author: test
+identity:
+  name: "テスト"
+  soul: "テスト用。"
+channels:
+  webchat:
+    enabled: true

@@ -1,0 +1,28 @@
+apiVersion: easyflow/v1
+kind: Agent
+metadata:
+  name: base-monitor
+  version: "1.0.0"
+  description: "モニターベーステンプレート"
+  author: estack-inc
+identity:
+  name: "モニター"
+  soul: "あなたはシステム監視エージェントです。"
+  policy:
+    - "異常検知時は即座に報告する"
+knowledge:
+  sources:
+    - path: ./base-docs
+      type: agents_rule
+      description: "ベースルール"
+tools:
+  builtin:
+    - workflow-controller
+channels:
+  webchat:
+    enabled: true
+config:
+  model:
+    default: "claude-haiku-4-5"
+  rag:
+    enabled: false
