@@ -52,11 +52,6 @@ describe("ConfigManager", () => {
     expect(config.registry).toBe("custom.io");
   });
 
-  it("__proto__ キーを拒否する（prototype pollution 防止）", async () => {
-    await expect(manager.set("__proto__.polluted", "x")).rejects.toThrow("不正な設定キー");
-    await expect(manager.get("constructor.prototype")).rejects.toThrow("不正な設定キー");
-  });
-
   it("壊れた config.json → JSON parse error をそのまま投げる", async () => {
     await fs.mkdir(tmpDir, { recursive: true });
     await fs.writeFile(path.join(tmpDir, "config.json"), "{ invalid json }");

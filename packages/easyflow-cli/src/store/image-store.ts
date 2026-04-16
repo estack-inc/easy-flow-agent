@@ -225,25 +225,12 @@ export class ImageStore {
     }
   }
 
-  private static validateLayerName(name: string): void {
-    if (
-      !name ||
-      name.includes("/") ||
-      name.includes("\\") ||
-      name === "." ||
-      name === ".." ||
-      name.includes("..")
-    ) {
-      throw new Error(`Invalid layer name: "${name}"`);
-    }
-  }
-
   /** ref の各セグメントがストアパス外にトラバーサルしないことを検証する */
   static validateRef(ref: string): void {
     const { org, name, tag } = ImageStore.parseRef(ref);
     for (const segment of [org, name, tag]) {
       if (segment === "" || segment === "." || segment === ".." || segment.includes("/..")) {
-        throw new Error(`不正な ref: "${ref}" — パストラバーサルを含むセグメントは許可されません`);
+        throw new Error(`Invalid ref: "${ref}" — path traversal segments are not allowed`);
       }
     }
     // 正規化後もストアパス配下に収まることを保証するため、
@@ -251,16 +238,14 @@ export class ImageStore {
     const safePattern = /^[a-zA-Z0-9._\-/]+$/;
     const nameWithOrg = ref.split(":")[0];
     if (!safePattern.test(nameWithOrg) || (tag && !safePattern.test(tag))) {
-      throw new Error(`不正な ref: "${ref}" — 許可されていない文字が含まれています`);
+      throw new Error(`Invalid ref: "${ref}" — contains disallowed characters`);
     }
   }
 
   /** layer 名がレイヤーディレクトリ外にトラバーサルしないことを検証する */
   static validateLayerName(name: string): void {
     if (name === "" || name === "." || name === ".." || name.includes("/") || name.includes("\\")) {
-      throw new Error(
-        `不正な layer 名: "${name}" — ファイル名のみ許可されます（パス区切りは不可）`,
-      );
+      throw new Error(`Invalid layer name: "${name}"`);
     }
   }
 

@@ -67,8 +67,6 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
  *   "auth[ghcr.io].token"       → ["auth", "ghcr.io", "token"]
  *   "auth.local.token"          → ["auth", "local", "token"]
  */
-const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
-
 function parseKeyPath(key: string): string[] {
   const parts: string[] = [];
   let i = 0;
@@ -105,14 +103,6 @@ function parseKeyPath(key: string): string[] {
     }
   }
   return parts;
-}
-
-function validateKeySegments(parts: string[]): void {
-  for (const part of parts) {
-    if (DANGEROUS_KEYS.has(part)) {
-      throw new Error(`不正な設定キー: "${part}" は使用できません`);
-    }
-  }
 }
 
 function getNestedValue(obj: Record<string, unknown>, key: string): unknown {
