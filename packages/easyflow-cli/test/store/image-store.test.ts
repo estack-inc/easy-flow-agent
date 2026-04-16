@@ -146,4 +146,34 @@ describe("ImageStore", () => {
     data.layers.set("../../etc/passwd", Buffer.from("bad"));
     await expect(store.save("org/agent:1.0.0", data)).rejects.toThrow("Invalid layer name");
   });
+
+  it("複数コロンを含む ref は拒否される", async () => {
+    const data = createTestImageData();
+    await expect(store.save("org/agent:release:2026", data)).rejects.toThrow(
+      'at most one ":" is allowed',
+    );
+  });
+
+  it("ストア外を指す symlink は load で無視される", async () => {
+    const ref = "org/agent:1.0.0";
+    await store.save(ref, createTestImageData());
+    const { org, name, tag } = ImageStore.parseRef(ref);
+    const tagDir = path.join(tmpDir, org, name, tag);
+
+    // symlink をストア外のディレクトリに差し替え
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "outside-store-"));
+    await fs.writeFile(path.join(outsideDir, "manifest.json"), "{}");
+    await fs.writeFile(path.join(outsideDir, "config.json"), "{}");
+    await fs.unlink(tagDir);
+    await fs.symlink(outsideDir, tagDir);
+
+    const loaded = await store.load(ref);
+    expect(loaded).toBeNull();
+
+    // list でもストア外を指す symlink は除外される
+    const images = await store.list();
+    expect(images.length).toBe(0);
+
+    await fs.rm(outsideDir, { recursive: true, force: true });
+  });
 });

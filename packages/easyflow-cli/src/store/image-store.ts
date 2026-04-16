@@ -72,6 +72,9 @@ export class ImageStore {
 
     try {
       const realDir = await fs.realpath(tagDir);
+      if (!(await this.assertInsideStore(realDir))) {
+        return null;
+      }
       const manifest = JSON.parse(await fs.readFile(path.join(realDir, "manifest.json"), "utf-8"));
       const config = JSON.parse(await fs.readFile(path.join(realDir, "config.json"), "utf-8"));
 
@@ -100,6 +103,11 @@ export class ImageStore {
 
     try {
       const realDir = await fs.realpath(tagDir);
+      if (!(await this.assertInsideStore(realDir))) {
+        // symlink points outside store — remove the dangling symlink but don't touch the target
+        await fs.unlink(tagDir);
+        return true;
+      }
       await fs.unlink(tagDir);
 
       // Check if any other symlinks point to this digest dir
@@ -142,6 +150,7 @@ export class ImageStore {
         // This is a tag symlink → resolve to digest dir and build StoredImage
         try {
           const realDir = await fs.realpath(fullPath);
+          if (!(await this.assertInsideStore(realDir))) continue;
           const tag = entry.name;
           const ref = this.buildRef(pathSegments, tag);
           const imageJsonPath = path.join(realDir, "image.json");
@@ -215,8 +224,33 @@ export class ImageStore {
     return { org: parts[0], name: parts.slice(1).join("/"), tag };
   }
 
+  /**
+   * symlink の解決先が storeDir 配下の sha256-* ディレクトリであることを検証する。
+   * ストア外を指す symlink は拒否し false を返す。
+   */
+  private async assertInsideStore(realDir: string): Promise<boolean> {
+    let resolvedStore: string;
+    try {
+      resolvedStore = await fs.realpath(this.storeDir);
+    } catch {
+      return false;
+    }
+    const normalized = path.resolve(realDir);
+    const storePrefix = resolvedStore + path.sep;
+    if (!normalized.startsWith(storePrefix)) {
+      return false;
+    }
+    const relative = normalized.slice(storePrefix.length);
+    return relative.startsWith("sha256-");
+  }
+
   /** ref の各セグメントがストアパス外にトラバーサルしないことを検証する */
   static validateRef(ref: string): void {
+    // コロンは 0 個または 1 個のみ許可
+    const colonCount = (ref.match(/:/g) || []).length;
+    if (colonCount > 1) {
+      throw new Error(`Invalid ref: "${ref}" — at most one ":" is allowed`);
+    }
     const { org, name, tag } = ImageStore.parseRef(ref);
     for (const segment of [org, name, tag]) {
       if (segment === "" || segment === "." || segment === ".." || segment.includes("..")) {
