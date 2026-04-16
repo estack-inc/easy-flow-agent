@@ -41,6 +41,7 @@ export class ConfigManager {
       encoding: "utf-8",
       mode: 0o600,
     });
+    await fs.chmod(this.configPath, 0o600);
   }
 
   /**
@@ -69,6 +70,7 @@ export class ConfigManager {
 
   async ensureConfigDir(): Promise<void> {
     await fs.mkdir(this.configDir, { recursive: true, mode: 0o700 });
+    await fs.chmod(this.configDir, 0o700);
   }
 }
 

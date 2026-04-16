@@ -85,7 +85,7 @@ describe("ImageStore", () => {
     // so let's create a scenario: save, then manually break the symlink
     await store.save(ref, createTestImageData("prune-test"));
     const { org, name, tag } = ImageStore.parseRef(ref);
-    const tagDir = path.join(tmpDir, "refs", org, name, tag);
+    const tagDir = path.join(tmpDir, "refs", org, name, "tags", tag);
     await fs.unlink(tagDir);
 
     const result = await store.prune();
@@ -165,7 +165,7 @@ describe("ImageStore", () => {
     const ref = "org/agent:1.0.0";
     await store.save(ref, createTestImageData());
     const { org, name, tag } = ImageStore.parseRef(ref);
-    const tagDir = path.join(tmpDir, "refs", org, name, tag);
+    const tagDir = path.join(tmpDir, "refs", org, name, "tags", tag);
 
     // symlink をストア外のディレクトリに差し替え
     const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "outside-store-"));

@@ -49,7 +49,7 @@ export class ImageStore {
     }
 
     const { org, name, tag } = ImageStore.parseRef(ref);
-    const tagDir = path.join(this.refsDir, org, name, tag);
+    const tagDir = path.join(this.refsDir, org, name, "tags", tag);
     await fs.mkdir(path.dirname(tagDir), { recursive: true });
 
     // Remove existing symlink if present
@@ -79,7 +79,7 @@ export class ImageStore {
   async load(ref: string): Promise<ImageData | null> {
     ImageStore.validateRef(ref);
     const { org, name, tag } = ImageStore.parseRef(ref);
-    const tagDir = path.join(this.refsDir, org, name, tag);
+    const tagDir = path.join(this.refsDir, org, name, "tags", tag);
 
     try {
       const realDir = await fs.realpath(tagDir);
@@ -110,7 +110,7 @@ export class ImageStore {
   async remove(ref: string): Promise<boolean> {
     ImageStore.validateRef(ref);
     const { org, name, tag } = ImageStore.parseRef(ref);
-    const tagDir = path.join(this.refsDir, org, name, tag);
+    const tagDir = path.join(this.refsDir, org, name, "tags", tag);
 
     try {
       const realDir = await fs.realpath(tagDir);
@@ -193,7 +193,7 @@ export class ImageStore {
   }
 
   private buildRef(pathSegments: string[], tag: string): string {
-    const filtered = pathSegments.filter((s) => s !== NO_ORG_SENTINEL);
+    const filtered = pathSegments.filter((s) => s !== NO_ORG_SENTINEL && s !== "tags");
     const nameWithOrg = filtered.join("/");
     return `${nameWithOrg}:${tag}`;
   }
