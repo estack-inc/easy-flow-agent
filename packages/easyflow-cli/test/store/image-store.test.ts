@@ -122,5 +122,10 @@ describe("ImageStore", () => {
     const images = await store.list();
     expect(images.length).toBe(1);
     expect(images[0].ref).toBe("org/agent:1.0.0");
+
+    // 古い digest ディレクトリが孤立 → prune で削除できる
+    const pruned = await store.prune();
+    expect(pruned.removed).toBe(1);
+    expect(pruned.freedBytes).toBeGreaterThan(0);
   });
 });

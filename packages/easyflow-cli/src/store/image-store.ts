@@ -256,7 +256,8 @@ export class ImageStore {
 
   private async hasSymlinksTo(targetDir: string): Promise<boolean> {
     try {
-      return await this.findSymlinksRecursive(this.storeDir, targetDir);
+      const normalizedTarget = await fs.realpath(targetDir);
+      return await this.findSymlinksRecursive(this.storeDir, normalizedTarget);
     } catch {
       return false;
     }
