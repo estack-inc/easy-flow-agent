@@ -28,6 +28,7 @@ import {
   DEFAULT_SKIP_PATTERNS,
   DEFAULT_TOKEN_BUDGET,
   DEFAULT_TOP_K,
+  extractMessageText,
   readAgentsCore,
   readOldTurns,
   resolveMaxQueryTokens,
@@ -112,8 +113,7 @@ export class PineconeContextEngine implements ContextEngine {
         return { ingested: false };
       }
 
-      const text =
-        typeof message.content === "string" ? message.content : JSON.stringify(message.content);
+      const text = extractMessageText(message.content);
 
       if (!text || text.length === 0) {
         return { ingested: false };
@@ -407,7 +407,7 @@ export class PineconeContextEngine implements ContextEngine {
       // Upsert all old turns to Pinecone (idempotent)
       // Use content hash (same as ingest()) to avoid duplicate entries
       const allChunks = oldMessages.flatMap((msg) => {
-        const text = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+        const text = extractMessageText(msg.content);
 
         if (!text || text.length === 0) {
           return [];

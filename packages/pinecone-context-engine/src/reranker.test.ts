@@ -33,12 +33,13 @@ describe("rerankChunks", () => {
   });
 
   describe("sourceType 重み付け", () => {
-    it("agents_rule > memory_file > session_turn > workflow_state の順にスコアが高い", () => {
+    it("agents_rule > document > memory_file > session_turn > workflow_state の順にスコアが高い", () => {
       const now = Date.now();
       const chunks = [
         makeChunk({ id: "wf", sourceType: "workflow_state", score: 0.9, createdAt: now }),
         makeChunk({ id: "st", sourceType: "session_turn", score: 0.9, createdAt: now }),
         makeChunk({ id: "mf", sourceType: "memory_file", score: 0.9, createdAt: now }),
+        makeChunk({ id: "doc", sourceType: "document", score: 0.9, createdAt: now }),
         makeChunk({ id: "ar", sourceType: "agents_rule", score: 0.9, createdAt: now }),
       ];
 
@@ -48,9 +49,10 @@ describe("rerankChunks", () => {
       const ranked = rerankChunks(chunks, now);
 
       expect(ranked[0].id).toBe("ar");
-      expect(ranked[1].id).toBe("mf");
-      expect(ranked[2].id).toBe("st");
-      expect(ranked[3].id).toBe("wf");
+      expect(ranked[1].id).toBe("doc");
+      expect(ranked[2].id).toBe("mf");
+      expect(ranked[3].id).toBe("st");
+      expect(ranked[4].id).toBe("wf");
     });
   });
 

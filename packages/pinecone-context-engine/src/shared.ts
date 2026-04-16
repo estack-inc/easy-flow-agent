@@ -2,6 +2,39 @@ import type { QueryResult } from "@easy-flow/pinecone-client";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { estimateTokens } from "./token-estimator.js";
 
+/**
+ * Extract text from an AgentMessage content field.
+ *
+ * - If `content` is a string, return it as-is.
+ * - If `content` is an array, extract `text` fields from `type: "text"` entries,
+ *   filtering out `toolCall`, `toolResult`, `thinking`, and other non-text types.
+ * - Returns empty string for `[]`, non-text-only arrays, or unrecognized formats.
+ */
+export function extractMessageText(content: AgentMessage["content"]): string {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (!Array.isArray(content)) {
+    return "";
+  }
+
+  const texts: string[] = [];
+  for (const part of content) {
+    if (
+      typeof part === "object" &&
+      part !== null &&
+      "type" in part &&
+      part.type === "text" &&
+      "text" in part &&
+      typeof part.text === "string"
+    ) {
+      texts.push(part.text);
+    }
+  }
+  return texts.join("\n");
+}
+
 export const DEFAULT_SKIP_PATTERNS = [
   "記憶しないで",
   "覚えなくていい",
@@ -11,6 +44,10 @@ export const DEFAULT_SKIP_PATTERNS = [
   "dont remember",
   "don't remember",
   "skip ingest",
+  // System noise patterns
+  "NO_REPLY",
+  "HEARTBEAT_OK",
+  "変更なしスキップ",
 ];
 
 export const RECENT_TURNS_FOR_QUERY = 3;
@@ -139,9 +176,7 @@ export async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
 
 export function buildQueryFromRecentTurns(messages: AgentMessage[]): string {
   const recent = messages.slice(-RECENT_TURNS_FOR_QUERY);
-  const texts = recent
-    .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)))
-    .filter((t) => t.length > 0);
+  const texts = recent.map((m) => extractMessageText(m.content)).filter((t) => t.length > 0);
   return texts.join("\n");
 }
 
@@ -167,9 +202,7 @@ export function buildQueryWithTruncation(
   maxTokens: number,
 ): TruncationResult {
   const recent = messages.slice(-RECENT_TURNS_FOR_QUERY);
-  const texts = recent
-    .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)))
-    .filter((t) => t.length > 0);
+  const texts = recent.map((m) => extractMessageText(m.content)).filter((t) => t.length > 0);
   const fullQuery = texts.join("\n");
   const originalTokens = estimateTokens(fullQuery);
 
