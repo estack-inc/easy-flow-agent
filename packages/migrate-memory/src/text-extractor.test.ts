@@ -128,4 +128,108 @@ describe("extractText", () => {
 
     vi.unstubAllGlobals();
   });
+
+  it("should extract text from .docx file via mammoth", async () => {
+    vi.doMock("mammoth", () => ({
+      default: {
+        extractRawText: vi.fn().mockResolvedValue({ value: "Word document content" }),
+      },
+    }));
+    // Re-import to pick up the mock
+    const { extractText: extract } = await import("./text-extractor.js");
+    const filePath = join(tmpDir, "test.docx");
+    await writeFile(filePath, "dummy"); // mammoth is mocked so content doesn't matter
+    const text = await extract(filePath);
+    expect(text).toBe("Word document content");
+    vi.doUnmock("mammoth");
+  });
+
+  it("should extract text from .xlsx file via xlsx", async () => {
+    vi.doMock("xlsx", () => ({
+      readFile: vi.fn().mockReturnValue({
+        SheetNames: ["Sheet1"],
+        Sheets: { Sheet1: {} },
+      }),
+      utils: {
+        sheet_to_csv: vi.fn().mockReturnValue("A,B,C\n1,2,3"),
+      },
+    }));
+    const { extractText: extract } = await import("./text-extractor.js");
+    const filePath = join(tmpDir, "test.xlsx");
+    await writeFile(filePath, "dummy");
+    const text = await extract(filePath);
+    expect(text).toContain("Sheet1");
+    expect(text).toContain("A,B,C");
+    vi.doUnmock("xlsx");
+  });
+
+  it("should extract text from .pptx file via jszip", async () => {
+    const slideXml = "<a:t>Slide title</a:t><a:t>Bullet point</a:t>";
+    vi.doMock("jszip", () => ({
+      default: {
+        loadAsync: vi.fn().mockResolvedValue({
+          files: {
+            "ppt/slides/slide1.xml": {
+              async: vi.fn().mockResolvedValue(slideXml),
+            },
+          },
+        }),
+      },
+    }));
+    const { extractText: extract } = await import("./text-extractor.js");
+    const filePath = join(tmpDir, "test.pptx");
+    await writeFile(filePath, "dummy");
+    const text = await extract(filePath);
+    expect(text).toContain("Slide title");
+    expect(text).toContain("Bullet point");
+    vi.doUnmock("jszip");
+  });
+
+  it("should extract text from .pdf file via pdf-parse", async () => {
+    vi.doMock("pdf-parse", () => ({
+      PDFParse: vi.fn().mockImplementation(() => ({
+        getText: vi.fn().mockResolvedValue({ text: "PDF document text" }),
+      })),
+    }));
+    const { extractText: extract } = await import("./text-extractor.js");
+    const filePath = join(tmpDir, "test.pdf");
+    await writeFile(filePath, "dummy");
+    const text = await extract(filePath);
+    expect(text).toBe("PDF document text");
+    vi.doUnmock("pdf-parse");
+  });
+
+  it("should convert Google Sheets URL to csv export", async () => {
+    const fetchMock = vi.fn<(input: string | URL | Request) => Promise<Response>>();
+    fetchMock.mockResolvedValueOnce(
+      new Response("col1,col2\nval1,val2", { headers: { "content-type": "text/plain" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const text = await extractText("https://docs.google.com/spreadsheets/d/abc123/edit");
+    expect(text).toBe("col1,col2\nval1,val2");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://docs.google.com/spreadsheets/d/abc123/export?format=csv",
+      expect.any(Object),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("should convert Google Slides URL to txt export", async () => {
+    const fetchMock = vi.fn<(input: string | URL | Request) => Promise<Response>>();
+    fetchMock.mockResolvedValueOnce(
+      new Response("Slide 1 text\nSlide 2 text", { headers: { "content-type": "text/plain" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const text = await extractText("https://docs.google.com/presentation/d/abc123/edit");
+    expect(text).toBe("Slide 1 text\nSlide 2 text");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://docs.google.com/presentation/d/abc123/export?format=txt",
+      expect.any(Object),
+    );
+
+    vi.unstubAllGlobals();
+  });
 });
