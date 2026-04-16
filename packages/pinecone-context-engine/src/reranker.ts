@@ -12,6 +12,7 @@ export interface RankedChunk {
 
 const SOURCE_TYPE_WEIGHTS: Record<ChunkMetadata["sourceType"], number> = {
   agents_rule: 1.0,
+  document: 0.9,
   memory_file: 0.8,
   session_turn: 0.6,
   workflow_state: 0.5,
