@@ -175,4 +175,24 @@ channels:
     // 組み込み monitor テンプレートの tools がマージされる
     expect(result.agentfile.tools?.builtin).toContain("workflow-controller");
   });
+
+  it("別ディレクトリのテンプレートの相対パスが子の basedir 基準に正規化される", async () => {
+    // テンプレートは fixtures/separate-template/ に配置
+    // 子 Agentfile は fixtures/ を basedir として実行
+    const separateTemplateDir = join(fixturesDir, "separate-template");
+    const content = readFixture("valid-minimal.yaml");
+    const result = await parseAgentfile(content, {
+      basedir: fixturesDir,
+      templatePaths: [separateTemplateDir],
+    });
+
+    expect(result.resolvedBase).toBe("monitor");
+
+    // テンプレートの knowledge.sources[0].path は "./tmpl-docs"
+    // テンプレートは fixtures/separate-template/ にあるので、
+    // 子の basedir (fixtures/) 基準では "separate-template/tmpl-docs" になる
+    const source = result.agentfile.knowledge?.sources?.find((s) => s.path.includes("tmpl-docs"));
+    expect(source).toBeDefined();
+    expect(source?.path).toBe("separate-template/tmpl-docs");
+  });
 });

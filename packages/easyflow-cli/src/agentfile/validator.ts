@@ -19,7 +19,10 @@ function createAjv(): Ajv {
 
   ajv.addFormat("semver", {
     type: "string",
-    validate: (value: string) => /^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/.test(value),
+    validate: (value: string) =>
+      /^\d+\.\d+\.\d+(-[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?(\+[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?$/.test(
+        value,
+      ),
   });
 
   return ajv;

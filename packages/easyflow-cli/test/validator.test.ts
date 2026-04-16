@@ -108,6 +108,58 @@ describe("validateSchema", () => {
     expect(errors.some((e) => e.keyword === "format")).toBe(true);
   });
 
+  it("semver pre-release 付きバージョンが受理される", () => {
+    const data = createValidAgentfile({
+      metadata: {
+        name: "test-agent",
+        version: "1.0.0-alpha.1",
+        description: "test",
+        author: "test",
+      },
+    });
+    const errors = validateSchema(data);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("semver build metadata 付きバージョンが受理される", () => {
+    const data = createValidAgentfile({
+      metadata: {
+        name: "test-agent",
+        version: "1.0.0+build.123",
+        description: "test",
+        author: "test",
+      },
+    });
+    const errors = validateSchema(data);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("semver pre-release にハイフンを含むバージョンが受理される", () => {
+    const data = createValidAgentfile({
+      metadata: {
+        name: "test-agent",
+        version: "1.0.0-alpha-1",
+        description: "test",
+        author: "test",
+      },
+    });
+    const errors = validateSchema(data);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("semver pre-release にアンダースコアを含むバージョンはエラー", () => {
+    const data = createValidAgentfile({
+      metadata: {
+        name: "test-agent",
+        version: "1.0.0-rc_1",
+        description: "test",
+        author: "test",
+      },
+    });
+    const errors = validateSchema(data);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
   it("identity.soul が未指定でエラー", () => {
     const data = {
       apiVersion: "easyflow/v1",
