@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -368,7 +369,7 @@ export class ImageStore {
   }
 
   private async findSymlinksRecursive(dir: string, targetDir: string): Promise<boolean> {
-    let entries: Awaited<ReturnType<typeof fs.readdir<{ withFileTypes: true }>>>;
+    let entries: Dirent[];
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
     } catch {

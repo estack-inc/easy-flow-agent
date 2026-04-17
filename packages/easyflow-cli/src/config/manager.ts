@@ -52,7 +52,7 @@ export class ConfigManager {
   async get(key: string): Promise<string | undefined> {
     validateFqdnKeyFormat(key);
     const config = await this.load();
-    const value = getNestedValue(config, key);
+    const value = getNestedValue(config as unknown as Record<string, unknown>, key);
     if (value === undefined || value === null) {
       return undefined;
     }
@@ -66,7 +66,7 @@ export class ConfigManager {
   async set(key: string, value: string): Promise<void> {
     validateFqdnKeyFormat(key);
     const config = await this.load();
-    setNestedValue(config, key, value);
+    setNestedValue(config as unknown as Record<string, unknown>, key, value);
     await this.save(config);
   }
 
