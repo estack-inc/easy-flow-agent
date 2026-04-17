@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -120,14 +120,16 @@ describe("easyflow convert", () => {
     expect(stderr).toMatch(/変換元テンプレートディレクトリ|--source/);
   });
 
-  it("OPENCLAW_TEMPLATES_DIR を用いたパス解決が動く", async () => {
+  it("OPENCLAW_TEMPLATES_DIR を用いたパス解決が動く (env/templates/<name>)", async () => {
     const outputPath = join(workDir, "env.yaml");
-    const rootDir = resolve(SAMPLE_TEMPLATE_DIR, "..");
-    writeFileSync(join(workDir, "marker"), "");
+    // openclaw-templates の実レイアウト (<root>/templates/<name>/) を再現
+    const envRoot = join(workDir, "env-root");
+    mkdirSync(join(envRoot, "templates"), { recursive: true });
+    symlinkSync(SAMPLE_TEMPLATE_DIR, join(envRoot, "templates", "sample-template"));
 
     const { stderr, code } = await runCli(
       ["convert", "--template", "sample-template", "--output", outputPath],
-      { OPENCLAW_TEMPLATES_DIR: rootDir },
+      { OPENCLAW_TEMPLATES_DIR: envRoot },
     );
 
     expect(code).toBe(0);

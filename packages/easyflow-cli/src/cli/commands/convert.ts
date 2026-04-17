@@ -23,7 +23,7 @@ function resolveSourceDir(template: string, explicit?: string): string {
 
   const envDir = process.env.OPENCLAW_TEMPLATES_DIR;
   if (envDir) {
-    return resolve(envDir, template);
+    return resolve(envDir, "templates", template);
   }
 
   const defaultDir = resolve(process.cwd(), "..", "openclaw-templates", "templates", template);

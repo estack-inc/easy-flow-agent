@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parseAgentfile } from "../../src/agentfile/parser.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const TEMPLATES_DIR = resolve(__dirname, "../../templates");
+const TEMPLATES_DIR = resolve(__dirname, "../../bundled-templates");
 
 const BUNDLED_TEMPLATES = ["monitor", "executive-assistant"] as const;
 
