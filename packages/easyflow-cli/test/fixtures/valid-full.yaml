@@ -1,0 +1,65 @@
+apiVersion: easyflow/v1
+kind: Agent
+metadata:
+  name: full-featured-agent
+  version: "2.1.0"
+  description: "全フィールド入りテストエージェント"
+  author: estack-inc
+  labels:
+    env: production
+    team: platform
+base: monitor
+identity:
+  name: "フル機能エージェント"
+  soul: "あなたは高機能なアシスタントです。ユーザーの質問に丁寧に回答します。"
+  policy:
+    - "個人情報を外部に送信しない"
+    - "不明な場合は正直に分からないと回答する"
+agents_core:
+  inline: |
+    ## コアルール
+    - 常に丁寧語で応答する
+    - 回答は簡潔に
+knowledge:
+  sources:
+    - path: ./docs
+      type: agents_rule
+      description: "エージェントルール集"
+    - path: ./data/customers
+      type: customer_doc
+      description: "顧客ドキュメント"
+      ignore:
+        - "*.tmp"
+        - ".DS_Store"
+  config:
+    chunk_size: 500
+    chunk_overlap: 100
+    min_score: 0.8
+    top_k: 5
+    token_budget: 3000
+tools:
+  builtin:
+    - workflow-controller
+    - file-serve
+  custom:
+    - path: ./tools/my-tool.ts
+      name: my-custom-tool
+channels:
+  slack:
+    enabled: true
+  line:
+    enabled: false
+  webchat:
+    enabled: true
+    invite_codes:
+      - "ABC123"
+      - "DEF456"
+config:
+  model:
+    default: "claude-sonnet-4-6"
+    thinking: "claude-opus-4-6"
+  rag:
+    enabled: true
+  env:
+    LOG_LEVEL: "debug"
+    MAX_TOKENS: "4096"

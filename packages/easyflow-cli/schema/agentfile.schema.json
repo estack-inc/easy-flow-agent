@@ -1,0 +1,247 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://easyflow.dev/schemas/agentfile.schema.json",
+  "title": "Agentfile",
+  "description": "Agentfile (YAML) schema for Easy Flow Agent Platform",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "identity"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "easyflow/v1"
+    },
+    "kind": {
+      "const": "Agent"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "version", "description", "author"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "minLength": 3,
+          "maxLength": 64
+        },
+        "version": {
+          "type": "string",
+          "format": "semver"
+        },
+        "description": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "base": {
+      "type": "string",
+      "anyOf": [
+        {
+          "pattern": "^[a-z0-9-]+/[a-z0-9-]+:[a-z0-9._-]+$"
+        },
+        {
+          "enum": ["monitor"]
+        }
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "required": ["name", "soul"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "soul": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "agents_core": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "inline": {
+          "type": "string"
+        }
+      }
+    },
+    "knowledge": {
+      "type": "object",
+      "required": ["sources"],
+      "additionalProperties": false,
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "type", "description"],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["agents_rule", "customer_doc", "memory_entry"]
+              },
+              "description": {
+                "type": "string"
+              },
+              "ignore": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "chunk_size": {
+              "type": "number"
+            },
+            "chunk_overlap": {
+              "type": "number"
+            },
+            "min_score": {
+              "type": "number"
+            },
+            "top_k": {
+              "type": "number"
+            },
+            "token_budget": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "builtin": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["workflow-controller", "file-serve", "model-router"]
+          }
+        },
+        "custom": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "name"],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "channels": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "slack": {
+          "type": "object",
+          "required": ["enabled"],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
+        "line": {
+          "type": "object",
+          "required": ["enabled"],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
+        "webchat": {
+          "type": "object",
+          "required": ["enabled"],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "invite_codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "default": {
+              "type": "string"
+            },
+            "thinking": {
+              "type": "string"
+            }
+          }
+        },
+        "rag": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

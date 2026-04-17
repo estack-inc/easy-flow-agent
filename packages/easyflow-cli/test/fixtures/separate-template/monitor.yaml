@@ -1,0 +1,24 @@
+apiVersion: easyflow/v1
+kind: Agent
+metadata:
+  name: separate-monitor
+  version: "1.0.0"
+  description: "別ディレクトリのモニターテンプレート"
+  author: estack-inc
+identity:
+  name: "モニター"
+  soul: "あなたはシステム監視エージェントです。"
+knowledge:
+  sources:
+    - path: ./tmpl-docs
+      type: agents_rule
+      description: "テンプレート固有のドキュメント"
+tools:
+  builtin:
+    - workflow-controller
+channels:
+  webchat:
+    enabled: true
+config:
+  model:
+    default: "claude-haiku-4-5"

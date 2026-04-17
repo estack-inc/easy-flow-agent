@@ -1,0 +1,12 @@
+apiVersion: easyflow/v1
+kind: Agent
+metadata:
+  name: no-soul-agent
+  version: "1.0.0"
+  description: "soul が未指定のエージェント"
+  author: test
+identity:
+  name: "テスト"
+channels:
+  webchat:
+    enabled: true
