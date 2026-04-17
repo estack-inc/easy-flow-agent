@@ -1,5 +1,5 @@
 import type { Agentfile } from "../../agentfile/types.js";
-import { packLayer, type PackEntry } from "../tar-pack.js";
+import { type PackEntry, packLayer } from "../tar-pack.js";
 import type { LayerData } from "../types.js";
 
 /**

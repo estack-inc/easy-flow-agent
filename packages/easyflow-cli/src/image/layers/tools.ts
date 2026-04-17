@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Agentfile, CustomTool } from "../../agentfile/types.js";
-import { packLayer, type PackEntry } from "../tar-pack.js";
+import { type PackEntry, packLayer } from "../tar-pack.js";
 import type { LayerData } from "../types.js";
 
 interface ToolsManifest {
