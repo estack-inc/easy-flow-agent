@@ -87,6 +87,25 @@ describe("easyflow convert", () => {
     expect(stderr).toContain("Output: <stdout>");
   });
 
+  it("--no-color + stdout 出力時に YAML へ進捗ログが混入しない", async () => {
+    const { stdout, stderr, code } = await runCli([
+      "--no-color",
+      "convert",
+      "--template",
+      "sample",
+      "--source",
+      SAMPLE_TEMPLATE_DIR,
+    ]);
+
+    expect(code).toBe(0);
+    // YAML だけを jsyaml に食わせてパース可能であること（進捗ログが混入すると破綻する）
+    const parsed = yaml.load(stdout) as Record<string, unknown>;
+    expect(parsed.apiVersion).toBe("easyflow/v1");
+    expect(parsed.kind).toBe("Agent");
+    // 進捗ログは stderr 側に出ている
+    expect(stderr).toMatch(/\d+\/\d+ /);
+  });
+
   it("--template infra で明示的に変換対象外メッセージを返す", async () => {
     const { stderr, code } = await runCli(["convert", "--template", "infra"]);
     expect(code).not.toBe(0);
