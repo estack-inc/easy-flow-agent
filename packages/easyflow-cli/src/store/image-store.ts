@@ -77,6 +77,24 @@ export class ImageStore {
     return storedImage;
   }
 
+  /** ref に対応する StoredImage（image.json の内容）を返す。存在しなければ null。 */
+  async loadStoredImage(ref: string): Promise<StoredImage | null> {
+    ImageStore.validateRef(ref);
+    const { org, name, tag } = ImageStore.parseRef(ref);
+    const tagDir = path.join(this.refsDir, org, name, "tags", tag);
+
+    try {
+      const realDir = await fs.realpath(tagDir);
+      if (!(await this.assertInsideStore(realDir))) {
+        return null;
+      }
+      const raw = await fs.readFile(path.join(realDir, "image.json"), "utf-8");
+      return JSON.parse(raw) as StoredImage;
+    } catch {
+      return null;
+    }
+  }
+
   async load(ref: string): Promise<ImageData | null> {
     ImageStore.validateRef(ref);
     const { org, name, tag } = ImageStore.parseRef(ref);
