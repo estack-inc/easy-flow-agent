@@ -2,6 +2,7 @@ import { Command } from "commander";
 import {
   registerBuildCommand,
   registerConfigCommand,
+  registerConvertCommand,
   registerImagesCommand,
 } from "./commands/index.js";
 
@@ -22,9 +23,10 @@ program
 registerConfigCommand(program);
 registerImagesCommand(program);
 registerBuildCommand(program);
+registerConvertCommand(program);
 
 // 後続タスクで追加するコマンドのスタブ
-const stubCommands = ["deploy", "validate", "inspect", "push", "pull", "convert", "knowledge"];
+const stubCommands = ["deploy", "validate", "inspect", "push", "pull", "knowledge"];
 for (const name of stubCommands) {
   program
     .command(name)

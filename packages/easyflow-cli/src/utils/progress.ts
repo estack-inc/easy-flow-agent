@@ -17,7 +17,7 @@ export class StepProgress {
     const prefix = this.formatPrefix(step);
 
     if (this.noColor) {
-      console.log(`${prefix} ${label} ...`);
+      console.error(`${prefix} ${label} ...`);
       return;
     }
 
@@ -33,7 +33,7 @@ export class StepProgress {
 
     if (this.noColor || !this.spinner) {
       const prefix = this.formatPrefix(this.currentStep);
-      console.log(`${prefix} done (${elapsed}s)${suffix}`);
+      console.error(`${prefix} done (${elapsed}s)${suffix}`);
       return;
     }
 
