@@ -103,6 +103,23 @@ describe("convertTemplateToAgentfile", () => {
     expect(result.agentfile.identity.name).toBe("モニター企業向けデフォルト");
   });
 
+  it("H1 がファイル名を前置した文書タイトル（例: IDENTITY.md — 役割定義）なら meta.name にフォールバックする", async () => {
+    const result = await convertTemplateToAgentfile(
+      makeSnapshot({
+        identityMd: "# IDENTITY.md — <AGENT_NAME> の役割定義\n本文",
+        metaJson: {
+          name: "経営参謀・エグゼクティブアシスタント",
+          version: "1.0.0",
+          description: "x",
+          author: "estack-inc",
+        },
+      }),
+      { templateName: "executive-assistant" },
+    );
+
+    expect(result.agentfile.identity.name).toBe("経営参謀・エグゼクティブアシスタント");
+  });
+
   it("POLICY.md の箇条書きが identity.policy になる", async () => {
     const policyMd = "# POLICY\n\n- 最初のルール\n- 次のルール\n  - サブ項目\n";
     const result = await convertTemplateToAgentfile(makeSnapshot({ policyMd }), {

@@ -41,9 +41,12 @@ function extractH1(markdown: string): string | undefined {
   return undefined;
 }
 
-/** `IDENTITY.md` のような「ファイル名そのもの」を H1 にしているケースを弾く */
+/**
+ * `IDENTITY.md` 単体、および `IDENTITY.md — 役割定義` のように
+ * ファイル名を前置した文書タイトルを H1 として採用するのを防ぐ。
+ */
 function isFilenameLikeHeading(heading: string): boolean {
-  return /^[A-Za-z0-9_-]+\.(md|markdown)$/i.test(heading);
+  return /^[A-Za-z0-9_-]+\.(md|markdown)(\s|[-:—–]|$)/i.test(heading);
 }
 
 function extractFirstParagraph(markdown: string): string | undefined {
