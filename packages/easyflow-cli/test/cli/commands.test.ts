@@ -63,8 +63,8 @@ describe("CLI commands", () => {
   });
 
   it("未実装コマンドでエラーメッセージが表示される", async () => {
-    const { stderr } = await runCli(["deploy"]);
-    expect(stderr).toContain("easyflow deploy は現在未実装です。");
+    const { stderr } = await runCli(["push"]);
+    expect(stderr).toContain("easyflow push は現在未実装です。");
   });
 
   describe("images", () => {
