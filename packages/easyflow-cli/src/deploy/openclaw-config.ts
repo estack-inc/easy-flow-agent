@@ -38,14 +38,15 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
   const gatewayToken = secrets.GATEWAY_TOKEN ?? crypto.randomBytes(24).toString("hex");
 
   // ---- env ----
-  const envKeys = [
+  // Agentfile の config.env をベースに、シークレット whitelist を上書きする
+  const env: Record<string, string> = { ...(agentfile.config?.env ?? {}) };
+  const secretEnvKeys = [
     "ANTHROPIC_API_KEY",
     "GEMINI_API_KEY",
     "OPENAI_API_KEY",
     "PINECONE_API_KEY",
   ] as const;
-  const env: Record<string, string> = {};
-  for (const key of envKeys) {
+  for (const key of secretEnvKeys) {
     if (secrets[key]) {
       env[key] = secrets[key];
     }
@@ -110,6 +111,9 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
   }
   if (builtinTools.includes("file-serve")) {
     pluginEntries["file-serve"] = { enabled: true, config: {} };
+  }
+  if (builtinTools.includes("model-router")) {
+    pluginEntries["model-router"] = { enabled: true, config: {} };
   }
 
   // pinecone-memory
