@@ -194,4 +194,50 @@ describe("buildOpenclawConfig", () => {
 
     expect((config.agents.default as Record<string, unknown>).model).toBe("claude-opus-4-5");
   });
+
+  it("Agentfile の config.env が env に含まれる", () => {
+    const agentfile = makeMinimalAgentfile({
+      config: { env: { LOG_LEVEL: "info", NODE_ENV: "production" } },
+    });
+
+    const config = buildOpenclawConfig({ agentfile, secrets: {} });
+
+    expect(config.env.LOG_LEVEL).toBe("info");
+    expect(config.env.NODE_ENV).toBe("production");
+  });
+
+  it("シークレットは Agentfile の env より優先される", () => {
+    const agentfile = makeMinimalAgentfile({
+      config: { env: { ANTHROPIC_API_KEY: "from-agentfile", LOG_LEVEL: "debug" } },
+    });
+
+    const config = buildOpenclawConfig({
+      agentfile,
+      secrets: { ANTHROPIC_API_KEY: "from-secret" },
+    });
+
+    expect(config.env.ANTHROPIC_API_KEY).toBe("from-secret");
+    expect(config.env.LOG_LEVEL).toBe("debug");
+  });
+
+  it("tools.builtin に model-router がある場合 plugins.entries に model-router が含まれる", () => {
+    const agentfile = makeMinimalAgentfile({
+      tools: { builtin: ["model-router"] },
+    });
+
+    const config = buildOpenclawConfig({ agentfile, secrets: {} });
+
+    expect(config.plugins.entries["model-router"]?.enabled).toBe(true);
+  });
+
+  it("tools.builtin に workflow-controller と model-router がある場合、両方の entries が設定される", () => {
+    const agentfile = makeMinimalAgentfile({
+      tools: { builtin: ["workflow-controller", "model-router"] },
+    });
+
+    const config = buildOpenclawConfig({ agentfile, secrets: {} });
+
+    expect(config.plugins.entries["workflow-controller"]?.enabled).toBe(true);
+    expect(config.plugins.entries["model-router"]?.enabled).toBe(true);
+  });
 });
