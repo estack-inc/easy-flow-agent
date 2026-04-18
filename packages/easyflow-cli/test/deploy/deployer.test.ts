@@ -12,6 +12,7 @@ import type {
   DeployPlan,
   DeployResult,
 } from "../../src/deploy/types.js";
+import { ImageBuilder } from "../../src/image/builder.js";
 import { ImageStore } from "../../src/store/image-store.js";
 import { EasyflowError } from "../../src/utils/errors.js";
 
@@ -31,10 +32,11 @@ identity:
 async function createMockConfigLayer(agentfileYaml: string): Promise<Buffer> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyflow-deployer-test-"));
   try {
-    await fs.writeFile(path.join(tmpDir, "agentfile.yaml"), agentfileYaml, "utf-8");
+    // ImageBuilder は config レイヤー内のファイルを "Agentfile" という名前で保存する
+    await fs.writeFile(path.join(tmpDir, "Agentfile"), agentfileYaml, "utf-8");
 
     const chunks: Buffer[] = [];
-    const stream = tar.create({ gzip: true, cwd: tmpDir, portable: true }, ["agentfile.yaml"]);
+    const stream = tar.create({ gzip: true, cwd: tmpDir, portable: true }, ["Agentfile"]);
     for await (const chunk of stream) {
       chunks.push(Buffer.from(chunk));
     }
@@ -125,7 +127,7 @@ describe("Deployer", () => {
     await store.save("test/agent:1.0", {
       manifest: {},
       config: {},
-      layers: new Map([["config.tar.gz", configLayer]]),
+      layers: new Map([["config", configLayer]]),
     });
 
     // "gcp" は未サポート
@@ -146,7 +148,7 @@ describe("Deployer", () => {
     await store.save("test/agent:1.0", {
       manifest: {},
       config: {},
-      layers: new Map([["config.tar.gz", configLayer]]),
+      layers: new Map([["config", configLayer]]),
     });
 
     const result = await deployer.deploy({
@@ -171,7 +173,7 @@ describe("Deployer", () => {
     await store.save("test/agent:1.0", {
       manifest: {},
       config: {},
-      layers: new Map([["config.tar.gz", configLayer]]),
+      layers: new Map([["config", configLayer]]),
     });
 
     const plan = await deployer.plan({
@@ -182,5 +184,22 @@ describe("Deployer", () => {
 
     expect(plan.app).toBe("my-app");
     expect(plan.createApp).toBe(true);
+  });
+
+  it("ImageBuilder.build() の実出力から Agentfile を正しく取得できる（回帰）", async () => {
+    const agentfilePath = path.join(tmpDir, "Agentfile");
+    await fs.writeFile(agentfilePath, MINIMAL_AGENTFILE_YAML, "utf-8");
+
+    const builder = new ImageBuilder(store);
+    await builder.build({ agentfilePath, ref: "test/agent:builder" });
+
+    // 実ビルド成果物を使って plan() が Agentfile を読めることを検証
+    const plan = await deployer.plan({
+      ref: "test/agent:builder",
+      target: "fly",
+      app: "builder-app",
+    });
+
+    expect(plan.app).toBe("builder-app");
   });
 });
