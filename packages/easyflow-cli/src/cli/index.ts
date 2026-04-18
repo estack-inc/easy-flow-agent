@@ -3,6 +3,7 @@ import {
   registerBuildCommand,
   registerConfigCommand,
   registerConvertCommand,
+  registerDeployCommand,
   registerImagesCommand,
 } from "./commands/index.js";
 
@@ -24,9 +25,10 @@ registerConfigCommand(program);
 registerImagesCommand(program);
 registerBuildCommand(program);
 registerConvertCommand(program);
+registerDeployCommand(program);
 
 // 後続タスクで追加するコマンドのスタブ
-const stubCommands = ["deploy", "validate", "inspect", "push", "pull", "knowledge"];
+const stubCommands = ["validate", "inspect", "push", "pull", "knowledge"];
 for (const name of stubCommands) {
   program
     .command(name)
