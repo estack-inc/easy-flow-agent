@@ -4,7 +4,6 @@
 #
 # 必要な Secrets:
 #   OPENAI_API_KEY      — OpenAI API キー
-#   AI_REVIEWER_TOKEN   — GitHub PAT（PR レビュー投稿用、省略時 GITHUB_TOKEN）
 #   SLACK_WEBHOOK_URL   — Slack 通知用 Webhook URL（省略時は通知スキップ）
 
 name: Codex Code Review
@@ -257,13 +256,13 @@ jobs:
             - 全ての問題を 1 回のレビューで網羅的に検出する。小出しにしない
             - GitHub への直接投稿（gh pr comment, gh pr review）は行わない
         env:
-          GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Post review comment
         id: post_review
         if: steps.check_files.outputs.skip != 'true' && success()
         env:
-          GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
@@ -280,20 +279,22 @@ jobs:
           steps.codex_review.conclusion == 'success' &&
           steps.post_review.conclusion == 'success'
         env:
-          GH_TOKEN: ${{ secrets.AI_REVIEWER_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
           VERDICT=""
 
           # Layer 1: VERDICT トークン
-          VERDICT=$(sed -n 's/^<!-- VERDICT:\([A-Z_]*\) -->/\1/p' /tmp/review-result.md | head -1)
+          # 注: Codex が finding 説明などで先頭に VERDICT 例を echo するケースがあるため、
+          # 先頭一致ではなく「最終出現」を採用する（真の verdict は出力末尾にある）
+          VERDICT=$(sed -n 's/^<!-- VERDICT:\([A-Z_]*\) -->/\1/p' /tmp/review-result.md | tail -1)
 
           # Layer 2: "### レビュー結果:" ヘッダの絵文字・キーワード
           if [ -z "$VERDICT" ]; then
             echo "::warning::No VERDICT token in file, trying header fallback"
-            # grep が no-match を返してもステップを落とさないため || true を付与
-            HEADER_LINE=$(grep -m1 -E '^### (判定|レビュー結果):' /tmp/review-result.md || true)
+            # Layer 1 と同様、最終出現のヘッダを採用（先頭一致だとテンプレ例を拾う懸念あり）
+            HEADER_LINE=$(grep -E '^### (判定|レビュー結果):' /tmp/review-result.md | tail -1 || true)
             if [ -n "$HEADER_LINE" ]; then
               HEADER=$(echo "$HEADER_LINE" | sed 's/.*: //' | cut -c1-50)
               echo "Fallback header line: $HEADER"
