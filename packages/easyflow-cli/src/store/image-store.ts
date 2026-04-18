@@ -329,14 +329,25 @@ export class ImageStore {
   }
 
   private extractMetadata(config: Record<string, unknown>): ImageMetadata {
+    const metadataField = (config.metadata ?? {}) as Record<string, unknown>;
+    const knowledgeField = (config.knowledge ?? {}) as Record<string, unknown>;
+    const baseField = config.base as { ref?: unknown; digest?: unknown } | undefined;
+    const base =
+      baseField && typeof baseField.ref === "string"
+        ? {
+            ref: baseField.ref,
+            ...(typeof baseField.digest === "string" ? { digest: baseField.digest } : {}),
+          }
+        : undefined;
+    const totalChunks = knowledgeField.totalChunks;
     return {
-      name: (config.name as string) ?? "",
-      version: (config.version as string) ?? "",
-      description: (config.description as string) ?? "",
-      base: config.base as string | undefined,
+      name: (metadataField.name as string) ?? "",
+      version: (metadataField.version as string) ?? "",
+      description: (metadataField.description as string) ?? "",
+      base,
       tools: (config.tools as string[]) ?? [],
       channels: (config.channels as string[]) ?? [],
-      knowledgeChunks: config.knowledgeChunks as number | undefined,
+      knowledgeChunks: typeof totalChunks === "number" ? totalChunks : undefined,
     };
   }
 

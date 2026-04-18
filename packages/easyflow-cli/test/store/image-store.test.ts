@@ -9,9 +9,17 @@ function createTestImageData(content = "test-layer-data"): ImageData {
   return {
     manifest: { schemaVersion: 2 },
     config: {
-      name: "test-agent",
-      version: "1.0.0",
-      description: "A test agent",
+      schemaVersion: 1,
+      agentfile: "easyflow/v1",
+      metadata: {
+        name: "test-agent",
+        version: "1.0.0",
+        description: "A test agent",
+        author: "tester",
+        createdAt: "2026-04-17T00:00:00.000Z",
+        buildTool: "easyflow-cli/0.1.0",
+      },
+      knowledge: { totalChunks: 0, totalTokens: 0, sources: [] },
       tools: ["tool-a"],
       channels: ["slack"],
     },
@@ -226,5 +234,69 @@ describe("ImageStore", () => {
     const images = await store.list();
     expect(images.length).toBe(1);
     expect(images[0].ref).toBe("org/tags:1.0.0");
+  });
+
+  it("ImageConfigFile 形式の config から metadata が正しく抽出される", async () => {
+    const ref = "org/meta-agent:1.0.0";
+    const data: ImageData = {
+      manifest: { schemaVersion: 2 },
+      config: {
+        schemaVersion: 1,
+        agentfile: "easyflow/v1",
+        metadata: {
+          name: "meta-agent",
+          version: "2.3.4",
+          description: "metadata 抽出検証用",
+          author: "tester",
+          createdAt: "2026-04-17T00:00:00.000Z",
+          buildTool: "easyflow-cli/0.1.0",
+        },
+        base: { ref: "monitor", digest: "sha256:abcdef" },
+        knowledge: { totalChunks: 42, totalTokens: 1024, sources: [] },
+        tools: ["workflow-controller", "file-serve"],
+        channels: ["slack", "webchat"],
+      },
+      layers: new Map([["layer0.bin", Buffer.from("payload")]]),
+    };
+
+    const stored = await store.save(ref, data);
+    expect(stored.metadata.name).toBe("meta-agent");
+    expect(stored.metadata.version).toBe("2.3.4");
+    expect(stored.metadata.description).toBe("metadata 抽出検証用");
+    expect(stored.metadata.base).toEqual({ ref: "monitor", digest: "sha256:abcdef" });
+    expect(stored.metadata.tools).toEqual(["workflow-controller", "file-serve"]);
+    expect(stored.metadata.channels).toEqual(["slack", "webchat"]);
+    expect(stored.metadata.knowledgeChunks).toBe(42);
+
+    // list() 経由でも image.json の metadata が同等に復元される
+    const images = await store.list();
+    expect(images.length).toBe(1);
+    expect(images[0].metadata).toEqual(stored.metadata);
+  });
+
+  it("base 未指定の config は metadata.base が undefined になる", async () => {
+    const ref = "org/no-base:1.0.0";
+    const data: ImageData = {
+      manifest: { schemaVersion: 2 },
+      config: {
+        schemaVersion: 1,
+        agentfile: "easyflow/v1",
+        metadata: {
+          name: "no-base",
+          version: "1.0.0",
+          description: "",
+          author: "tester",
+          createdAt: "2026-04-17T00:00:00.000Z",
+          buildTool: "easyflow-cli/0.1.0",
+        },
+        knowledge: { totalChunks: 0, totalTokens: 0, sources: [] },
+        tools: [],
+        channels: [],
+      },
+      layers: new Map([["layer0.bin", Buffer.from("payload")]]),
+    };
+    const stored = await store.save(ref, data);
+    expect(stored.metadata.base).toBeUndefined();
+    expect(stored.metadata.knowledgeChunks).toBe(0);
   });
 });

@@ -1,0 +1,32 @@
+apiVersion: easyflow/v1
+kind: Agent
+metadata:
+  name: build-fixture
+  version: "1.0.0"
+  description: "build テスト用エージェント"
+  author: estack-inc
+base: monitor
+identity:
+  name: "ビルドフィクスチャ"
+  soul: "あなたはビルドテスト用のエージェントです。"
+  policy:
+    - "テストのためだけに存在する"
+    - "常に一貫した応答を返す"
+agents_core:
+  file: ./AGENTS-CORE.md
+tools:
+  builtin:
+    - workflow-controller
+    - file-serve
+channels:
+  slack:
+    enabled: true
+  webchat:
+    enabled: true
+config:
+  model:
+    default: "claude-sonnet-4-6"
+  rag:
+    enabled: false
+  env:
+    LOG_LEVEL: "info"
