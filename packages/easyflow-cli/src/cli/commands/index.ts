@@ -3,3 +3,5 @@ export { registerConfigCommand } from "./config.js";
 export { registerConvertCommand } from "./convert.js";
 export { registerDeployCommand } from "./deploy.js";
 export { registerImagesCommand } from "./images.js";
+export { registerInspectCommand } from "./inspect.js";
+export { registerValidateCommand } from "./validate.js";
