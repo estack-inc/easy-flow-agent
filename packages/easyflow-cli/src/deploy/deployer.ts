@@ -97,12 +97,12 @@ export class Deployer {
   private async extractAgentfile(
     layers: Map<string, Buffer>,
   ): Promise<import("../agentfile/types.js").Agentfile> {
-    // config.tar.gz から agentfile.yaml を取り出す
-    const configLayer = layers.get("config.tar.gz");
+    // config レイヤー (ImageBuilder は "config" キーで保存) から Agentfile を取り出す
+    const configLayer = layers.get("config");
     if (configLayer) {
       try {
         const extracted = await extractLayer(configLayer);
-        const yamlBuf = extracted.files.get("agentfile.yaml");
+        const yamlBuf = extracted.files.get("Agentfile");
         if (yamlBuf) {
           const result = await parseAgentfile(yamlBuf.toString("utf-8"), {
             basedir: process.cwd(),
@@ -110,16 +110,13 @@ export class Deployer {
           return result.agentfile;
         }
       } catch {
-        // config.tar.gz からの抽出に失敗した場合は config.json を試みる
+        // 展開失敗時はそのまま下のエラーに fallthrough
       }
     }
 
-    // config.json から直接パース（ビルド時に埋め込まれた Agentfile JSON）
-    // image.config は Record<string, unknown> なので agentfile キーを探す
-    // ここでは ImageData.config を使う
     throw new EasyflowError(
       "Agentfile をイメージから取得できませんでした",
-      "config.tar.gz 内に agentfile.yaml が見つかりません",
+      "config レイヤー内に Agentfile が見つかりません",
       "easyflow build で正しくビルドされたイメージを使用してください",
     );
   }
