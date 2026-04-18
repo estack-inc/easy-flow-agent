@@ -1,3 +1,5 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { Agentfile } from "../../../src/agentfile/types.js";
 import { FlyDeployAdapter } from "../../../src/deploy/adapters/fly.js";
@@ -179,6 +181,94 @@ describe("FlyDeployAdapter", () => {
       );
 
       expect(secretsFn).not.toHaveBeenCalled();
+    });
+
+    it("Dockerfile と openclaw.json がビルドコンテキストに生成される", async () => {
+      let capturedCwd: string | undefined;
+      let dockerfileContent: string | undefined;
+      let openclawJsonContent: string | undefined;
+
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue("[]"),
+        volumes: vi.fn().mockResolvedValue("[]"),
+        deploy: vi
+          .fn()
+          .mockImplementation(
+            async (
+              _appName: string,
+              _args: string[],
+              opts?: { cwd?: string; timeoutMs?: number },
+            ) => {
+              capturedCwd = opts?.cwd;
+              if (capturedCwd) {
+                dockerfileContent = await fs.readFile(
+                  path.join(capturedCwd, "Dockerfile"),
+                  "utf-8",
+                );
+                openclawJsonContent = await fs.readFile(
+                  path.join(capturedCwd, "openclaw.json"),
+                  "utf-8",
+                );
+              }
+            },
+          ),
+        ssh: vi.fn().mockResolvedValue("200"),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      await adapter.deploy(
+        { manifest: {}, config: {}, layers: new Map() },
+        makeStoredImage(),
+        makeAgentfile(),
+        makeDeployOptions(),
+        {},
+      );
+
+      expect(capturedCwd).toBeDefined();
+      expect(dockerfileContent).toContain("FROM ghcr.io/openclaw/openclaw:latest");
+      expect(dockerfileContent).toContain("COPY layers/config/ /app/easyflow/config/");
+      expect(dockerfileContent).toContain("COPY openclaw.json /app/openclaw.json");
+      expect(openclawJsonContent).toBeDefined();
+      const parsedConfig = JSON.parse(openclawJsonContent as string) as Record<string, unknown>;
+      expect(parsedConfig.gateway).toBeDefined();
+    });
+
+    it("fly.toml に release_command が含まれ [build].image が含まれない", async () => {
+      let flyTomlContent: string | undefined;
+
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue("[]"),
+        volumes: vi.fn().mockResolvedValue("[]"),
+        deploy: vi
+          .fn()
+          .mockImplementation(
+            async (
+              _appName: string,
+              _args: string[],
+              opts?: { cwd?: string; timeoutMs?: number },
+            ) => {
+              if (opts?.cwd) {
+                flyTomlContent = await fs.readFile(path.join(opts.cwd, "fly.toml"), "utf-8");
+              }
+            },
+          ),
+        ssh: vi.fn().mockResolvedValue("200"),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      await adapter.deploy(
+        { manifest: {}, config: {}, layers: new Map() },
+        makeStoredImage(),
+        makeAgentfile(),
+        makeDeployOptions(),
+        {},
+      );
+
+      expect(flyTomlContent).toBeDefined();
+      expect(flyTomlContent).toContain("release_command");
+      expect(flyTomlContent).toContain("/data/openclaw.json");
+      expect(flyTomlContent).not.toContain("[build]");
+      expect(flyTomlContent).not.toContain("ghcr.io/openclaw/openclaw:latest");
     });
   });
 });

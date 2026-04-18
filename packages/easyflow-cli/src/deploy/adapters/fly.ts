@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Agentfile } from "../../agentfile/types.js";
 import type { ImageData, StoredImage } from "../../store/types.js";
+import { extractLayer } from "../layer-extractor.js";
 import { buildOpenclawConfig } from "../openclaw-config.js";
 import type { DeployAdapter, DeployOptions, DeployPlan, DeployResult } from "../types.js";
 import type { FlyctlRunner } from "./flyctl.js";
@@ -10,16 +11,18 @@ import type { FlyctlRunner } from "./flyctl.js";
 const BASE_IMAGE = "ghcr.io/openclaw/openclaw:latest";
 const DEFAULT_REGION = "nrt";
 const DEFAULT_ORG = "personal";
+const LAYER_NAMES = ["identity", "knowledge", "tools", "config"] as const;
 
 /**
  * fly.toml テンプレートを生成する。
+ * [build].image は使用せず Dockerfile ベースのリモートビルドに切り替える。
+ * release_command で /app/openclaw.json を /data に配置し、デプロイごとに最新設定を反映する。
  */
 function buildFlyToml(appName: string, region: string): string {
   return `app = "${appName}"
 primary_region = "${region}"
 
-[build]
-  image = "${BASE_IMAGE}"
+release_command = "cp /app/openclaw.json /data/openclaw.json"
 
 [[mounts]]
   source = "data"
@@ -34,6 +37,20 @@ primary_region = "${region}"
     method = "GET"
     path = "/gateway/status"
     timeout = "10s"
+`;
+}
+
+/**
+ * エージェントレイヤーを焼き込む Dockerfile を生成する。
+ * openclaw.json は /app/openclaw.json に配置し、release_command で /data にコピーする。
+ */
+function buildDockerfile(): string {
+  return `FROM ${BASE_IMAGE}
+COPY layers/identity/ /app/easyflow/identity/
+COPY layers/knowledge/ /app/easyflow/knowledge/
+COPY layers/tools/ /app/easyflow/tools/
+COPY layers/config/ /app/easyflow/config/
+COPY openclaw.json /app/openclaw.json
 `;
 }
 
@@ -105,7 +122,7 @@ export class FlyDeployAdapter implements DeployAdapter {
   }
 
   async deploy(
-    _image: ImageData,
+    image: ImageData,
     stored: StoredImage,
     agentfile: Agentfile,
     options: DeployOptions,
@@ -156,12 +173,31 @@ export class FlyDeployAdapter implements DeployAdapter {
       ]);
     }
 
-    // Step 4: fly.toml と openclaw.json を一時ディレクトリに書き出す
+    // Step 4: ビルドコンテキストを一時ディレクトリに構築
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyflow-deploy-"));
     try {
-      const flyToml = buildFlyToml(app, region);
-      await fs.writeFile(path.join(tmpDir, "fly.toml"), flyToml, "utf-8");
+      // 各レイヤーを展開して layers/<name>/ に配置
+      for (const layerName of LAYER_NAMES) {
+        const layerBuf = image.layers.get(layerName);
+        const layerDir = path.join(tmpDir, "layers", layerName);
+        await fs.mkdir(layerDir, { recursive: true });
+        if (layerBuf && layerBuf.length > 0) {
+          const extracted = await extractLayer(layerBuf);
+          for (const [fileName, content] of extracted.files) {
+            const filePath = path.join(layerDir, fileName);
+            await fs.mkdir(path.dirname(filePath), { recursive: true });
+            await fs.writeFile(filePath, content);
+          }
+        }
+      }
 
+      // Dockerfile を生成（レイヤー + openclaw.json を焼き込む）
+      await fs.writeFile(path.join(tmpDir, "Dockerfile"), buildDockerfile(), "utf-8");
+
+      // fly.toml を生成（release_command で /data/openclaw.json を更新）
+      await fs.writeFile(path.join(tmpDir, "fly.toml"), buildFlyToml(app, region), "utf-8");
+
+      // openclaw.json を生成（release_command が /app -> /data にコピーする）
       const openclawConfig = buildOpenclawConfig({ agentfile, secrets });
       await fs.writeFile(
         path.join(tmpDir, "openclaw.json"),
@@ -179,7 +215,7 @@ export class FlyDeployAdapter implements DeployAdapter {
         await this.flyctl.secrets(["set", ...secretPairs, "--app", app, "--stage"]);
       }
 
-      // Step 6: デプロイ
+      // Step 6: デプロイ（tmpDir をビルドコンテキストとして flyctl に渡す）
       this.log(`[fly] デプロイ開始: ${app}`);
       await this.flyctl.deploy(app, ["--config", path.join(tmpDir, "fly.toml")], {
         cwd: tmpDir,
