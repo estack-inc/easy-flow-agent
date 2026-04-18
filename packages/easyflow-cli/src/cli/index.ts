@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import {
+  registerBuildCommand,
   registerConfigCommand,
   registerConvertCommand,
   registerImagesCommand,
@@ -21,10 +22,11 @@ program
 // コマンド登録
 registerConfigCommand(program);
 registerImagesCommand(program);
+registerBuildCommand(program);
 registerConvertCommand(program);
 
 // 後続タスクで追加するコマンドのスタブ
-const stubCommands = ["build", "deploy", "validate", "inspect", "push", "pull", "knowledge"];
+const stubCommands = ["deploy", "validate", "inspect", "push", "pull", "knowledge"];
 for (const name of stubCommands) {
   program
     .command(name)

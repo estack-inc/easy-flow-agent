@@ -100,6 +100,10 @@ jobs:
             ${{ github.event.pull_request.base.ref }} \
             +refs/pull/${{ github.event.pull_request.number }}/head
 
+      - name: Install bubblewrap
+        if: steps.check_files.outputs.skip != 'true'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+
       - name: Run Codex Review
         id: codex_review
         if: steps.check_files.outputs.skip != 'true'
@@ -237,6 +241,15 @@ jobs:
             VERDICT 行は `<!-- VERDICT:APPROVED -->` または `<!-- VERDICT:CHANGES_REQUESTED -->` のいずれか。
             この行は出力の最終行に必ず含めること。
 
+            ## 最終メッセージ要件（必須）
+
+            以下を **両方** 満たしてください:
+            1. OUTPUT block 全文（`### 変更の概要` から `<!-- VERDICT:... -->` まで）を `/tmp/review-result.md` に書き込む
+            2. **最終チャットメッセージ（あなたの最後の発話）にも全く同じ OUTPUT block を含める**
+
+            ファイル書き込みだけでは不十分です。最終チャットメッセージは output-file のフォールバックとして利用されるため、VERDICT トークンを必ず含めてください。
+            GitHub への直接投稿は引き続き禁止です。
+
             ## レビュー方針
             - 確信がない指摘は避け、確実な問題のみ指摘する
             - 修正漏れの検出を最優先で行う
@@ -271,34 +284,59 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          # Primary: parse machine-readable VERDICT comment
+          VERDICT=""
+
+          # Layer 1: VERDICT トークン
           VERDICT=$(sed -n 's/^<!-- VERDICT:\([A-Z_]*\) -->/\1/p' /tmp/review-result.md | head -1)
 
-          # Fallback: parse header line
+          # Layer 2: "### レビュー結果:" ヘッダの絵文字・キーワード
           if [ -z "$VERDICT" ]; then
-            HEADER=$(grep -E '^### (判定|レビュー結果):' /tmp/review-result.md | head -1 | \
-              sed 's/.*: //' | cut -c1-50)
-            echo "Fallback header: $HEADER"
-            if echo "$HEADER" | grep -qiE 'CHANGES_REQUESTED|Changes Requested|要修正'; then
-              VERDICT="CHANGES_REQUESTED"
-            elif echo "$HEADER" | grep -qiE 'APPROVED|APPROVE|Approved|✅'; then
+            echo "::warning::No VERDICT token in file, trying header fallback"
+            # grep が no-match を返してもステップを落とさないため || true を付与
+            HEADER_LINE=$(grep -m1 -E '^### (判定|レビュー結果):' /tmp/review-result.md || true)
+            if [ -n "$HEADER_LINE" ]; then
+              HEADER=$(echo "$HEADER_LINE" | sed 's/.*: //' | cut -c1-50)
+              echo "Fallback header line: $HEADER"
+              if echo "$HEADER" | grep -qiE 'CHANGES_REQUESTED|Changes Requested|要修正|❌'; then
+                VERDICT="CHANGES_REQUESTED"
+              elif echo "$HEADER" | grep -qiE 'APPROVED|APPROVE|Approved|✅'; then
+                VERDICT="APPROVED"
+              fi
+            else
+              echo "No header found in review output"
+            fi
+          fi
+
+          # Layer 3: Codex 最終メッセージの自然文（"判定は `APPROVED` です" など）
+          if [ -z "$VERDICT" ]; then
+            echo "::warning::No header found, trying natural-language fallback"
+            if grep -qE '判定は[^A-Z]*`?APPROVED`?' /tmp/review-result.md; then
               VERDICT="APPROVED"
+            elif grep -qE '判定は[^A-Z]*`?CHANGES_REQUESTED`?' /tmp/review-result.md; then
+              VERDICT="CHANGES_REQUESTED"
             fi
           fi
 
           echo "Verdict: $VERDICT"
-          if [ "$VERDICT" = "CHANGES_REQUESTED" ]; then
-            echo "Submitting CHANGES_REQUESTED review"
-            gh pr review "$PR_NUMBER" --repo "$REPO" --request-changes \
-              --body "🤖 AIレビュー判定: CHANGES_REQUESTED — 詳細はレビューコメントを確認してください。"
-          elif [ "$VERDICT" = "APPROVED" ]; then
-            echo "Submitting APPROVED review"
-            gh pr review "$PR_NUMBER" --repo "$REPO" --approve \
-              --body "🤖 AIレビュー判定: APPROVED ✅"
-          else
-            echo "Could not determine verdict"
-            echo "Skipping review submission"
-          fi
+
+          case "$VERDICT" in
+            CHANGES_REQUESTED)
+              gh pr review "$PR_NUMBER" --repo "$REPO" --request-changes \
+                --body "🤖 AIレビュー判定: CHANGES_REQUESTED ❌" \
+                || echo "::warning::Could not submit review"
+              ;;
+            APPROVED)
+              gh pr review "$PR_NUMBER" --repo "$REPO" --approve \
+                --body "🤖 AIレビュー判定: APPROVED ✅" \
+                || echo "::warning::Could not submit review"
+              ;;
+            *)
+              # Layer 4: silent skip 廃止。コメント形式レビューで可視化
+              gh pr review "$PR_NUMBER" --repo "$REPO" --comment \
+                --body "🤖 AIレビュー判定: **判定不能** — Codex 出力から VERDICT を抽出できませんでした。レビューコメント本文を確認してください。" \
+                || echo "::warning::Could not submit fallback comment"
+              ;;
+          esac
 
       - name: Notify Slack on Failure
         if: failure() && steps.check_files.outputs.skip != 'true'
