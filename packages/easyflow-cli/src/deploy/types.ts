@@ -38,11 +38,7 @@ export interface DeployAdapter {
     options: DeployOptions,
     secrets: Record<string, string>,
   ): Promise<DeployResult>;
-  plan(
-    stored: StoredImage,
-    agentfile: Agentfile,
-    options: DeployOptions,
-  ): Promise<DeployPlan>;
+  plan(stored: StoredImage, agentfile: Agentfile, options: DeployOptions): Promise<DeployPlan>;
 }
 
 export interface DeployPlan {

@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as tar from "tar";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ImageStore } from "../../src/store/image-store.js";
 
 // CLI コマンドのテストは Commander の action をモックして実施

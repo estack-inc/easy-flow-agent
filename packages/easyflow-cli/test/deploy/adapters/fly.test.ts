@@ -4,9 +4,10 @@ import { FlyDeployAdapter } from "../../../src/deploy/adapters/fly.js";
 import type { FlyctlRunner } from "../../../src/deploy/adapters/flyctl.js";
 import type { DeployOptions } from "../../../src/deploy/types.js";
 import type { StoredImage } from "../../../src/store/types.js";
-import { EasyflowError } from "../../../src/utils/errors.js";
 
-function makeMockFlyctl(overrides: Partial<Record<keyof FlyctlRunner, unknown>> = {}): FlyctlRunner {
+function makeMockFlyctl(
+  overrides: Partial<Record<keyof FlyctlRunner, unknown>> = {},
+): FlyctlRunner {
   return {
     apps: vi.fn().mockResolvedValue("[]"),
     volumes: vi.fn().mockResolvedValue("[]"),

@@ -35,8 +35,7 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
   const { agentfile, secrets } = input;
 
   // ---- gateway token ----
-  const gatewayToken =
-    secrets.GATEWAY_TOKEN ?? crypto.randomBytes(24).toString("hex");
+  const gatewayToken = secrets.GATEWAY_TOKEN ?? crypto.randomBytes(24).toString("hex");
 
   // ---- env ----
   const envKeys = [

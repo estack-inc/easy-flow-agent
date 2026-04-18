@@ -70,10 +70,7 @@ export class FlyctlRunner {
       // execa error — stderr を含めて再スロー
       const execaErr = err as { stderr?: string; all?: string; message?: string };
       const detail = execaErr.stderr ?? execaErr.all ?? execaErr.message ?? String(err);
-      throw new EasyflowError(
-        `flyctl コマンドが失敗しました: flyctl ${args[0]}`,
-        detail,
-      );
+      throw new EasyflowError(`flyctl コマンドが失敗しました: flyctl ${args[0]}`, detail);
     }
   }
 }

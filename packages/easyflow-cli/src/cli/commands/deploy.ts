@@ -1,8 +1,8 @@
 import type { Command } from "commander";
-import { DeploymentsLog } from "../../deploy/deployments-log.js";
 import { FlyDeployAdapter } from "../../deploy/adapters/fly.js";
 import { FlyctlRunner } from "../../deploy/adapters/flyctl.js";
 import { Deployer } from "../../deploy/deployer.js";
+import { DeploymentsLog } from "../../deploy/deployments-log.js";
 import type { DeployAdapter } from "../../deploy/types.js";
 import { ImageStore } from "../../store/image-store.js";
 import { handleError } from "../../utils/errors.js";
@@ -32,7 +32,9 @@ export function registerDeployCommand(program: Command): void {
         const dryRun = globalOpts.dryRun === true;
 
         if (options.target !== "fly") {
-          console.error(`Error: 未サポートのターゲット: ${options.target}（現在は 'fly' のみ対応）`);
+          console.error(
+            `Error: 未サポートのターゲット: ${options.target}（現在は 'fly' のみ対応）`,
+          );
           process.exit(1);
         }
 
@@ -66,12 +68,12 @@ export function registerDeployCommand(program: Command): void {
           progress.succeed(`ref=${plan.image.ref}`);
 
           progress.start(2, "アプリ・ボリューム確認");
-          progress.succeed(
-            `createApp=${plan.createApp}, createVolume=${plan.createVolume}`,
-          );
+          progress.succeed(`createApp=${plan.createApp}, createVolume=${plan.createVolume}`);
 
           progress.start(3, "設定生成");
-          progress.succeed(`channels=${plan.channels.join(",") || "(none)"}, tools=${plan.tools.join(",") || "(none)"}`);
+          progress.succeed(
+            `channels=${plan.channels.join(",") || "(none)"}, tools=${plan.tools.join(",") || "(none)"}`,
+          );
 
           progress.start(4, "シークレット設定");
           progress.succeed("(dry-run — スキップ)");
@@ -107,9 +109,7 @@ export function registerDeployCommand(program: Command): void {
           org: options.org,
           secretFile: options.secretFile,
         });
-        progress.succeed(
-          `createApp=${plan.createApp}, createVolume=${plan.createVolume}`,
-        );
+        progress.succeed(`createApp=${plan.createApp}, createVolume=${plan.createVolume}`);
 
         progress.start(3, "設定生成・シークレット設定");
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { Agentfile } from "../../src/agentfile/types.js";
 import { buildOpenclawConfig } from "../../src/deploy/openclaw-config.js";
 import { EasyflowError } from "../../src/utils/errors.js";
-import type { Agentfile } from "../../src/agentfile/types.js";
 
 function makeMinimalAgentfile(overrides: Partial<Agentfile> = {}): Agentfile {
   return {
