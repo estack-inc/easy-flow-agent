@@ -107,4 +107,22 @@ describe("ImageBuilder", () => {
     // monitor template は workflow-controller を含む。child も workflow-controller, file-serve を定義 → マージ後の重複除外
     expect(new Set(toolsJson.builtin)).toEqual(new Set(["workflow-controller", "file-serve"]));
   });
+
+  it("ビルド後の image.json に ImageConfigFile の metadata が反映される", async () => {
+    const builder = new ImageBuilder(store);
+    const result = await builder.build({
+      agentfilePath: path.join(FIXTURE_DIR, "Agentfile.yaml"),
+      ref: "estack-inc/build-fixture:1.0.0",
+    });
+
+    const imageJsonPath = path.join(storeDir, result.digest.replace(":", "-"), "image.json");
+    const stored = JSON.parse(await fs.readFile(imageJsonPath, "utf-8"));
+    expect(stored.metadata.name).toBe("build-fixture");
+    expect(stored.metadata.version).toBe("1.0.0");
+    expect(stored.metadata.description).toBe("build テスト用エージェント");
+    expect(stored.metadata.base).toEqual({ ref: "monitor" });
+    expect(stored.metadata.tools).toEqual(expect.arrayContaining(["workflow-controller"]));
+    expect(stored.metadata.channels.sort()).toEqual(["slack", "webchat"]);
+    expect(stored.metadata.knowledgeChunks).toBe(0);
+  });
 });

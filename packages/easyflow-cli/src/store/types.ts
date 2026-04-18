@@ -10,7 +10,7 @@ export interface ImageMetadata {
   name: string;
   version: string;
   description: string;
-  base?: string;
+  base?: { ref: string; digest?: string };
   tools: string[];
   channels: string[];
   knowledgeChunks?: number;
