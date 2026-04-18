@@ -1,10 +1,9 @@
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as tar from "tar";
-import * as os from "node:os";
-import * as fs from "node:fs/promises";
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it } from "vitest";
 import { extractLayer } from "../../src/deploy/layer-extractor.js";
-import { EasyflowError } from "../../src/utils/errors.js";
 
 async function createTarGz(files: Record<string, string>): Promise<Buffer> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyflow-tar-test-"));

@@ -1,4 +1,3 @@
-import * as path from "node:path";
 import { parseAgentfile } from "../agentfile/parser.js";
 import type { ImageStore } from "../store/image-store.js";
 import { EasyflowError } from "../utils/errors.js";

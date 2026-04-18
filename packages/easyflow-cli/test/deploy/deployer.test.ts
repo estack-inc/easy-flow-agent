@@ -2,11 +2,16 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as tar from "tar";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Agentfile } from "../../src/agentfile/types.js";
-import { DeploymentsLog } from "../../src/deploy/deployments-log.js";
 import { Deployer } from "../../src/deploy/deployer.js";
-import type { DeployAdapter, DeployOptions, DeployPlan, DeployResult } from "../../src/deploy/types.js";
+import { DeploymentsLog } from "../../src/deploy/deployments-log.js";
+import type {
+  DeployAdapter,
+  DeployOptions,
+  DeployPlan,
+  DeployResult,
+} from "../../src/deploy/types.js";
 import { ImageStore } from "../../src/store/image-store.js";
 import { EasyflowError } from "../../src/utils/errors.js";
 
@@ -98,11 +103,7 @@ describe("Deployer", () => {
     store = new ImageStore(storeDir);
     deploymentsLog = new DeploymentsLog(logFile);
     mockAdapter = new MockAdapter();
-    deployer = new Deployer(
-      store,
-      new Map([["fly", mockAdapter]]),
-      deploymentsLog,
-    );
+    deployer = new Deployer(store, new Map([["fly", mockAdapter]]), deploymentsLog);
   });
 
   afterEach(async () => {

@@ -3,7 +3,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Agentfile } from "../../agentfile/types.js";
 import type { ImageData, StoredImage } from "../../store/types.js";
-import { EasyflowError } from "../../utils/errors.js";
 import { buildOpenclawConfig } from "../openclaw-config.js";
 import type { DeployAdapter, DeployOptions, DeployPlan, DeployResult } from "../types.js";
 import type { FlyctlRunner } from "./flyctl.js";
@@ -106,7 +105,7 @@ export class FlyDeployAdapter implements DeployAdapter {
   }
 
   async deploy(
-    image: ImageData,
+    _image: ImageData,
     stored: StoredImage,
     agentfile: Agentfile,
     options: DeployOptions,
@@ -145,7 +144,16 @@ export class FlyDeployAdapter implements DeployAdapter {
 
     if (!volumeExists) {
       this.log(`[fly] ボリューム作成: data (region: ${region})`);
-      await this.flyctl.volumes(["create", "data", "--region", region, "--size", "1", "--app", app]);
+      await this.flyctl.volumes([
+        "create",
+        "data",
+        "--region",
+        region,
+        "--size",
+        "1",
+        "--app",
+        app,
+      ]);
     }
 
     // Step 4: fly.toml と openclaw.json を一時ディレクトリに書き出す
@@ -210,7 +218,15 @@ export class FlyDeployAdapter implements DeployAdapter {
     for (let i = 0; i < maxRetries; i++) {
       try {
         const start = Date.now();
-        const output = await this.flyctl.ssh(app, ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:3000/gateway/status"]);
+        const output = await this.flyctl.ssh(app, [
+          "curl",
+          "-s",
+          "-o",
+          "/dev/null",
+          "-w",
+          "%{http_code}",
+          "http://localhost:3000/gateway/status",
+        ]);
         const latencyMs = Date.now() - start;
         const statusCode = parseInt(output.trim(), 10);
 
