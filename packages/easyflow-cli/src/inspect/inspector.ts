@@ -1,13 +1,24 @@
+import { Readable } from "node:stream";
+import * as tar from "tar";
 import { ImageStore } from "../store/image-store.js";
 import { EasyflowError } from "../utils/errors.js";
 import type { InspectReport } from "./types.js";
+
+// tar.Parser は @types/tar v6 では型定義が不完全なため型キャストで使用
+// biome-ignore lint/suspicious/noExplicitAny: tar.Parser not fully typed in @types/tar
+const TarParse = (tar as Record<string, any>)["Parser"] as new (opts: {
+  gzip: boolean;
+}) => NodeJS.WritableStream;
 
 /**
  * ImageStore からイメージ情報を取得して InspectReport を構築する。
  */
 export async function inspectImage(ref: string, store?: ImageStore): Promise<InspectReport> {
   const imageStore = store ?? new ImageStore();
-  const data = await imageStore.load(ref);
+  const [data, storedImage] = await Promise.all([
+    imageStore.load(ref),
+    imageStore.loadStoredImage(ref),
+  ]);
 
   if (!data) {
     throw new EasyflowError(`image not found: ${ref}`);
@@ -37,13 +48,26 @@ export async function inspectImage(ref: string, store?: ImageStore): Promise<Ins
       : {}),
   };
 
-  // identity セクション (config.json にはソウルを持たないため description をプレビューとして使用)
-  const identityName = (cfgMetadata.name as string) ?? "";
+  // identity セクション — identity レイヤー tar.gz から IDENTITY.md / SOUL.md / POLICY.md を読む
+  const identityBuf = layers.get("identity");
+  const identityFiles =
+    identityBuf && identityBuf.length > 0
+      ? await readTarGzFiles(identityBuf, ["IDENTITY.md", "SOUL.md", "POLICY.md"]).catch(
+          () => new Map<string, string>(),
+        )
+      : new Map<string, string>();
+
+  const identityName =
+    parseIdentityName(identityFiles.get("IDENTITY.md") ?? "") || (cfgMetadata.name as string) || "";
+  const soulText = identityFiles.get("SOUL.md") ?? "";
+  const soulBody = soulText.replace(/^#[^\n]*\n\n?/, "").trim();
   const soulPreview =
-    metadata.description.length > 80
-      ? `${metadata.description.slice(0, 80)}...`
-      : metadata.description || "(no soul)";
-  const policyCount = 0; // config.json には policy 情報を含まない
+    soulBody.length > 0
+      ? soulBody.length > 80
+        ? `${soulBody.slice(0, 80)}...`
+        : soulBody
+      : "(no soul)";
+  const policyCount = parsePolicyCount(identityFiles.get("POLICY.md") ?? "");
 
   // knowledge セクション
   const knowledge = {
@@ -57,46 +81,45 @@ export async function inspectImage(ref: string, store?: ImageStore): Promise<Ins
     })),
   };
 
-  // layers セクション: manifest から digest を、layers Map からサイズを取得
+  // layers セクション: バッファを tar.Parse で正確にカウント
   const manifestLayers = (manifest.layers ?? []) as Array<{
     digest: string;
     size: number;
     annotations?: { "org.easyflow.layer.name"?: string };
   }>;
 
-  const layerInfos = manifestLayers.map((ml) => {
-    const layerName = (ml.annotations?.["org.easyflow.layer.name"] ?? "config") as
-      | "identity"
-      | "knowledge"
-      | "tools"
-      | "config";
-    const buf = layers.get(layerName);
-    const size = buf?.length ?? ml.size ?? 0;
-    // tar エントリ数のカウント（簡易: バッファが空なら 0）
-    const fileCount = buf && buf.length > 0 ? estimateTarFileCount(buf) : 0;
+  const layerInfos = await Promise.all(
+    manifestLayers.map(async (ml) => {
+      const layerName = (ml.annotations?.["org.easyflow.layer.name"] ?? "config") as
+        | "identity"
+        | "knowledge"
+        | "tools"
+        | "config";
+      const buf = layers.get(layerName);
+      const size = buf?.length ?? ml.size ?? 0;
+      const fileCount = buf && buf.length > 0 ? await countTarGzEntries(buf).catch(() => 0) : 0;
 
-    return {
-      name: layerName,
-      size,
-      fileCount,
-      digest: ml.digest ?? "",
-    };
-  });
+      return {
+        name: layerName,
+        size,
+        fileCount,
+        digest: ml.digest ?? "",
+      };
+    }),
+  );
 
-  // manifest から digest を取得（storedImage の digest を利用するため再計算）
-  // manifest に存在する config.digest を利用
-  const cfgDescriptor = manifest.config as { digest?: string } | undefined;
-  const digest = cfgDescriptor?.digest ?? "";
-
-  // StoredImage の情報を取得するために image.json を読む（直接 load では取得できないため）
-  // サイズと createdAt はストアの別 API で取得するか推定する
-  const totalSize = layerInfos.reduce((acc, l) => acc + l.size, 0);
+  // StoredImage から保存時の正確な digest / size / createdAt を取得
+  const digest =
+    storedImage?.digest ?? (manifest.config as { digest?: string } | undefined)?.digest ?? "";
+  const totalSize = storedImage?.size ?? layerInfos.reduce((acc, l) => acc + l.size, 0);
+  const createdAt =
+    storedImage?.createdAt ?? (cfgMetadata.createdAt as string) ?? new Date().toISOString();
 
   return {
     ref,
     digest,
     size: totalSize,
-    createdAt: (cfgMetadata.createdAt as string) ?? new Date().toISOString(),
+    createdAt,
     metadata,
     identity: {
       name: identityName,
@@ -110,19 +133,59 @@ export async function inspectImage(ref: string, store?: ImageStore): Promise<Ins
   };
 }
 
-/**
- * tar.gz バッファからファイル数を推定する（簡易実装）。
- * ヘッダーブロック(512 バイト)をスキャンして非空エントリを数える。
- */
-function estimateTarFileCount(buf: Buffer): number {
-  // gzip ヘッダーで始まる場合はデコードできないため 1 を返す
-  // 実際の実装では tar パッケージを利用するが、同期処理のためシンプルに推定
-  if (buf.length < 2) return 0;
-  // gzip magic bytes: 0x1f 0x8b
-  if (buf[0] === 0x1f && buf[1] === 0x8b) {
-    // gz 圧縮済み — 正確なカウントは非同期 tar パースが必要
-    // フォールバック: 1 以上のファイルが存在すると推定
-    return buf.length > 0 ? 1 : 0;
-  }
-  return 0;
+/** IDENTITY.md の先頭 `# <name>` 行から identity.name を取得する */
+function parseIdentityName(content: string): string {
+  const match = content.match(/^#\s+(.+)/m);
+  return match?.[1]?.trim() ?? "";
+}
+
+/** POLICY.md の箇条書き（`- ...`）の行数を policyCount として返す */
+function parsePolicyCount(content: string): number {
+  return content.split("\n").filter((l) => /^\s*-\s+/.test(l)).length;
+}
+
+/** tar.gz バッファから指定ファイルの内容を読み出す */
+async function readTarGzFiles(buf: Buffer, targetFiles: string[]): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const targetSet = new Set(targetFiles);
+
+  await new Promise<void>((resolve, reject) => {
+    const parser = new TarParse({ gzip: true });
+    // biome-ignore lint/suspicious/noExplicitAny: entry is tar.ReadEntry
+    parser.on("entry" as any, (entry: any) => {
+      const basename = (entry.path as string).replace(/^\.\//, "").replace(/\/$/, "");
+      if (targetSet.has(basename)) {
+        const chunks: Buffer[] = [];
+        entry.on("data", (chunk: Buffer) => chunks.push(chunk));
+        entry.on("end", () => {
+          result.set(basename, Buffer.concat(chunks).toString("utf-8"));
+        });
+        entry.on("error", reject);
+      } else {
+        entry.resume();
+      }
+    });
+    (parser as NodeJS.EventEmitter).on("finish", resolve);
+    (parser as NodeJS.EventEmitter).on("error", reject);
+    Readable.from(buf).pipe(parser);
+  });
+
+  return result;
+}
+
+/** tar.gz バッファ内のファイル（非ディレクトリ）エントリ数を返す */
+async function countTarGzEntries(buf: Buffer): Promise<number> {
+  let count = 0;
+  await new Promise<void>((resolve, reject) => {
+    const parser = new TarParse({ gzip: true });
+    // biome-ignore lint/suspicious/noExplicitAny: entry is tar.ReadEntry
+    parser.on("entry" as any, (entry: any) => {
+      if (entry.type !== "Directory") count++;
+      entry.resume();
+    });
+    (parser as NodeJS.EventEmitter).on("finish", resolve);
+    (parser as NodeJS.EventEmitter).on("error", reject);
+    Readable.from(buf).pipe(parser);
+  });
+  return count;
 }

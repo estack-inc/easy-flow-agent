@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { packLayer } from "../../src/image/tar-pack.js";
 import { inspectImage } from "../../src/inspect/inspector.js";
 import { ImageStore } from "../../src/store/image-store.js";
 import type { ImageData } from "../../src/store/types.js";
@@ -168,5 +169,59 @@ describe("inspectImage", () => {
       expect(typeof layer.size).toBe("number");
       expect(typeof layer.digest).toBe("string");
     }
+  });
+
+  // 指摘 1: digest / size が StoredImage と一致することを検証
+  it("digest と size が保存済み StoredImage と一致する", async () => {
+    const ref = "org/digest-check:1.0.0";
+    const storedImage = await store.save(ref, createTestImageData());
+
+    const report = await inspectImage(ref, store);
+
+    expect(report.digest).toBe(storedImage.digest);
+    expect(report.size).toBe(storedImage.size);
+  });
+
+  // 指摘 2: identity レイヤーから policyCount を正しく取得することを検証
+  it("identity レイヤーから name / soulPreview / policyCount を読む", async () => {
+    const ref = "org/identity-full:1.0.0";
+    const identityLayer = await packLayer([
+      { kind: "file", name: "IDENTITY.md", content: "# MyAgent\n\n- name: my-agent\n" },
+      { kind: "file", name: "SOUL.md", content: "# Soul\n\nI am a helpful and reliable agent." },
+      {
+        kind: "file",
+        name: "POLICY.md",
+        content: "# Policy\n\n- Be helpful\n- Be honest\n- Be safe\n",
+      },
+    ]);
+    const data = createTestImageData();
+    data.layers.set("identity", identityLayer.content);
+    await store.save(ref, data);
+
+    const report = await inspectImage(ref, store);
+
+    expect(report.identity.name).toBe("MyAgent");
+    expect(report.identity.soulPreview).toContain("helpful");
+    expect(report.identity.policyCount).toBeGreaterThan(1);
+    expect(report.identity.policyCount).toBe(3);
+  });
+
+  // 指摘 3: 複数ファイルを持つレイヤーで fileCount > 1 になることを検証
+  it("複数ファイルのレイヤーで fileCount が実際のファイル数を返す", async () => {
+    const ref = "org/filecount-real:1.0.0";
+    const identityLayer = await packLayer([
+      { kind: "file", name: "IDENTITY.md", content: "# Agent" },
+      { kind: "file", name: "SOUL.md", content: "# Soul\n\nSoul text." },
+      { kind: "file", name: "POLICY.md", content: "# Policy\n\n- Rule 1\n" },
+    ]);
+    const data = createTestImageData();
+    data.layers.set("identity", identityLayer.content);
+    await store.save(ref, data);
+
+    const report = await inspectImage(ref, store);
+
+    const identityLayerInfo = report.layers.find((l) => l.name === "identity");
+    expect(identityLayerInfo?.fileCount).toBeGreaterThan(1);
+    expect(identityLayerInfo?.fileCount).toBe(3);
   });
 });
