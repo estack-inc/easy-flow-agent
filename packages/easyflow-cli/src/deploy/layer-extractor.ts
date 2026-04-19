@@ -16,7 +16,7 @@ export interface ExtractedLayer {
  * パストラバーサル（`..` または絶対パス）は拒否する。
  */
 export async function extractLayer(tarGz: Buffer): Promise<ExtractedLayer> {
-  const files = new Map<string, Buffer>();
+  const files = new Map<string, ExtractedFile>();
   const chunks = new Map<string, Buffer[]>();
 
   await new Promise<void>((resolve, reject) => {
