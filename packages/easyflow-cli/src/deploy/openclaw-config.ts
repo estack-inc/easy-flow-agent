@@ -118,10 +118,24 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
 
   // pinecone-memory
   const ragEnabled = agentfile.config?.rag?.enabled === true;
-  pluginEntries["pinecone-memory"] = {
-    enabled: ragEnabled,
-    config: secrets.PINECONE_API_KEY ? { apiKey: secrets.PINECONE_API_KEY } : {},
+  const ragConfig = agentfile.knowledge?.config ?? {};
+  const hasAgentsCore =
+    agentfile.agents_core?.file != null || agentfile.agents_core?.inline != null;
+
+  const pineconeConfig: Record<string, unknown> = {
+    ragEnabled,
+    ragTopK: ragConfig.top_k ?? 10,
+    ragMinScore: ragConfig.min_score ?? 0.75,
+    ragTokenBudget: ragConfig.token_budget ?? 2000,
   };
+  if (hasAgentsCore) {
+    pineconeConfig.agentsCorePath = "/app/easyflow/identity/AGENTS-CORE.md";
+  }
+  if (secrets.PINECONE_API_KEY) {
+    pineconeConfig.apiKey = secrets.PINECONE_API_KEY;
+  }
+
+  pluginEntries["pinecone-memory"] = { enabled: ragEnabled, config: pineconeConfig };
 
   // ---- tools ----
   const tools: Record<string, unknown> = {};

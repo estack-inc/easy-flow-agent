@@ -240,4 +240,79 @@ describe("buildOpenclawConfig", () => {
     expect(config.plugins.entries["workflow-controller"]?.enabled).toBe(true);
     expect(config.plugins.entries["model-router"]?.enabled).toBe(true);
   });
+
+  describe("pinecone-memory RAG 設定", () => {
+    it("RAG 有効 + agents_core.file + knowledge.config が正しく反映される", () => {
+      const agentfile = makeMinimalAgentfile({
+        config: { rag: { enabled: true } },
+        agents_core: { file: "./AGENTS-CORE.md" },
+        knowledge: {
+          sources: [],
+          config: {
+            top_k: 5,
+            min_score: 0.8,
+            token_budget: 3000,
+          },
+        },
+      });
+
+      const config = buildOpenclawConfig({ agentfile, secrets: { PINECONE_API_KEY: "pk-test" } });
+
+      const pmConfig = config.plugins.entries["pinecone-memory"]?.config;
+      expect(config.plugins.entries["pinecone-memory"]?.enabled).toBe(true);
+      expect(pmConfig?.ragEnabled).toBe(true);
+      expect(pmConfig?.agentsCorePath).toBe("/app/easyflow/identity/AGENTS-CORE.md");
+      expect(pmConfig?.ragTopK).toBe(5);
+      expect(pmConfig?.ragMinScore).toBe(0.8);
+      expect(pmConfig?.ragTokenBudget).toBe(3000);
+      expect(pmConfig?.apiKey).toBe("pk-test");
+    });
+
+    it("agents_core.inline でも agentsCorePath が設定される", () => {
+      const agentfile = makeMinimalAgentfile({
+        config: { rag: { enabled: true } },
+        agents_core: { inline: "You are a core agent." },
+      });
+
+      const config = buildOpenclawConfig({ agentfile, secrets: {} });
+
+      const pmConfig = config.plugins.entries["pinecone-memory"]?.config;
+      expect(pmConfig?.agentsCorePath).toBe("/app/easyflow/identity/AGENTS-CORE.md");
+    });
+
+    it("agents_core がない場合は agentsCorePath が設定されない", () => {
+      const agentfile = makeMinimalAgentfile({
+        config: { rag: { enabled: true } },
+      });
+
+      const config = buildOpenclawConfig({ agentfile, secrets: {} });
+
+      const pmConfig = config.plugins.entries["pinecone-memory"]?.config;
+      expect(pmConfig?.agentsCorePath).toBeUndefined();
+    });
+
+    it("knowledge.config がない場合はデフォルト値が使用される", () => {
+      const agentfile = makeMinimalAgentfile({
+        config: { rag: { enabled: true } },
+      });
+
+      const config = buildOpenclawConfig({ agentfile, secrets: {} });
+
+      const pmConfig = config.plugins.entries["pinecone-memory"]?.config;
+      expect(pmConfig?.ragTopK).toBe(10);
+      expect(pmConfig?.ragMinScore).toBe(0.75);
+      expect(pmConfig?.ragTokenBudget).toBe(2000);
+    });
+
+    it("PINECONE_API_KEY がない場合は apiKey が設定されない", () => {
+      const agentfile = makeMinimalAgentfile({
+        config: { rag: { enabled: true } },
+      });
+
+      const config = buildOpenclawConfig({ agentfile, secrets: {} });
+
+      const pmConfig = config.plugins.entries["pinecone-memory"]?.config;
+      expect(pmConfig?.apiKey).toBeUndefined();
+    });
+  });
 });
