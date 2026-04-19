@@ -54,13 +54,19 @@ export function validateSchema(data: unknown): AgentfileValidationError[] {
   }));
 }
 
+export interface SemanticValidationOptions {
+  basedir: string;
+  /** ファイル存在チェックをスキップ（deploy 時など、レイヤーに焼き込み済みの場合） */
+  skipFileExistenceCheck?: boolean;
+}
+
 /**
  * JSON Schema 以外のセマンティックバリデーション。
  * parseAgentfile 内で JSON Schema バリデーション後に呼ばれる。
  */
 export function validateSemantic(
   agentfile: Agentfile,
-  options: { basedir: string },
+  options: SemanticValidationOptions,
 ): AgentfileValidationError[] {
   const errors: AgentfileValidationError[] = [];
 
@@ -104,44 +110,47 @@ export function validateSemantic(
     }
   }
 
-  // ファイルパス存在確認: knowledge.sources[].path
-  if (agentfile.knowledge?.sources) {
-    for (let i = 0; i < agentfile.knowledge.sources.length; i++) {
-      const source = agentfile.knowledge.sources[i];
-      const fullPath = resolve(options.basedir, source.path);
+  // ファイルパス存在確認（skipFileExistenceCheck が true なら全スキップ）
+  if (!options.skipFileExistenceCheck) {
+    // ファイルパス存在確認: knowledge.sources[].path
+    if (agentfile.knowledge?.sources) {
+      for (let i = 0; i < agentfile.knowledge.sources.length; i++) {
+        const source = agentfile.knowledge.sources[i];
+        const fullPath = resolve(options.basedir, source.path);
+        if (!existsSync(fullPath)) {
+          errors.push({
+            path: `/knowledge/sources/${i}/path`,
+            message: `File not found: ${source.path}`,
+            keyword: "fileExists",
+          });
+        }
+      }
+    }
+
+    // ファイルパス存在確認: agents_core.file
+    if (agentfile.agents_core?.file) {
+      const fullPath = resolve(options.basedir, agentfile.agents_core.file);
       if (!existsSync(fullPath)) {
         errors.push({
-          path: `/knowledge/sources/${i}/path`,
-          message: `File not found: ${source.path}`,
+          path: "/agents_core/file",
+          message: `File not found: ${agentfile.agents_core.file}`,
           keyword: "fileExists",
         });
       }
     }
-  }
 
-  // ファイルパス存在確認: agents_core.file
-  if (agentfile.agents_core?.file) {
-    const fullPath = resolve(options.basedir, agentfile.agents_core.file);
-    if (!existsSync(fullPath)) {
-      errors.push({
-        path: "/agents_core/file",
-        message: `File not found: ${agentfile.agents_core.file}`,
-        keyword: "fileExists",
-      });
-    }
-  }
-
-  // ファイルパス存在確認: tools.custom[].path
-  if (agentfile.tools?.custom) {
-    for (let i = 0; i < agentfile.tools.custom.length; i++) {
-      const tool = agentfile.tools.custom[i];
-      const fullPath = resolve(options.basedir, tool.path);
-      if (!existsSync(fullPath)) {
-        errors.push({
-          path: `/tools/custom/${i}/path`,
-          message: `File not found: ${tool.path}`,
-          keyword: "fileExists",
-        });
+    // ファイルパス存在確認: tools.custom[].path
+    if (agentfile.tools?.custom) {
+      for (let i = 0; i < agentfile.tools.custom.length; i++) {
+        const tool = agentfile.tools.custom[i];
+        const fullPath = resolve(options.basedir, tool.path);
+        if (!existsSync(fullPath)) {
+          errors.push({
+            path: `/tools/custom/${i}/path`,
+            message: `File not found: ${tool.path}`,
+            keyword: "fileExists",
+          });
+        }
       }
     }
   }

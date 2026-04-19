@@ -202,4 +202,61 @@ describe("Deployer", () => {
 
     expect(plan.app).toBe("builder-app");
   });
+
+  it("ビルド済みイメージはソースファイルが存在しなくても plan() が成功する", async () => {
+    // knowledge.sources / agents_core.file / tools.custom を含む Agentfile
+    const agentfileWithPaths = `
+apiVersion: easyflow/v1
+kind: Agent
+metadata:
+  name: test-agent
+  version: 1.0.0
+  description: Test
+  author: test
+identity:
+  name: TestAgent
+  soul: You are helpful.
+agents_core:
+  file: ./AGENTS-CORE.md
+knowledge:
+  sources:
+    - path: ./docs
+      type: agents_rule
+      description: docs
+tools:
+  custom:
+    - name: custom-tool
+      path: ./tools/custom.js
+`.trim();
+
+    // ビルド時に必要なファイルを一時作成
+    const buildDir = path.join(tmpDir, "build-source");
+    await fs.mkdir(buildDir, { recursive: true });
+    await fs.mkdir(path.join(buildDir, "docs"), { recursive: true });
+    await fs.mkdir(path.join(buildDir, "tools"), { recursive: true });
+    await fs.writeFile(path.join(buildDir, "Agentfile"), agentfileWithPaths, "utf-8");
+    await fs.writeFile(path.join(buildDir, "AGENTS-CORE.md"), "# Core", "utf-8");
+    await fs.writeFile(path.join(buildDir, "docs", "guide.md"), "# Guide", "utf-8");
+    await fs.writeFile(path.join(buildDir, "tools", "custom.js"), "// tool", "utf-8");
+
+    // ビルド
+    const builder = new ImageBuilder(store);
+    await builder.build({
+      agentfilePath: path.join(buildDir, "Agentfile"),
+      ref: "test/agent:paths",
+    });
+
+    // ソースツリーを削除
+    await fs.rm(buildDir, { recursive: true, force: true });
+
+    // ソースファイルが存在しない状態で plan() が成功することを検証
+    const plan = await deployer.plan({
+      ref: "test/agent:paths",
+      target: "fly",
+      app: "paths-app",
+    });
+
+    expect(plan.app).toBe("paths-app");
+    expect(plan.createApp).toBe(true);
+  });
 });

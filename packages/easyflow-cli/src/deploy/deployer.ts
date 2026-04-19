@@ -106,6 +106,7 @@ export class Deployer {
         if (yamlBuf) {
           const result = await parseAgentfile(yamlBuf.toString("utf-8"), {
             basedir: process.cwd(),
+            skipFileExistenceCheck: true,
           });
           return result.agentfile;
         }
