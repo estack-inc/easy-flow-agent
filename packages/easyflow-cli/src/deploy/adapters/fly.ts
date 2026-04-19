@@ -182,10 +182,10 @@ export class FlyDeployAdapter implements DeployAdapter {
         await fs.mkdir(layerDir, { recursive: true });
         if (layerBuf && layerBuf.length > 0) {
           const extracted = await extractLayer(layerBuf);
-          for (const [fileName, content] of extracted.files) {
+          for (const [fileName, { content, mode }] of extracted.files) {
             const filePath = path.join(layerDir, fileName);
             await fs.mkdir(path.dirname(filePath), { recursive: true });
-            await fs.writeFile(filePath, content);
+            await fs.writeFile(filePath, content, { mode });
           }
         }
       }

@@ -2,8 +2,13 @@ import { Readable } from "node:stream";
 import * as tar from "tar";
 import { EasyflowError } from "../utils/errors.js";
 
+export interface ExtractedFile {
+  content: Buffer;
+  mode: number;
+}
+
 export interface ExtractedLayer {
-  files: Map<string, Buffer>;
+  files: Map<string, ExtractedFile>;
 }
 
 /**
@@ -54,13 +59,14 @@ export async function extractLayer(tarGz: Buffer): Promise<ExtractedLayer> {
       }
 
       const bufList: Buffer[] = [];
+      const fileMode = entry.mode ?? 0o644;
       chunks.set(filePath, bufList);
 
       entry.on("data", (chunk: Buffer) => {
         bufList.push(chunk);
       });
       entry.on("end", () => {
-        files.set(filePath, Buffer.concat(bufList));
+        files.set(filePath, { content: Buffer.concat(bufList), mode: fileMode });
       });
       entry.on("error", reject);
     });

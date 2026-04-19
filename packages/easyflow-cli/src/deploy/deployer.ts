@@ -102,9 +102,9 @@ export class Deployer {
     if (configLayer) {
       try {
         const extracted = await extractLayer(configLayer);
-        const yamlBuf = extracted.files.get("Agentfile");
-        if (yamlBuf) {
-          const result = await parseAgentfile(yamlBuf.toString("utf-8"), {
+        const entry = extracted.files.get("Agentfile");
+        if (entry) {
+          const result = await parseAgentfile(entry.content.toString("utf-8"), {
             basedir: process.cwd(),
             skipFileExistenceCheck: true,
           });

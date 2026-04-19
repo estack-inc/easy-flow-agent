@@ -43,9 +43,9 @@ describe("extractLayer", () => {
     const result = await extractLayer(tarGz);
 
     expect(result.files.has("hello.txt")).toBe(true);
-    expect(result.files.get("hello.txt")?.toString("utf-8")).toBe("Hello, World!");
+    expect(result.files.get("hello.txt")?.content.toString("utf-8")).toBe("Hello, World!");
     expect(result.files.has("config.json")).toBe(true);
-    expect(result.files.get("config.json")?.toString("utf-8")).toBe('{"key": "value"}');
+    expect(result.files.get("config.json")?.content.toString("utf-8")).toBe('{"key": "value"}');
   });
 
   it("バイナリファイルを展開できる", async () => {
@@ -63,7 +63,7 @@ describe("extractLayer", () => {
 
       const result = await extractLayer(tarGz);
       expect(result.files.has("binary.bin")).toBe(true);
-      expect(result.files.get("binary.bin")).toEqual(binaryContent);
+      expect(result.files.get("binary.bin")?.content).toEqual(binaryContent);
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
@@ -84,6 +84,31 @@ describe("extractLayer", () => {
     const tarGz = await createTarGz({ "single.txt": "only one file" });
     const result = await extractLayer(tarGz);
     expect(result.files.size).toBe(1);
-    expect(result.files.get("single.txt")?.toString("utf-8")).toBe("only one file");
+    expect(result.files.get("single.txt")?.content.toString("utf-8")).toBe("only one file");
+  });
+
+  it("ファイルの mode を保持する", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyflow-tar-test-"));
+    try {
+      const scriptContent = "#!/bin/bash\necho hello";
+      const scriptPath = path.join(tmpDir, "script.sh");
+      await fs.writeFile(scriptPath, scriptContent, { mode: 0o755 });
+
+      const chunks: Buffer[] = [];
+      const stream = tar.create({ gzip: true, cwd: tmpDir, portable: true }, ["script.sh"]);
+      for await (const chunk of stream) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const tarGz = Buffer.concat(chunks);
+
+      const result = await extractLayer(tarGz);
+      expect(result.files.has("script.sh")).toBe(true);
+      const entry = result.files.get("script.sh");
+      expect(entry?.content.toString("utf-8")).toBe(scriptContent);
+      // tar の portable mode では mode が 0o755 として保持される
+      expect(entry?.mode).toBe(0o755);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });
