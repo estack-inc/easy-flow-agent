@@ -38,19 +38,10 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
   const gatewayToken = secrets.GATEWAY_TOKEN ?? crypto.randomBytes(24).toString("hex");
 
   // ---- env ----
-  // Agentfile の config.env をベースに、シークレット whitelist を上書きする
+  // Agentfile の config.env のみを含める。
+  // シークレット（ANTHROPIC_API_KEY 等）は Fly secrets 経由で process.env に注入され、
+  // 各プラグインが process.env から参照するため、ここには埋め込まない。
   const env: Record<string, string> = { ...(agentfile.config?.env ?? {}) };
-  const secretEnvKeys = [
-    "ANTHROPIC_API_KEY",
-    "GEMINI_API_KEY",
-    "OPENAI_API_KEY",
-    "PINECONE_API_KEY",
-  ] as const;
-  for (const key of secretEnvKeys) {
-    if (secrets[key]) {
-      env[key] = secrets[key];
-    }
-  }
 
   // ---- channels ----
   const channels: Record<string, unknown> = {};
@@ -131,16 +122,17 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
   if (hasAgentsCore) {
     pineconeConfig.agentsCorePath = "/app/easyflow/identity/AGENTS-CORE.md";
   }
-  if (secrets.PINECONE_API_KEY) {
-    pineconeConfig.apiKey = secrets.PINECONE_API_KEY;
-  }
+  // apiKey は Fly secrets 経由で process.env.PINECONE_API_KEY に注入され、
+  // pinecone-memory プラグインが env から参照するため、設定ファイルには埋め込まない。
 
   pluginEntries["pinecone-memory"] = { enabled: true, config: pineconeConfig };
 
   // ---- tools ----
+  // apiKey は Fly secrets 経由で process.env.GEMINI_API_KEY に注入され、
+  // media プラグインが env から参照するため、設定ファイルには埋め込まない。
   const tools: Record<string, unknown> = {};
   if (secrets.GEMINI_API_KEY) {
-    tools.media = { enabled: true, apiKey: secrets.GEMINI_API_KEY };
+    tools.media = { enabled: true };
   }
 
   // ---- agents ----

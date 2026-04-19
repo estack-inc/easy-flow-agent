@@ -53,13 +53,21 @@ describe("buildOpenclawConfig", () => {
     expect(config.gateway.auth.token.length).toBeGreaterThan(0);
   });
 
-  it("ANTHROPIC_API_KEY がシークレットにある場合は env に含める", () => {
+  it("シークレット API キーは env に含めない（Fly secrets から process.env で参照）", () => {
     const config = buildOpenclawConfig({
       agentfile: makeMinimalAgentfile(),
-      secrets: { ANTHROPIC_API_KEY: "sk-test" },
+      secrets: {
+        ANTHROPIC_API_KEY: "sk-test",
+        GEMINI_API_KEY: "gm-test",
+        OPENAI_API_KEY: "oa-test",
+        PINECONE_API_KEY: "pc-test",
+      },
     });
 
-    expect(config.env.ANTHROPIC_API_KEY).toBe("sk-test");
+    expect(config.env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(config.env.GEMINI_API_KEY).toBeUndefined();
+    expect(config.env.OPENAI_API_KEY).toBeUndefined();
+    expect(config.env.PINECONE_API_KEY).toBeUndefined();
   });
 
   it("GEMINI_API_KEY がない場合は tools.media を含めない", () => {
@@ -71,13 +79,13 @@ describe("buildOpenclawConfig", () => {
     expect(config.tools?.media).toBeUndefined();
   });
 
-  it("GEMINI_API_KEY がある場合は tools.media を含める", () => {
+  it("GEMINI_API_KEY がある場合は tools.media を含めるが apiKey は含めない", () => {
     const config = buildOpenclawConfig({
       agentfile: makeMinimalAgentfile(),
       secrets: { GEMINI_API_KEY: "gemini-key" },
     });
 
-    expect(config.tools?.media).toBeTruthy();
+    expect(config.tools?.media).toEqual({ enabled: true });
   });
 
   it("Slack チャンネルが有効でトークンあり: channels.slack を設定する", () => {
@@ -210,7 +218,7 @@ describe("buildOpenclawConfig", () => {
     expect(config.env.NODE_ENV).toBe("production");
   });
 
-  it("シークレットは Agentfile の env より優先される", () => {
+  it("Agentfile の env にシークレットキーがあっても env には含まれる（秘匿ではなく設定値の場合）", () => {
     const agentfile = makeMinimalAgentfile({
       config: { env: { ANTHROPIC_API_KEY: "from-agentfile", LOG_LEVEL: "debug" } },
     });
@@ -220,7 +228,9 @@ describe("buildOpenclawConfig", () => {
       secrets: { ANTHROPIC_API_KEY: "from-secret" },
     });
 
-    expect(config.env.ANTHROPIC_API_KEY).toBe("from-secret");
+    // Agentfile.config.env に明示的に書かれた値はそのまま env に含まれる
+    // シークレットからの上書きは行わない（process.env 経由で解決）
+    expect(config.env.ANTHROPIC_API_KEY).toBe("from-agentfile");
     expect(config.env.LOG_LEVEL).toBe("debug");
   });
 
@@ -269,7 +279,8 @@ describe("buildOpenclawConfig", () => {
       expect(pmConfig?.ragTopK).toBe(5);
       expect(pmConfig?.ragMinScore).toBe(0.8);
       expect(pmConfig?.ragTokenBudget).toBe(3000);
-      expect(pmConfig?.apiKey).toBe("pk-test");
+      // apiKey は設定ファイルに含めない（process.env.PINECONE_API_KEY から解決）
+      expect(pmConfig?.apiKey).toBeUndefined();
     });
 
     it("agents_core.inline でも agentsCorePath が設定される", () => {
@@ -308,15 +319,23 @@ describe("buildOpenclawConfig", () => {
       expect(pmConfig?.ragTokenBudget).toBe(2000);
     });
 
-    it("PINECONE_API_KEY がない場合は apiKey が設定されない", () => {
+    it("PINECONE_API_KEY の有無に関わらず apiKey は設定ファイルに含まれない", () => {
       const agentfile = makeMinimalAgentfile({
         config: { rag: { enabled: true } },
       });
 
-      const config = buildOpenclawConfig({ agentfile, secrets: {} });
+      // シークレットあり
+      const configWithSecret = buildOpenclawConfig({
+        agentfile,
+        secrets: { PINECONE_API_KEY: "pk-test" },
+      });
+      expect(configWithSecret.plugins.entries["pinecone-memory"]?.config?.apiKey).toBeUndefined();
 
-      const pmConfig = config.plugins.entries["pinecone-memory"]?.config;
-      expect(pmConfig?.apiKey).toBeUndefined();
+      // シークレットなし
+      const configWithoutSecret = buildOpenclawConfig({ agentfile, secrets: {} });
+      expect(
+        configWithoutSecret.plugins.entries["pinecone-memory"]?.config?.apiKey,
+      ).toBeUndefined();
     });
   });
 });
