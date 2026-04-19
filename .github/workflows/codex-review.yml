@@ -1,16 +1,39 @@
 # Codex Code Review
 #
-# PR の変更を OpenAI Codex でレビュー → PR コメント投稿
+# PR の変更を codex-connector 経由の外部 Codex reviewer で網羅的にレビュー → PR コメント投稿
+#
+# ★ ブランチ保護運用の前提（重要）:
+#   本 workflow は "informational 原則 + fail-closed 補強" の設計。
+#   - infra 障害時（webhook 非 200・通信断）は本 run の新規 verdict 提出をスキップし、
+#     過去の bot APPROVED を dismiss するのみで job 自体は green で終了する。
+#   - 例外: 過去 APPROVED の listing / dismiss が失敗した場合のみ job を fail（red）させる。
+#     これは stale approval が残ったまま未レビューで merge される経路を塞ぐための保険で、
+#     fail-closed を担保する。復旧後に re-run すれば green に戻せる。
+#   - レビューゲートとしての強制力は GitHub の review approval（branch protection の
+#     「Require approvals」「Require review from Code Owners」）に委ねる。
+#   - 本 job を「Require status checks to pass before merging」に追加すると、infra 障害
+#     の間ずっと merge がブロックされるため追加しないこと。
+#
+# REPO_ACCESS_TOKEN の identity 要件:
+#   PR 作成者本人の PAT だと self-review 制約で --approve / --request-changes が 422 に
+#   なり、本 workflow は fail する設計（握りつぶさない）。PR 作成者と別 identity の
+#   bot 用 PAT または GitHub App を使用すること。
 #
 # 必要な Secrets:
-#   OPENAI_API_KEY      — OpenAI API キー
-#   SLACK_WEBHOOK_URL   — Slack 通知用 Webhook URL（省略時は通知スキップ）
+#   REPO_ACCESS_TOKEN          — PR 作成者と別 identity の bot 用 PAT（PR 書き込み権限）
+#   CODEX_REVIEW_WEBHOOK_URL   — codex-connector 付き reviewer bridge のエンドポイント
+#   CODEX_REVIEW_WEBHOOK_TOKEN — reviewer bridge の Bearer token
+#   SLACK_WEBHOOK_URL          — 任意。失敗時 Slack 通知
 
 name: Codex Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
+    # 以下のイベント遷移でも cleanup step が走るように types を拡張する。
+    #   - converted_to_draft: ready → draft（bot APPROVED が残ると stale になるため dismiss する）
+    #   - labeled / unlabeled: ラベル付与・解除で適用可否が反転するため再評価する
+    #   - edited: PR 本文の `## AIレビュースキップ理由` 追加・変更・削除で verdict が変わり得るため
+    types: [opened, synchronize, ready_for_review, reopened, converted_to_draft, labeled, unlabeled, edited]
     branches: [main]
 
 concurrency:
@@ -20,345 +43,409 @@ concurrency:
 permissions:
   contents: read
   pull-requests: write
-  checks: write
   actions: read
 
 jobs:
-  wait-for-ci:
-    if: >
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.fork == false
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Wait for CI workflow to complete
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          SHA="${{ github.event.pull_request.head.sha }}"
-          REPO="${{ github.repository }}"
-          echo "Waiting for CI on $SHA ..."
-
-          for i in $(seq 1 90); do
-            RUN=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=1" \
-              --jq '.workflow_runs[0] | "\(.status):\(.conclusion // "pending")"' 2>/dev/null || echo "")
-
-            if [ -z "$RUN" ]; then
-              echo "  [$i] CI run not found yet..."
-              sleep 10
-              continue
-            fi
-
-            echo "  [$i] CI: $RUN"
-            case "$RUN" in
-              completed:success)
-                echo "CI passed!"
-                exit 0
-                ;;
-              completed:*)
-                echo "CI failed: $RUN"
-                exit 1
-                ;;
-            esac
-            sleep 10
-          done
-          echo "Timed out waiting for CI"
-          exit 1
-
-  codex-review:
-    needs: [wait-for-ci]
+  review:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # 旧実装では job レベル `if` で draft / fork の PR を丸ごと skip していたが、
+    # skip された PR でも過去 run の bot APPROVED が残ると、最新 head を見ていないのに
+    # approval だけ残る stale 状態になる。job は必ず起動し、各 step 内で適用可否を判定する。
+    # 適用外と判定された場合は cleanup step で過去 bot APPROVED を dismiss する。
 
     steps:
-      - name: Check if target files changed
-        id: check_files
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          CHANGED=$(gh pr diff ${{ github.event.pull_request.number }} \
-            --repo ${{ github.repository }} --name-only | \
-            grep -cE '^packages/.*\.(ts|js|json)$|^specs/.*\.md$|^\.github/workflows/.*\.(yml|yaml)$|^CLAUDE\.md$' || echo "0")
-          if [ "$CHANGED" -eq 0 ]; then
-            echo "skip=true" >> $GITHUB_OUTPUT
-            echo "No target files changed"
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-            echo "Target files changed: $CHANGED"
-          fi
-
       - uses: actions/checkout@v4
-        if: steps.check_files.outputs.skip != 'true'
         with:
           fetch-depth: 0
 
-      - name: Pre-fetch refs
-        if: steps.check_files.outputs.skip != 'true'
-        run: |
-          git fetch --no-tags origin \
-            ${{ github.event.pull_request.base.ref }} \
-            +refs/pull/${{ github.event.pull_request.number }}/head
-
-      - name: Install bubblewrap
-        if: steps.check_files.outputs.skip != 'true'
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap
-
-      - name: Run Codex Review
-        id: codex_review
-        if: steps.check_files.outputs.skip != 'true'
-        uses: openai/codex-action@v1
-        with:
-          model: gpt-5.4
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          output-file: /tmp/review-result.md
-          sandbox: workspace-write
-          prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
-
-            あなたは Easy Flow Agent プロジェクトのシニアコードレビュアーです。
-
-            ## Repository Context
-            This repository is a plugin monorepo for OpenClaw AI agent platform.
-            - Language: TypeScript (strict mode, ESM)
-            - Test framework: Vitest
-            - Package manager: npm workspaces
-
-            | Path | Role |
-            |---|---|
-            | `packages/pinecone-client/` | Low-level Pinecone API wrapper |
-            | `packages/pinecone-context-engine/` | Semantic search + RAG engine |
-            | `packages/openclaw-pinecone-plugin/` | OpenClaw integration (pinecone-memory) |
-            | `packages/workflow-controller/` | Workflow control plugin |
-            | `packages/file-serve/` | File delivery plugin |
-            | `packages/migrate-memory/` | Memory migration CLI |
-            | `packages/model-router/` | Model routing plugin |
-            | `specs/` | Feature specifications |
-            | `.github/workflows/` | CI/CD pipelines |
-
-            ## レビュー手順（Step 1〜5 を順番に実行、全て完了してから出力）
-
-            ### Step 1: PR と要件の把握
-            ```
-            gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }}
-            ```
-            - PR title・description・チェックリストを確認
-            - `## AIレビュースキップ理由` セクションがあれば内容を記録する
-
-            ### Step 2: 変更内容の把握
-            ```
-            gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }}
-            ```
-
-            ### Step 3: プロジェクト仕様の理解
-            - CLAUDE.md を読んでプロジェクト規約を確認
-            - 変更に関連する specs/*.md があれば読む
-
-            ### Step 4: 影響範囲の調査
-            - 変更されたファイルを全て読み込む
-            - インポートされているクラス・インターフェース・親クラスを確認
-            - 関連する呼び出し元・実装クラスを検索
-            - 対応するテストファイルを確認
-
-            ### Step 5: チェック項目の評価
-
-            #### [A] 要件充足・影響範囲
-            - **OK**: PR description の要件が全て実装されている、シグネチャ変更時に全呼び出し元が更新されている、インターフェース変更時に全実装が更新されている、新機能にテストがある
-            - **NG**: 要件の実装漏れ、呼び出し元の更新漏れ、インターフェース実装の不整合、テスト未作成
-
-            #### [B] コード品質（CLAUDE.md 参照）
-            - **OK**: TypeScript strict モード準拠、ESM import パスに `.js` 拡張子、JSON 永続化互換（Set 不使用）、Vitest テストあり、パッケージ間依存が妥当
-            - **NG**: `any` 型の多用、ESM 規約違反、Set の JSON シリアライズ、テスト不足、循環依存
-
-            #### [C] セキュリティ
-            - **OK**: console.log/debugger が残っていない、機密情報がハードコードされていない、入力値のバリデーションが適切
-            - **NG**: デバッグコードの残存、API キー等のハードコード、バリデーション欠如
-
-            #### [D] GitHub Actions 品質（yml 変更時）
-            - **OK**: 構文が正しい、secrets 参照が適切、パーミッション設定が最小権限
-            - **NG**: 構文エラー、secrets の不適切な参照、過剰なパーミッション
-
-            ## 重要度分類（2 段階のみ）
-
-            - 🔴 **重大**: バグ、セキュリティ脆弱性、データ損失リスク、要件未充足（**スキップ不可**）
-            - 🟡 **要修正**: コード品質問題、テスト不足、型安全性違反、推奨事項、スタイル提案（**合理的理由があれば PR 説明欄でスキップ可能**）
-
-            ## スキップ判定
-
-            PR body に `## AIレビュースキップ理由` セクションがある場合:
-            - 各 🟡 指摘について、対応するスキップ理由が記載されているか照合する
-            - 対応するスキップ理由がある 🟡 指摘 → `🟡 (スキップ済)` として verdict に影響しない
-            - スキップ理由が不明確・不合理な場合は通常の 🟡 として扱う
-
-            ## レビュー判定ルール
-
-            🔴 指摘が 1 件でもある → `### レビュー結果: ❌ Changes Requested`
-            スキップされていない 🟡 指摘が 1 件でもある → `### レビュー結果: ❌ Changes Requested`
-            全ての 🟡 がスキップ済み、または指摘なし → `### レビュー結果: ✅ Approved`
-
-            ## 出力形式（最終出力として PR コメントに投稿されます）
-
-            Filling rules:
-            - 全セクション必須。省略禁止
-            - 指摘事項がない場合は「指摘事項なし。」と記載
-            - 最終行は必ず VERDICT コメント行（後述）
-
-            ---START---
-
-            ### 変更の概要
-
-            （変更内容の要約を 1〜3 文で記載）
-
-            ### チェック結果
-
-            （各ファイルの確認結果を記載。問題がなければその旨を簡潔に）
-
-            **`path/to/file.ts`**
-            - 確認内容と結果
-
-            ### 指摘事項
-
-            （指摘がない場合は「指摘事項なし。」と記載）
-
-            🔴 **重大: タイトル** (`path/to/file.ts:行番号`)
-            > 説明と修正案
-
-            🟡 **要修正: タイトル** (`path/to/file.ts:行番号`)
-            > 説明と修正案
-            > 💡 スキップする場合: PR 説明欄の `## AIレビュースキップ理由` セクションに理由を記載してください
-
-            🟡 **要修正（スキップ済）: タイトル** (`path/to/file.ts:行番号`)
-            > 説明
-            > ✓ スキップ理由: [PR に記載された理由]
-
-            ### レビュー結果: ✅ Approved
-
-            <!-- VERDICT:APPROVED -->
-
-            ---END---
-
-            VERDICT 行は `<!-- VERDICT:APPROVED -->` または `<!-- VERDICT:CHANGES_REQUESTED -->` のいずれか。
-            この行は出力の最終行に必ず含めること。
-
-            ## 最終メッセージ要件（必須）
-
-            以下を **両方** 満たしてください:
-            1. OUTPUT block 全文（`### 変更の概要` から `<!-- VERDICT:... -->` まで）を `/tmp/review-result.md` に書き込む
-            2. **最終チャットメッセージ（あなたの最後の発話）にも全く同じ OUTPUT block を含める**
-
-            ファイル書き込みだけでは不十分です。最終チャットメッセージは output-file のフォールバックとして利用されるため、VERDICT トークンを必ず含めてください。
-            GitHub への直接投稿は引き続き禁止です。
-
-            ## レビュー方針
-            - 確信がない指摘は避け、確実な問題のみ指摘する
-            - 修正漏れの検出を最優先で行う
-            - 指摘にはファイルパスと行番号を必ず含める
-            - 全ての問題を 1 回のレビューで網羅的に検出する。小出しにしない
-            - GitHub への直接投稿（gh pr comment, gh pr review）は行わない
+      - name: Determine review applicability
+        id: applicable
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Post review comment
-        id: post_review
-        if: steps.check_files.outputs.skip != 'true' && success()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
           REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
-          if [ ! -f /tmp/review-result.md ] || [ ! -s /tmp/review-result.md ]; then
-            echo "::error::Review result file not found or empty — Codex may not have completed the review"
+          # 適用外（applicable=false）の判定軸：
+          #   - draft PR：レビュー対象外
+          #   - fork PR（head.repo != base repo）：GitHub が secrets を渡さず webhook を呼べない
+          #   - レビュー対象ファイルが差分に含まれない（filter false）
+          # これらを単一 step に集約し、後続の Dismiss stale bot approval へ単一フラグで渡す。
+          #
+          # 重要: fork PR では GH_TOKEN（REPO_ACCESS_TOKEN）が渡されないため `gh pr diff` が
+          # 401/403 で落ちる。draft / fork の判定は secrets 不要な event payload から取れるので
+          # 先に済ませ、`gh pr diff` は APPLICABLE=true のときだけ実行する。
+          APPLICABLE=true
+          REASONS=()
+          if [ "$IS_DRAFT" = "true" ]; then APPLICABLE=false; REASONS+=("draft PR"); fi
+          if [ "$HEAD_REPO" != "$REPO" ]; then APPLICABLE=false; REASONS+=("fork PR ($HEAD_REPO)"); fi
+
+          if [ "$APPLICABLE" = "true" ]; then
+            # `gh pr diff` は GitHub API の一時障害・PAT 失効・gh 側の一過性エラーで落ち得る。
+            # step を hard fail させると後段の Dismiss stale bot approval に到達できず、
+            # 過去 run が付けた bot APPROVED が残ったまま本 run の最新 head が未レビュー状態で
+            # merge される経路が開いてしまう。rc を捕まえ、失敗時は applicable=false + 理由付き
+            # にして Dismiss step に委譲する（dismiss も失敗すれば fail-closed で job が赤くなる）。
+            set +e
+            FILES=$(gh pr diff "$PR_NUM" --repo "$REPO" --name-only 2>&1)
+            GH_DIFF_RC=$?
+            set -e
+            if [ $GH_DIFF_RC -ne 0 ]; then
+              APPLICABLE=false
+              REASONS+=("gh pr diff failed (rc=$GH_DIFF_RC)")
+              echo "::warning::gh pr diff failed (rc=$GH_DIFF_RC), falling back to applicable=false so cleanup step can dismiss stale APPROVED"
+              echo "$FILES" | head -5
+            else
+              SHOULD_REVIEW=false
+              for f in $FILES; do
+                case "$f" in
+                  packages/*.ts|packages/*.js|packages/*.json) SHOULD_REVIEW=true ;;
+                  packages/**/*.ts|packages/**/*.js|packages/**/*.json) SHOULD_REVIEW=true ;;
+                  specs/*.md|specs/**/*.md) SHOULD_REVIEW=true ;;
+                  .github/workflows/*.yml|.github/workflows/*.yaml) SHOULD_REVIEW=true ;;
+                  CLAUDE.md) SHOULD_REVIEW=true ;;
+                esac
+              done
+              if [ "$SHOULD_REVIEW" = "false" ]; then APPLICABLE=false; REASONS+=("no reviewable files"); fi
+            fi
+          fi
+
+          REASON_JOINED=$(IFS='; '; echo "${REASONS[*]}")
+          echo "applicable=$APPLICABLE" >> "$GITHUB_OUTPUT"
+          echo "reason=$REASON_JOINED" >> "$GITHUB_OUTPUT"
+          echo "applicable=$APPLICABLE reason=$REASON_JOINED"
+
+      - name: Dismiss stale bot approval (PR became not applicable)
+        if: steps.applicable.outputs.applicable == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          REASON: ${{ steps.applicable.outputs.reason }}
+        run: |
+          # 適用外に遷移した PR（draft 化・ファイル構成変化・fork 化など）では本 run で
+          # レビュー verdict を提出しないため、過去の bot APPROVED が残ると stale 承認で
+          # merge が通る経路ができる。本 step で bot マーカー付きの過去 APPROVED を dismiss する。
+          # listing / dismiss いずれかが失敗したら fail-closed のため job を赤くする。
+          #
+          # fork PR では GitHub が secrets を渡さないため GH_TOKEN が空になる。このケースでは
+          # そもそも bot が APPROVED を付けられた run が過去に無い（同じ token が無い）ので、
+          # stale APPROVED が存在し得ず、dismiss 不要。listing で 401 にして fail-closed するのは
+          # 過剰保護なので、GH_TOKEN 未設定時は早期 exit 0 に倒す。
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::notice::GH_TOKEN unavailable (likely fork PR without secrets) — skipping stale APPROVED dismissal (no prior bot approval could exist without token)"
+            exit 0
+          fi
+          set +e
+          BOT_APPROVAL_IDS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
+            --jq '.[] | select(.state=="APPROVED" and (.body // "" | contains("<!-- codex-reviewer-bot:v1 -->"))) | .id' 2>/dev/null)
+          LISTING_RC=$?
+          set -e
+          DISMISS_FAILED=0
+          if [ $LISTING_RC -ne 0 ]; then
+            echo "::error::review listing 失敗 (rc=$LISTING_RC) — stale APPROVED の有無が判定できないため fail-closed"
+            DISMISS_FAILED=1
+          else
+            for RID in $BOT_APPROVAL_IDS; do
+              if gh api -X PUT "repos/$REPO/pulls/$PR_NUM/reviews/$RID/dismissals" \
+                  -f message="Codex Reviewer: 本 run はレビュー対象外（$REASON）のため過去の bot APPROVED を dismiss しました。" >/dev/null; then
+                echo "Dismissed stale APPROVED review id=$RID"
+              else
+                echo "::error::review dismiss 失敗 (id=$RID)"
+                DISMISS_FAILED=1
+              fi
+            done
+          fi
+          if [ "$DISMISS_FAILED" = "1" ]; then
+            echo "::error::適用外 PR の stale APPROVED 解消に失敗したため fail-closed で job を fail させます。"
             exit 1
           fi
-          sed '/^<!-- VERDICT:/d' /tmp/review-result.md > /tmp/review-comment.md
-          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file /tmp/review-comment.md
+          echo "::notice::review skipped (reason: $REASON) — stale bot approvals dismissed"
 
-      - name: Submit review verdict
-        if: >
-          steps.check_files.outputs.skip != 'true' &&
-          steps.codex_review.conclusion == 'success' &&
-          steps.post_review.conclusion == 'success'
+      - name: Codex Review via connector bridge
+        id: codex_review
+        if: steps.applicable.outputs.applicable == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REVIEW_WEBHOOK_URL: ${{ secrets.CODEX_REVIEW_WEBHOOK_URL }}
+          REVIEW_WEBHOOK_TOKEN: ${{ secrets.CODEX_REVIEW_WEBHOOK_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
-          VERDICT=""
+          if [ -z "$REVIEW_WEBHOOK_URL" ]; then
+            echo "::error::CODEX_REVIEW_WEBHOOK_URL is not set"
+            exit 1
+          fi
+          if [ -z "$REVIEW_WEBHOOK_TOKEN" ]; then
+            echo "::error::CODEX_REVIEW_WEBHOOK_TOKEN is not set"
+            exit 1
+          fi
 
-          # Layer 1: VERDICT トークン
-          # 注: Codex が finding 説明などで先頭に VERDICT 例を echo するケースがあるため、
-          # 先頭一致ではなく「最終出現」を採用する（真の verdict は出力末尾にある）
-          VERDICT=$(sed -n 's/^<!-- VERDICT:\([A-Z_]*\) -->/\1/p' /tmp/review-result.md | tail -1)
+          jq -n \
+            --arg repo "$REPO" \
+            --arg pr_url "$PR_URL" \
+            --arg output_path "/tmp/review-result.md" \
+            --arg summary "OpenClaw プラグインモノレポ (easy-flow-agent) の PR を codex-connector でレビューする" \
+            --argjson pr_number "$PR_NUMBER" \
+            '
+            {
+              mode: "pr_review",
+              repository: $repo,
+              pr_number: $pr_number,
+              pr_url: $pr_url,
+              output_path: $output_path,
+              instructions: {
+                language: "ja",
+                summary: $summary,
+                repository_context: [
+                  "OpenClaw AI エージェントプラットフォーム向けのプラグインモノレポ。TypeScript strict mode / ESM / npm workspaces / Vitest。",
+                  "packages/pinecone-client/: Pinecone API の低レベルラッパー",
+                  "packages/pinecone-context-engine/: セマンティック検索 + RAG エンジン",
+                  "packages/openclaw-pinecone-plugin/: OpenClaw 統合プラグイン (pinecone-memory)",
+                  "packages/workflow-controller/: ワークフロー制御プラグイン",
+                  "packages/file-serve/: ファイル配信プラグイン",
+                  "packages/migrate-memory/: メモリマイグレーション CLI",
+                  "packages/model-router/: モデルルーティングプラグイン",
+                  "packages/easyflow-cli/: Easy Flow CLI 本体",
+                  "specs/: 機能仕様書",
+                  ".github/workflows/: CI/CD ワークフロー",
+                  "CLAUDE.md: プロジェクト規約"
+                ],
+                checklists: [
+                  "[A] 要件充足・影響範囲: PR description の要件が全て実装されている / シグネチャ変更時に全呼び出し元が更新されている / インターフェース変更時に全実装が更新されている / 新機能にテストがある",
+                  "[B] コード品質 (CLAUDE.md 参照): TypeScript strict モード準拠 / ESM import パスに `.js` 拡張子 / JSON 永続化互換 (Set 不使用) / Vitest テストあり / パッケージ間依存が妥当",
+                  "[C] セキュリティ: console.log / debugger が残っていない / 機密情報がハードコードされていない / 入力値のバリデーションが適切",
+                  "[D] GitHub Actions 品質 (yml 変更時): 構文が正しい / secrets 参照が適切 / パーミッション設定が最小権限"
+                ],
+                severity: [
+                  "🔴 重大: バグ、セキュリティ脆弱性、データ損失リスク、要件未充足（スキップ不可）",
+                  "🟡 要修正: コード品質問題、テスト不足、型安全性違反、推奨事項、スタイル提案（合理的理由があれば PR 説明欄でスキップ可能）"
+                ],
+                skip_policy: "PR body に `## AIレビュースキップ理由` がある場合、🟡 指摘の対応する理由を照合し、合理的なら 🟡 (スキップ済) として verdict に影響させない",
+                verdict_rules: [
+                  "🔴 が 1 件でもある場合は `### レビュー結果: ❌ Changes Requested`",
+                  "スキップされていない 🟡 が 1 件でもある場合は `### レビュー結果: ❌ Changes Requested`",
+                  "全ての 🟡 がスキップ済み、または指摘なしの場合は `### レビュー結果: ✅ Approved`"
+                ],
+                output_format: [
+                  "最終出力は `### 変更の概要` から始める",
+                  "`### 指摘事項` セクションを含め、指摘がない場合は `指摘事項なし。` と記載する",
+                  "指摘にはファイルパスと行番号を必ず含める",
+                  "最終行に `<!-- VERDICT:APPROVED -->` または `<!-- VERDICT:CHANGES_REQUESTED -->` を含める"
+                ],
+                must_not: [
+                  "推測で指摘しない",
+                  "GitHub に直接投稿しない",
+                  "小出しにせず、このラウンドで全問題を出す"
+                ]
+              }
+            }' > /tmp/codex-review-request.rendered.json
 
-          # Layer 2: "### レビュー結果:" ヘッダの絵文字・キーワード
-          if [ -z "$VERDICT" ]; then
-            echo "::warning::No VERDICT token in file, trying header fallback"
-            # Layer 1 と同様、最終出現のヘッダを採用（先頭一致だとテンプレ例を拾う懸念あり）
-            HEADER_LINE=$(grep -E '^### (判定|レビュー結果):' /tmp/review-result.md | tail -1 || true)
-            if [ -n "$HEADER_LINE" ]; then
-              HEADER=$(echo "$HEADER_LINE" | sed 's/.*: //' | cut -c1-50)
-              echo "Fallback header line: $HEADER"
-              if echo "$HEADER" | grep -qiE 'CHANGES_REQUESTED|Changes Requested|要修正|❌'; then
-                VERDICT="CHANGES_REQUESTED"
-              elif echo "$HEADER" | grep -qiE 'APPROVED|APPROVE|Approved|✅'; then
-                VERDICT="APPROVED"
+          # 通信断（DNS 失敗・timeout 等）でも infra 障害として後続 step で dismiss 処理に
+          # 回せるよう、curl の非 0 終了では step を落とさず rc を output に保存する。
+          set +e
+          : > /tmp/review-result.md
+          HTTP_STATUS=$(curl -sS -o /tmp/review-result.md -w '%{http_code}' \
+            -X POST "$REVIEW_WEBHOOK_URL" \
+            -H "Authorization: Bearer $REVIEW_WEBHOOK_TOKEN" \
+            -H "Content-Type: application/json" \
+            --max-time 720 \
+            --data @/tmp/codex-review-request.rendered.json)
+          CURL_RC=$?
+          echo "curl_rc=$CURL_RC" >> "$GITHUB_OUTPUT"
+          echo "http_status=${HTTP_STATUS:-000}" >> "$GITHUB_OUTPUT"
+          echo "curl exited rc=$CURL_RC, http_status=${HTTP_STATUS:-000}"
+          # step 自身は常に成功扱い。判定は後続 step に委ねる。
+          exit 0
+
+      - name: Report infra failure (webhook non-200 or curl failure)
+        if: >-
+          always() && steps.applicable.outputs.applicable == 'true' &&
+          (steps.codex_review.outputs.curl_rc != '0' || steps.codex_review.outputs.http_status != '200')
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          HTTP_STATUS: ${{ steps.codex_review.outputs.http_status }}
+          CURL_RC: ${{ steps.codex_review.outputs.curl_rc }}
+        run: |
+          # 意図: infra 障害（認証切れ・Funnel 停止・一時的 502・通信断 等）では
+          # 本 run での新規 verdict 提出をスキップする。ただし前回 run の APPROVED が残ると、
+          # 最新 commit が未レビューのまま merge 可能になるため、bot マーカー付きの過去 APPROVED を
+          # dismiss する。CHANGES_REQUESTED は残しておく（そのままマージブロックされる方が安全）。
+          #
+          # listing / dismiss いずれかが失敗した時点で stale APPROVED が残りうるため、
+          # 本 step 末尾で job を fail させて未レビュー承認状態での merge を塞ぐ（fail-closed）。
+          MARKER='<!-- codex-reviewer-bot:v1 -->'
+          set +e
+          BOT_APPROVAL_IDS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
+            --jq '.[] | select(.state=="APPROVED" and (.body // "" | contains("<!-- codex-reviewer-bot:v1 -->"))) | .id' 2>/dev/null)
+          LISTING_RC=$?
+          set -e
+          DISMISS_FAILED=0
+          if [ $LISTING_RC -ne 0 ]; then
+            echo "::error::review listing 失敗 (rc=$LISTING_RC) — stale APPROVED の有無が判定できないため fail-closed"
+            DISMISS_FAILED=1
+          else
+            for RID in $BOT_APPROVAL_IDS; do
+              if gh api -X PUT "repos/$REPO/pulls/$PR_NUM/reviews/$RID/dismissals" \
+                  -f message="Codex Reviewer webhook infra 障害のため過去 APPROVED を dismiss しました。復旧後に push などで再レビューを走らせてください。" >/dev/null; then
+                echo "Dismissed stale APPROVED review id=$RID"
+              else
+                echo "::error::review dismiss 失敗 (id=$RID)"
+                DISMISS_FAILED=1
               fi
-            else
-              echo "No header found in review output"
+            done
+          fi
+          {
+            echo "$MARKER"
+            echo
+            echo "### 🤖 AI レビュー: infra 障害で本 run の verdict 提出をスキップ"
+            echo
+            echo "- webhook HTTP status: \`${HTTP_STATUS:-unknown}\`"
+            echo "- curl exit code: \`${CURL_RC:-unknown}\`（0 以外は通信断・DNS 失敗・timeout 等）"
+            echo "- Actions run: <https://github.com/$REPO/actions/runs/${{ github.run_id }}>"
+            echo
+            echo "過去の bot APPROVED は自動 dismiss しました。本 run では新規 verdict を提出していないため、branch protection が review 承認を要求している場合はブロックされます。"
+            echo "CHANGES_REQUESTED は残してあります（未レビュー状態でマージされないようにするため）。"
+            echo "webhook サーバー側の復旧後、push などで再トリガしてください。"
+            echo
+            if [ -s /tmp/review-result.md ]; then
+              echo "---- response body ----"
+              cat /tmp/review-result.md
             fi
+          } > /tmp/review-comment.md
+          # GitHub API 側の一時障害で job が赤くならないよう、コメント更新・投稿は best-effort。
+          EXISTING_ID=$(gh api --paginate "repos/$REPO/issues/$PR_NUM/comments" \
+            --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" 2>/dev/null | head -1 || true)
+          if [ -n "$EXISTING_ID" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING_ID" \
+              -F body=@/tmp/review-comment.md >/dev/null \
+              || echo "::warning::infra failure comment PATCH 失敗（best-effort なので継続）"
+          else
+            gh pr comment "$PR_NUM" --repo "$REPO" --body-file /tmp/review-comment.md \
+              || echo "::warning::infra failure comment 投稿失敗（best-effort なので継続）"
+          fi
+          echo "::warning::webhook returned ${HTTP_STATUS:-unknown} — verdict 提出はスキップ"
+          if [ "$DISMISS_FAILED" = "1" ]; then
+            echo "::error::infra 障害下で stale APPROVED の解消に失敗したため、未レビュー承認状態での merge を防ぐ目的で job を fail させます。"
+            exit 1
           fi
 
-          # Layer 3: Codex 最終メッセージの自然文（"判定は `APPROVED` です" など）
-          if [ -z "$VERDICT" ]; then
-            echo "::warning::No header found, trying natural-language fallback"
-            if grep -qE '判定は[^A-Z]*`?APPROVED`?' /tmp/review-result.md; then
-              VERDICT="APPROVED"
-            elif grep -qE '判定は[^A-Z]*`?CHANGES_REQUESTED`?' /tmp/review-result.md; then
-              VERDICT="CHANGES_REQUESTED"
-            fi
+      - name: Post review comment
+        if: >-
+          steps.applicable.outputs.applicable == 'true' &&
+          steps.codex_review.outputs.curl_rc == '0' &&
+          steps.codex_review.outputs.http_status == '200'
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+        run: |
+          # 空レスポンス（http=200 だが body が空）の場合でも Post step は失敗させない。
+          # Submit verdict 側で VERDICT_COUNT=0 → --request-changes（fail-closed）に倒すため、
+          # ここで exit 1 すると verdict 提出がスキップされ、stale APPROVED が残る経路になる。
+          # AI レビュー専用のマーカーを先頭に付け、同マーカー付きコメントのみを更新する。
+          # 人手コメントを上書きしないため、--edit-last は使わない。
+          # VERDICT マーカー本体だけを削ることで、Codex が同一行に他テキストを書いた場合でも
+          # VERDICT マーカーの露出を防ぐ（server.js `ensureVerdict()` の正規表現と整合）。
+          MARKER='<!-- codex-reviewer-bot:v1 -->'
+          # sed の区切り文字には `#` を使う。`|` だと ERE の alternation（`|`）と衝突し、
+          # `s|...(APPROVED|CHANGES_REQUESTED)...||g` は sed 側で pattern 終端と誤解釈されて
+          # `RE error: parentheses not balanced` で step が落ちるため。
+          { echo "$MARKER"; echo; sed -E 's#<!--[[:space:]]*VERDICT:(APPROVED|CHANGES_REQUESTED)[[:space:]]*-->##g' /tmp/review-result.md; } > /tmp/review-comment.md
+          EXISTING_ID=$(gh api --paginate "repos/$REPO/issues/$PR_NUM/comments" \
+            --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -1)
+          if [ -n "$EXISTING_ID" ]; then
+            echo "Updating existing bot comment: $EXISTING_ID"
+            gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING_ID" \
+              -F body=@/tmp/review-comment.md >/dev/null
+          else
+            echo "Creating new bot comment"
+            gh pr comment "$PR_NUM" --repo "$REPO" --body-file /tmp/review-comment.md
           fi
 
-          echo "Verdict: $VERDICT"
-
+      - name: Submit review verdict
+        # `!cancelled()` を付けることで、Post review comment が何らかの原因（例: sed の構文エラー、
+        # GitHub API の一時障害）で failure になっても verdict 提出はスキップされず実行される。
+        # これがないと Post 失敗 → Submit skip → 前回 run の APPROVED が残留という fail-closed の
+        # 主要保護（gh pr review 失敗を握りつぶさない）が Post 側の失敗で迂回されてしまう。
+        # Post と Submit は独立した責務なので依存させない。
+        if: >-
+          !cancelled() &&
+          steps.applicable.outputs.applicable == 'true' &&
+          steps.codex_review.outputs.curl_rc == '0' &&
+          steps.codex_review.outputs.http_status == '200'
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+        run: |
+          # review body にも bot マーカーを埋め込む。infra 障害時の dismiss 対象を
+          # 「このボット由来の review」に限定するために body 先頭でマーカーを照合する。
+          #
+          # review 提出失敗は「APPROVED 表示なのに approval 未反映」といった silent failure を
+          # 生むため握りつぶさず、job を赤くする。主な失敗要因:
+          #   - PAT の所有者が PR 作成者本人（self-review 制約で --approve / --request-changes 不可）
+          #   - PAT 権限不足（pull-requests: write が必要）
+          #   - Actions 側からの GitHub API 一時障害
+          # いずれも早期検知が必要なので、config / 権限系の misconfig が green のまま埋もれるのを避ける。
+          set -e
+          MARKER='<!-- codex-reviewer-bot:v1 -->'
+          # server.js `ensureVerdict()` と同じ正規表現で APPROVED / CHANGES_REQUESTED を抽出。
+          # 「ちょうど 1 件」の場合のみ --approve / --request-changes を実行する（fail-closed）。
+          # 0 件・2 件以上・矛盾が来た場合は --request-changes に倒し、曖昧な出力を誤って
+          # APPROVED に反映しないようにする（server 側でも正規化しているが workflow 側でも二重防御）。
+          VERDICT_TOKENS=$(grep -oE '<!--[[:space:]]*VERDICT:(APPROVED|CHANGES_REQUESTED)[[:space:]]*-->' /tmp/review-result.md | grep -oE 'APPROVED|CHANGES_REQUESTED' || true)
+          VERDICT_COUNT=$(printf '%s' "$VERDICT_TOKENS" | grep -c . || true)
+          VERDICT=""
+          if [ "$VERDICT_COUNT" = "1" ]; then
+            VERDICT=$(printf '%s' "$VERDICT_TOKENS" | head -1)
+          fi
+          echo "VERDICT tokens found: ${VERDICT_COUNT:-0} / selected: ${VERDICT:-<none>}"
           case "$VERDICT" in
             CHANGES_REQUESTED)
-              gh pr review "$PR_NUMBER" --repo "$REPO" --request-changes \
-                --body "🤖 AIレビュー判定: CHANGES_REQUESTED ❌" \
-                || echo "::warning::Could not submit review"
+              gh pr review "$PR_NUM" --repo "$REPO" --request-changes \
+                --body "$MARKER"$'\n'"🤖 AI レビュー判定: CHANGES_REQUESTED — 詳細はレビューコメントを確認してください。"
               ;;
             APPROVED)
-              gh pr review "$PR_NUMBER" --repo "$REPO" --approve \
-                --body "🤖 AIレビュー判定: APPROVED ✅" \
-                || echo "::warning::Could not submit review"
+              gh pr review "$PR_NUM" --repo "$REPO" --approve \
+                --body "$MARKER"$'\n'"🤖 AI レビュー判定: APPROVED ✅"
               ;;
             *)
-              # Layer 4: silent skip 廃止。コメント形式レビューで可視化
-              gh pr review "$PR_NUMBER" --repo "$REPO" --comment \
-                --body "🤖 AIレビュー判定: **判定不能** — Codex 出力から VERDICT を抽出できませんでした。レビューコメント本文を確認してください。" \
-                || echo "::warning::Could not submit fallback comment"
+              # 判定不能は fail-closed 方針に合わせて --request-changes でマージをブロックする。
+              # --comment だと blocking にならず、stale APPROVED が残っている環境で merge される
+              # 経路が開くため使わない。
+              gh pr review "$PR_NUM" --repo "$REPO" --request-changes \
+                --body "$MARKER"$'\n'"🤖 AI レビュー判定: **判定不能** — VERDICT マーカーが 0 件・2 件以上・矛盾のいずれかのため fail-closed で CHANGES_REQUESTED に倒しました。Codex 応答を確認の上、manual レビューを依頼してください。"
               ;;
           esac
 
-      - name: Notify Slack on Failure
-        if: failure() && steps.check_files.outputs.skip != 'true'
+      - name: Slack notification on failure
+        if: >-
+          always() && (
+            failure() ||
+            (steps.applicable.outputs.applicable == 'true' &&
+             (steps.codex_review.outputs.curl_rc != '0' || steps.codex_review.outputs.http_status != '200'))
+          )
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          HTTP_STATUS: ${{ steps.codex_review.outputs.http_status }}
+          CURL_RC: ${{ steps.codex_review.outputs.curl_rc }}
+          RUN_ID: ${{ github.run_id }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          BRANCH: ${{ github.head_ref }}
         run: |
           if [ -z "$SLACK_WEBHOOK_URL" ]; then
-            echo "SLACK_WEBHOOK_URL is not set, skipping notification"
+            echo "SLACK_WEBHOOK_URL not set — skipping notification"
             exit 0
           fi
-          payload=$(jq -n \
-            --arg title "$PR_TITLE" \
-            --arg url "$PR_URL" \
-            --arg number "$PR_NUMBER" \
-            --arg author "$PR_AUTHOR" \
-            --arg branch "$BRANCH" \
-            '{text: ":warning: *AI Code Review Failed*\n<\($url)|PR #\($number)>: \($title)\nAuthor: \($author) | Branch: `\($branch)`"}')
-          curl --fail -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL" \
-            || echo "::warning::Slack notification failed"
+          # Slack 側の障害で本 job が赤くならないよう best-effort で通知。
+          TEXT="Codex Review 障害: ${REPO}#${PR_NUM} (http=${HTTP_STATUS:-unknown}, curl_rc=${CURL_RC:-unknown}) — <${PR_URL}|PR> / <https://github.com/${REPO}/actions/runs/${RUN_ID}|Actions>"
+          curl -sS -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            --data "$(jq -n --arg t "$TEXT" '{text:$t}')" \
+            || echo "::warning::Slack 通知失敗（best-effort なので無視して継続）"
