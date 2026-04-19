@@ -135,7 +135,7 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     pineconeConfig.apiKey = secrets.PINECONE_API_KEY;
   }
 
-  pluginEntries["pinecone-memory"] = { enabled: ragEnabled, config: pineconeConfig };
+  pluginEntries["pinecone-memory"] = { enabled: true, config: pineconeConfig };
 
   // ---- tools ----
   const tools: Record<string, unknown> = {};

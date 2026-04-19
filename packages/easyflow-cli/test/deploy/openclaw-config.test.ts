@@ -156,7 +156,7 @@ describe("buildOpenclawConfig", () => {
     expect(config.webchat).toBeDefined();
   });
 
-  it("RAG が有効: pinecone-memory エントリが enabled=true", () => {
+  it("RAG が有効: pinecone-memory エントリが enabled=true かつ config.ragEnabled=true", () => {
     const agentfile = makeMinimalAgentfile({
       config: { rag: { enabled: true } },
     });
@@ -167,9 +167,10 @@ describe("buildOpenclawConfig", () => {
     });
 
     expect(config.plugins.entries["pinecone-memory"]?.enabled).toBe(true);
+    expect(config.plugins.entries["pinecone-memory"]?.config.ragEnabled).toBe(true);
   });
 
-  it("RAG が無効: pinecone-memory エントリが enabled=false", () => {
+  it("RAG が無効/未指定: pinecone-memory エントリは enabled=true のまま config.ragEnabled=false で制御", () => {
     const agentfile = makeMinimalAgentfile({
       config: { rag: { enabled: false } },
     });
@@ -179,7 +180,10 @@ describe("buildOpenclawConfig", () => {
       secrets: {},
     });
 
-    expect(config.plugins.entries["pinecone-memory"]?.enabled).toBe(false);
+    // classic mode 互換: エントリ自体は常に有効
+    expect(config.plugins.entries["pinecone-memory"]?.enabled).toBe(true);
+    // RAG 動作は config.ragEnabled で制御
+    expect(config.plugins.entries["pinecone-memory"]?.config.ragEnabled).toBe(false);
   });
 
   it("モデル設定が Agentfile に含まれる場合は agents に反映する", () => {
