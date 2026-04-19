@@ -138,9 +138,12 @@ jobs:
             echo "::notice::GH_TOKEN unavailable (likely fork PR without secrets) — skipping stale APPROVED dismissal (no prior bot approval could exist without token)"
             exit 0
           fi
+          # 移行期互換: 旧 workflow (openai/codex-action@v1 時代) の APPROVED には
+          # 新マーカー `<!-- codex-reviewer-bot:v1 -->` が付いていない。旧 body の先頭定型文
+          # `🤖 AIレビュー判定` でも bot review を識別し、新旧双方の stale APPROVED を dismiss する。
           set +e
           BOT_APPROVAL_IDS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
-            --jq '.[] | select(.state=="APPROVED" and (.body // "" | contains("<!-- codex-reviewer-bot:v1 -->"))) | .id' 2>/dev/null)
+            --jq '.[] | select(.state=="APPROVED" and ((.body // "") | (contains("<!-- codex-reviewer-bot:v1 -->") or contains("🤖 AIレビュー判定")))) | .id' 2>/dev/null)
           LISTING_RC=$?
           set -e
           DISMISS_FAILED=0
@@ -278,10 +281,12 @@ jobs:
           #
           # listing / dismiss いずれかが失敗した時点で stale APPROVED が残りうるため、
           # 本 step 末尾で job を fail させて未レビュー承認状態での merge を塞ぐ（fail-closed）。
+          # 移行期互換: 旧 workflow 時代の APPROVED（マーカー無し、body 先頭 `🤖 AIレビュー判定`）も
+          # dismiss 対象に含める。
           MARKER='<!-- codex-reviewer-bot:v1 -->'
           set +e
           BOT_APPROVAL_IDS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
-            --jq '.[] | select(.state=="APPROVED" and (.body // "" | contains("<!-- codex-reviewer-bot:v1 -->"))) | .id' 2>/dev/null)
+            --jq '.[] | select(.state=="APPROVED" and ((.body // "") | (contains("<!-- codex-reviewer-bot:v1 -->") or contains("🤖 AIレビュー判定")))) | .id' 2>/dev/null)
           LISTING_RC=$?
           set -e
           DISMISS_FAILED=0
