@@ -77,23 +77,22 @@ export class FlyDeployAdapter implements DeployAdapter {
     let createApp = true;
     let createVolume = true;
 
-    if (!options.dryRun) {
-      try {
-        const appsOutput = await this.flyctl.apps(["list", "--json"]);
-        const apps = this.parseAppsJson(appsOutput);
-        createApp = !apps.includes(app);
-      } catch {
-        // flyctl が使えない場合は新規とみなす
-      }
+    // dry-run でも read-only の存在確認は実行（正確な plan を表示するため）
+    try {
+      const appsOutput = await this.flyctl.apps(["list", "--json"]);
+      const apps = this.parseAppsJson(appsOutput);
+      createApp = !apps.includes(app);
+    } catch {
+      // flyctl が使えない場合は新規とみなす
+    }
 
-      if (!createApp) {
-        try {
-          const volOutput = await this.flyctl.volumes(["list", "--app", app, "--json"]);
-          const volumes = this.parseVolumesJson(volOutput);
-          createVolume = !volumes.includes("data");
-        } catch {
-          // ボリューム確認失敗 → 新規とみなす
-        }
+    if (!createApp) {
+      try {
+        const volOutput = await this.flyctl.volumes(["list", "--app", app, "--json"]);
+        const volumes = this.parseVolumesJson(volOutput);
+        createVolume = !volumes.includes("data");
+      } catch {
+        // ボリューム確認失敗 → 新規とみなす
       }
     }
 

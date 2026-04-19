@@ -90,6 +90,46 @@ describe("FlyDeployAdapter", () => {
       expect(plan.createApp).toBe(false);
       expect(plan.createVolume).toBe(false);
     });
+
+    it("dry-run でも flyctl.apps / flyctl.volumes が呼ばれ正確な plan が返る", async () => {
+      const appsFn = vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }]));
+      const volumesFn = vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }]));
+      const flyctl = makeMockFlyctl({
+        apps: appsFn,
+        volumes: volumesFn,
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      const plan = await adapter.plan(
+        makeStoredImage(),
+        makeAgentfile(),
+        makeDeployOptions({ dryRun: true }),
+      );
+
+      // dry-run でも read-only 確認が実行される
+      expect(appsFn).toHaveBeenCalledWith(["list", "--json"]);
+      expect(volumesFn).toHaveBeenCalledWith(["list", "--app", "my-test-app", "--json"]);
+      // 既存アプリ/ボリュームが認識される
+      expect(plan.createApp).toBe(false);
+      expect(plan.createVolume).toBe(false);
+    });
+
+    it("dry-run でアプリが存在しない場合 createApp=true を正しく返す", async () => {
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue("[]"),
+        volumes: vi.fn().mockResolvedValue("[]"),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      const plan = await adapter.plan(
+        makeStoredImage(),
+        makeAgentfile(),
+        makeDeployOptions({ dryRun: true }),
+      );
+
+      expect(plan.createApp).toBe(true);
+      expect(plan.createVolume).toBe(true);
+    });
   });
 
   describe("deploy()", () => {
