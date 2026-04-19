@@ -259,4 +259,78 @@ tools:
     expect(plan.app).toBe("paths-app");
     expect(plan.createApp).toBe(true);
   });
+
+  describe("plan() シークレット検証", () => {
+    it("Slack 有効 + SLACK_BOT_TOKEN 欠落で EasyflowError をスローする", async () => {
+      const agentfileWithSlack = `
+apiVersion: easyflow/v1
+kind: Agent
+metadata:
+  name: test-agent
+  version: 1.0.0
+  description: Test
+  author: test
+identity:
+  name: TestAgent
+  soul: You are helpful.
+channels:
+  slack:
+    enabled: true
+`.trim();
+
+      const configLayer = await createMockConfigLayer(agentfileWithSlack);
+      await store.save("test/agent:slack", {
+        manifest: {},
+        config: {},
+        layers: new Map([["config", configLayer]]),
+      });
+
+      // secretFile なし = SLACK_BOT_TOKEN 欠落
+      await expect(
+        deployer.plan({
+          ref: "test/agent:slack",
+          target: "fly",
+          app: "slack-app",
+        }),
+      ).rejects.toThrow(EasyflowError);
+    });
+
+    it("Slack 有効 + 正常なシークレットで plan() が成功する", async () => {
+      const agentfileWithSlack = `
+apiVersion: easyflow/v1
+kind: Agent
+metadata:
+  name: test-agent
+  version: 1.0.0
+  description: Test
+  author: test
+identity:
+  name: TestAgent
+  soul: You are helpful.
+channels:
+  slack:
+    enabled: true
+`.trim();
+
+      const configLayer = await createMockConfigLayer(agentfileWithSlack);
+      await store.save("test/agent:slack-ok", {
+        manifest: {},
+        config: {},
+        layers: new Map([["config", configLayer]]),
+      });
+
+      // シークレットファイルを作成
+      const secretFile = path.join(tmpDir, "secrets.env");
+      await fs.writeFile(secretFile, "SLACK_BOT_TOKEN=xoxb-test-token\n");
+
+      const plan = await deployer.plan({
+        ref: "test/agent:slack-ok",
+        target: "fly",
+        app: "slack-ok-app",
+        secretFile,
+      });
+
+      expect(plan.app).toBe("slack-ok-app");
+    });
+  });
 });

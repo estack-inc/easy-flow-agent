@@ -223,10 +223,11 @@ describe("FlyDeployAdapter", () => {
       expect(secretsFn).not.toHaveBeenCalled();
     });
 
-    it("Dockerfile と openclaw.json がビルドコンテキストに生成される", async () => {
+    it("Dockerfile と openclaw.json.template と render スクリプトがビルドコンテキストに生成される", async () => {
       let capturedCwd: string | undefined;
       let dockerfileContent: string | undefined;
-      let openclawJsonContent: string | undefined;
+      let templateContent: string | undefined;
+      let renderScriptContent: string | undefined;
 
       const flyctl = makeMockFlyctl({
         apps: vi.fn().mockResolvedValue("[]"),
@@ -245,8 +246,12 @@ describe("FlyDeployAdapter", () => {
                   path.join(capturedCwd, "Dockerfile"),
                   "utf-8",
                 );
-                openclawJsonContent = await fs.readFile(
-                  path.join(capturedCwd, "openclaw.json"),
+                templateContent = await fs.readFile(
+                  path.join(capturedCwd, "openclaw.json.template"),
+                  "utf-8",
+                );
+                renderScriptContent = await fs.readFile(
+                  path.join(capturedCwd, "render-openclaw-config.cjs"),
                   "utf-8",
                 );
               }
@@ -265,15 +270,25 @@ describe("FlyDeployAdapter", () => {
       );
 
       expect(capturedCwd).toBeDefined();
+      // Dockerfile は .template と render スクリプトを COPY する
       expect(dockerfileContent).toContain("FROM ghcr.io/openclaw/openclaw:latest");
       expect(dockerfileContent).toContain("COPY layers/config/ /app/easyflow/config/");
-      expect(dockerfileContent).toContain("COPY openclaw.json /app/openclaw.json");
-      expect(openclawJsonContent).toBeDefined();
-      const parsedConfig = JSON.parse(openclawJsonContent as string) as Record<string, unknown>;
+      expect(dockerfileContent).toContain(
+        "COPY openclaw.json.template /app/openclaw.json.template",
+      );
+      expect(dockerfileContent).toContain(
+        "COPY render-openclaw-config.cjs /app/render-openclaw-config.cjs",
+      );
+      // テンプレートファイルが存在し、gateway 設定を含む
+      expect(templateContent).toBeDefined();
+      const parsedConfig = JSON.parse(templateContent as string) as Record<string, unknown>;
       expect(parsedConfig.gateway).toBeDefined();
+      // render スクリプトが存在し、プレースホルダ展開ロジックを含む
+      expect(renderScriptContent).toBeDefined();
+      expect(renderScriptContent).toContain("process.env[key]");
     });
 
-    it("fly.toml に release_command が含まれ [build].image が含まれない", async () => {
+    it("fly.toml に node render スクリプトを呼ぶ release_command が含まれ [build].image が含まれない", async () => {
       let flyTomlContent: string | undefined;
 
       const flyctl = makeMockFlyctl({
@@ -305,7 +320,10 @@ describe("FlyDeployAdapter", () => {
       );
 
       expect(flyTomlContent).toBeDefined();
+      // release_command で node スクリプトがプレースホルダを展開
       expect(flyTomlContent).toContain("release_command");
+      expect(flyTomlContent).toContain("node /app/render-openclaw-config.cjs");
+      expect(flyTomlContent).toContain("/app/openclaw.json.template");
       expect(flyTomlContent).toContain("/data/openclaw.json");
       expect(flyTomlContent).not.toContain("[build]");
       expect(flyTomlContent).not.toContain("ghcr.io/openclaw/openclaw:latest");

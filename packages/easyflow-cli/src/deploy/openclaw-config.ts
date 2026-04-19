@@ -55,10 +55,15 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
         "--secret-file でトークンを含むファイルを指定してください",
       );
     }
+    // 実値ではなくプレースホルダを埋め込む（release_command で node スクリプトが展開）
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: 意図的なプレースホルダ（runtime で展開）
+    const slackBotTokenPlaceholder = "${SLACK_BOT_TOKEN}";
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: 意図的なプレースホルダ（runtime で展開）
+    const slackSigningSecretPlaceholder = "${SLACK_SIGNING_SECRET}";
     channels.slack = {
       enabled: true,
-      botToken: secrets.SLACK_BOT_TOKEN,
-      ...(secrets.SLACK_SIGNING_SECRET ? { signingSecret: secrets.SLACK_SIGNING_SECRET } : {}),
+      botToken: slackBotTokenPlaceholder,
+      ...(secrets.SLACK_SIGNING_SECRET ? { signingSecret: slackSigningSecretPlaceholder } : {}),
     };
   }
 
@@ -71,10 +76,15 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
         "--secret-file でトークンを含むファイルを指定してください",
       );
     }
+    // 実値ではなくプレースホルダを埋め込む（release_command で node スクリプトが展開）
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: 意図的なプレースホルダ（runtime で展開）
+    const lineAccessTokenPlaceholder = "${LINE_ACCESS_TOKEN}";
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: 意図的なプレースホルダ（runtime で展開）
+    const lineChannelSecretPlaceholder = "${LINE_CHANNEL_SECRET}";
     channels.line = {
       enabled: true,
-      accessToken: secrets.LINE_ACCESS_TOKEN,
-      channelSecret: secrets.LINE_CHANNEL_SECRET,
+      accessToken: lineAccessTokenPlaceholder,
+      channelSecret: lineChannelSecretPlaceholder,
     };
   }
 

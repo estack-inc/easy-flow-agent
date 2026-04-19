@@ -3,6 +3,7 @@ import type { ImageStore } from "../store/image-store.js";
 import { EasyflowError } from "../utils/errors.js";
 import type { DeploymentsLog } from "./deployments-log.js";
 import { extractLayer } from "./layer-extractor.js";
+import { buildOpenclawConfig } from "./openclaw-config.js";
 import { loadSecretFile } from "./secret-file.js";
 import type { DeployAdapter, DeployOptions, DeployPlan, DeployResult } from "./types.js";
 
@@ -85,6 +86,16 @@ export class Deployer {
     }
 
     const agentfile = await this.extractAgentfile(imageData.layers);
+
+    // dry-run でもシークレット検証を実施（必須トークン欠落を事前検知）
+    const secrets: Record<string, string> = {};
+    if (options.secretFile) {
+      const fileSecrets = await loadSecretFile(options.secretFile);
+      Object.assign(secrets, fileSecrets);
+    }
+    // buildOpenclawConfig で channels 必須トークンの欠落を検証
+    // EasyflowError が throw されたら plan 失敗として上位に伝播
+    buildOpenclawConfig({ agentfile, secrets });
 
     const adapter = this.adapters.get(options.target);
     if (!adapter) {

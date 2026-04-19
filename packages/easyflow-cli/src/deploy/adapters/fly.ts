@@ -13,16 +13,33 @@ const DEFAULT_REGION = "nrt";
 const DEFAULT_ORG = "personal";
 const LAYER_NAMES = ["identity", "knowledge", "tools", "config"] as const;
 
+const RENDER_SCRIPT = `const fs = require("node:fs");
+
+const src = process.argv[2] || "/app/openclaw.json.template";
+const dst = process.argv[3] || "/data/openclaw.json";
+
+const tpl = fs.readFileSync(src, "utf8");
+const rendered = tpl.replace(/\\$\\{([A-Z_][A-Z0-9_]*)\\}/g, (_, key) => {
+  const v = process.env[key];
+  if (v == null) {
+    console.error(\`render-openclaw-config: env \${key} not set\`);
+    return "";
+  }
+  return v;
+});
+fs.writeFileSync(dst, rendered);
+`;
+
 /**
  * fly.toml テンプレートを生成する。
  * [build].image は使用せず Dockerfile ベースのリモートビルドに切り替える。
- * release_command で /app/openclaw.json を /data に配置し、デプロイごとに最新設定を反映する。
+ * release_command で node スクリプトがプレースホルダを展開し /data に配置する。
  */
 function buildFlyToml(appName: string, region: string): string {
   return `app = "${appName}"
 primary_region = "${region}"
 
-release_command = "cp /app/openclaw.json /data/openclaw.json"
+release_command = "node /app/render-openclaw-config.cjs /app/openclaw.json.template /data/openclaw.json"
 
 [[mounts]]
   source = "data"
@@ -42,7 +59,8 @@ release_command = "cp /app/openclaw.json /data/openclaw.json"
 
 /**
  * エージェントレイヤーを焼き込む Dockerfile を生成する。
- * openclaw.json は /app/openclaw.json に配置し、release_command で /data にコピーする。
+ * openclaw.json.template と render スクリプトを /app に配置し、
+ * release_command で node スクリプトがプレースホルダを展開して /data に書き出す。
  */
 function buildDockerfile(): string {
   return `FROM ${BASE_IMAGE}
@@ -50,7 +68,8 @@ COPY layers/identity/ /app/easyflow/identity/
 COPY layers/knowledge/ /app/easyflow/knowledge/
 COPY layers/tools/ /app/easyflow/tools/
 COPY layers/config/ /app/easyflow/config/
-COPY openclaw.json /app/openclaw.json
+COPY openclaw.json.template /app/openclaw.json.template
+COPY render-openclaw-config.cjs /app/render-openclaw-config.cjs
 `;
 }
 
@@ -190,19 +209,22 @@ export class FlyDeployAdapter implements DeployAdapter {
         }
       }
 
-      // Dockerfile を生成（レイヤー + openclaw.json を焼き込む）
+      // Dockerfile を生成（レイヤー + openclaw.json.template + render スクリプトを焼き込む）
       await fs.writeFile(path.join(tmpDir, "Dockerfile"), buildDockerfile(), "utf-8");
 
-      // fly.toml を生成（release_command で /data/openclaw.json を更新）
+      // fly.toml を生成（release_command で node スクリプトがプレースホルダを展開）
       await fs.writeFile(path.join(tmpDir, "fly.toml"), buildFlyToml(app, region), "utf-8");
 
-      // openclaw.json を生成（release_command が /app -> /data にコピーする）
+      // openclaw.json.template を生成（チャネル認証情報はプレースホルダ、release_command で展開）
       const openclawConfig = buildOpenclawConfig({ agentfile, secrets });
       await fs.writeFile(
-        path.join(tmpDir, "openclaw.json"),
+        path.join(tmpDir, "openclaw.json.template"),
         JSON.stringify(openclawConfig, null, 2),
         "utf-8",
       );
+
+      // render-openclaw-config.cjs を生成（release_command から呼ばれる）
+      await fs.writeFile(path.join(tmpDir, "render-openclaw-config.cjs"), RENDER_SCRIPT, "utf-8");
 
       // Step 5: シークレット設定（--stage でまずステージングに）
       const secretPairs: string[] = [];

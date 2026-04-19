@@ -3,6 +3,9 @@ import type { Agentfile } from "../../src/agentfile/types.js";
 import { buildOpenclawConfig } from "../../src/deploy/openclaw-config.js";
 import { EasyflowError } from "../../src/utils/errors.js";
 
+// biome-ignore lint/style/useTemplate: 意図的に文字列連結（template literal の lint 警告回避）
+const placeholder = (name: string): string => "$" + "{" + name + "}";
+
 function makeMinimalAgentfile(overrides: Partial<Agentfile> = {}): Agentfile {
   return {
     apiVersion: "easyflow/v1",
@@ -88,7 +91,7 @@ describe("buildOpenclawConfig", () => {
     expect(config.tools?.media).toEqual({ enabled: true });
   });
 
-  it("Slack チャンネルが有効でトークンあり: channels.slack を設定する", () => {
+  it("Slack チャンネルが有効でトークンあり: channels.slack にプレースホルダを設定する", () => {
     const agentfile = makeMinimalAgentfile({
       channels: { slack: { enabled: true } },
     });
@@ -98,9 +101,27 @@ describe("buildOpenclawConfig", () => {
       secrets: { SLACK_BOT_TOKEN: "xoxb-token" },
     });
 
+    // 実値ではなくプレースホルダが設定される（release_command で展開）
     expect(config.channels.slack).toMatchObject({
       enabled: true,
-      botToken: "xoxb-token",
+      botToken: placeholder("SLACK_BOT_TOKEN"),
+    });
+  });
+
+  it("Slack signingSecret がある場合もプレースホルダを設定する", () => {
+    const agentfile = makeMinimalAgentfile({
+      channels: { slack: { enabled: true } },
+    });
+
+    const config = buildOpenclawConfig({
+      agentfile,
+      secrets: { SLACK_BOT_TOKEN: "xoxb-token", SLACK_SIGNING_SECRET: "sign-secret" },
+    });
+
+    expect(config.channels.slack).toMatchObject({
+      enabled: true,
+      botToken: placeholder("SLACK_BOT_TOKEN"),
+      signingSecret: placeholder("SLACK_SIGNING_SECRET"),
     });
   });
 
@@ -117,7 +138,7 @@ describe("buildOpenclawConfig", () => {
     ).toThrow(EasyflowError);
   });
 
-  it("Line チャンネルが有効でトークンあり: channels.line を設定する", () => {
+  it("Line チャンネルが有効でトークンあり: channels.line にプレースホルダを設定する", () => {
     const agentfile = makeMinimalAgentfile({
       channels: { line: { enabled: true } },
     });
@@ -130,10 +151,11 @@ describe("buildOpenclawConfig", () => {
       },
     });
 
+    // 実値ではなくプレースホルダが設定される（release_command で展開）
     expect(config.channels.line).toMatchObject({
       enabled: true,
-      accessToken: "line-token",
-      channelSecret: "line-secret",
+      accessToken: placeholder("LINE_ACCESS_TOKEN"),
+      channelSecret: placeholder("LINE_CHANNEL_SECRET"),
     });
   });
 

@@ -2,11 +2,50 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as tar from "tar";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Deployer } from "../../src/deploy/deployer.js";
+import { DeploymentsLog } from "../../src/deploy/deployments-log.js";
+import type { DeployAdapter } from "../../src/deploy/types.js";
 import { ImageStore } from "../../src/store/image-store.js";
 
-// CLI コマンドのテストは Commander の action をモックして実施
-// deploy コマンドの登録のみを検証し、実際の flyctl は呼ばない
+const MINIMAL_AGENTFILE_YAML = `
+apiVersion: easyflow/v1
+kind: Agent
+metadata:
+  name: test-agent
+  version: 1.0.0
+  description: Test
+  author: test
+identity:
+  name: TestAgent
+  soul: You are helpful.
+`.trim();
+
+function makeMockAdapter(): DeployAdapter {
+  return {
+    name: "fly" as const,
+    plan: vi.fn().mockImplementation(async (stored, _agentfile, options) => ({
+      app: options.app,
+      region: options.region ?? "nrt",
+      org: options.org ?? "personal",
+      createApp: true,
+      createVolume: true,
+      image: { ref: stored.ref, digest: stored.digest, size: stored.size },
+      channels: [],
+      tools: [],
+      secretKeys: [],
+    })),
+    deploy: vi.fn().mockImplementation(async (_image, stored, _agentfile, options) => ({
+      app: options.app,
+      target: "fly",
+      ref: stored.ref,
+      digest: stored.digest,
+      url: `https://${options.app}.fly.dev`,
+      deployedAt: new Date().toISOString(),
+      healthCheck: { ok: true, statusCode: 200, latencyMs: 100 },
+    })),
+  };
+}
 
 describe("registerDeployCommand", () => {
   let tmpDir: string;
@@ -48,30 +87,13 @@ describe("registerDeployCommand", () => {
     ).rejects.toThrow();
   });
 
-  it("--dry-run フラグで dry-run モードで実行できる", async () => {
-    // dry-run テスト: イメージストアをモックして実際のデプロイを防ぐ
-    const { Command } = await import("commander");
-    const { registerDeployCommand } = await import("../../src/cli/commands/deploy.js");
-
-    const MINIMAL_AGENTFILE_YAML = `
-apiVersion: easyflow/v1
-kind: Agent
-metadata:
-  name: test-agent
-  version: 1.0.0
-  description: Test
-  author: test
-identity:
-  name: TestAgent
-  soul: You are helpful.
-`.trim();
-
-    // モック config.tar.gz を作成
+  it("--dry-run フラグで Deployer.plan() が正しく呼ばれる", async () => {
+    // 正しい fixture を作成: "Agentfile" ファイル、"config" レイヤー
     const configDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyflow-tartest-"));
     try {
-      await fs.writeFile(path.join(configDir, "agentfile.yaml"), MINIMAL_AGENTFILE_YAML);
+      await fs.writeFile(path.join(configDir, "Agentfile"), MINIMAL_AGENTFILE_YAML);
       const chunks: Buffer[] = [];
-      const stream = tar.create({ gzip: true, cwd: configDir, portable: true }, ["agentfile.yaml"]);
+      const stream = tar.create({ gzip: true, cwd: configDir, portable: true }, ["Agentfile"]);
       for await (const chunk of stream) {
         chunks.push(Buffer.from(chunk));
       }
@@ -82,19 +104,26 @@ identity:
       await store.save("test/agent:1.0", {
         manifest: {},
         config: {},
-        layers: new Map([["config.tar.gz", configLayer]]),
+        layers: new Map([["config", configLayer]]),
       });
 
-      // 実際の deploy コマンドは flyctl を呼ぶので、
-      // ここでは CLI 登録と --app オプションの存在確認のみ行う
-      const program = new Command();
-      program.exitOverride();
-      program.option("--dry-run", "dry-run", false);
-      program.option("--no-color", "no-color");
-      registerDeployCommand(program);
+      // Deployer を直接呼び出して dry-run (plan) 動作を検証
+      const logFile = path.join(tmpDir, "deployments.json");
+      const mockAdapter = makeMockAdapter();
+      const deploymentsLog = new DeploymentsLog(logFile);
+      const deployer = new Deployer(store, new Map([["fly", mockAdapter]]), deploymentsLog);
 
-      const deployCmd = program.commands.find((c) => c.name() === "deploy");
-      expect(deployCmd).toBeDefined();
+      const plan = await deployer.plan({
+        ref: "test/agent:1.0",
+        target: "fly",
+        app: "test-app",
+        region: "nrt",
+      });
+
+      expect(plan.app).toBe("test-app");
+      expect(plan.region).toBe("nrt");
+      expect(plan.createApp).toBe(true);
+      expect(mockAdapter.plan).toHaveBeenCalled();
     } finally {
       await fs.rm(configDir, { recursive: true, force: true });
     }
