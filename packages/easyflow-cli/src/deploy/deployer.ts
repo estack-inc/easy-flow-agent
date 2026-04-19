@@ -87,14 +87,15 @@ export class Deployer {
 
     const agentfile = await this.extractAgentfile(imageData.layers);
 
-    // dry-run でもシークレット検証を実施（必須トークン欠落を事前検知）
     const secrets: Record<string, string> = {};
     if (options.secretFile) {
       const fileSecrets = await loadSecretFile(options.secretFile);
       Object.assign(secrets, fileSecrets);
     }
-    // buildOpenclawConfig で channels 必須トークンの欠落を検証
-    // EasyflowError が throw されたら plan 失敗として上位に伝播
+
+    // channels 有効時に secret-file で値が与えられていない場合は警告
+    this.warnMissingChannelSecrets(agentfile, secrets);
+
     buildOpenclawConfig({ agentfile, secrets });
 
     const adapter = this.adapters.get(options.target);
@@ -103,6 +104,27 @@ export class Deployer {
     }
 
     return adapter.plan(stored, agentfile, options);
+  }
+
+  private warnMissingChannelSecrets(
+    agentfile: import("../agentfile/types.js").Agentfile,
+    secrets: Record<string, string>,
+  ): void {
+    if (agentfile.channels?.slack?.enabled && !secrets.SLACK_BOT_TOKEN) {
+      console.warn("warn: SLACK_BOT_TOKEN not provided locally; assumed to exist in Fly secrets");
+    }
+    if (agentfile.channels?.line?.enabled) {
+      if (!secrets.LINE_ACCESS_TOKEN) {
+        console.warn(
+          "warn: LINE_ACCESS_TOKEN not provided locally; assumed to exist in Fly secrets",
+        );
+      }
+      if (!secrets.LINE_CHANNEL_SECRET) {
+        console.warn(
+          "warn: LINE_CHANNEL_SECRET not provided locally; assumed to exist in Fly secrets",
+        );
+      }
+    }
   }
 
   private async extractAgentfile(

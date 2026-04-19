@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as tar from "tar";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agentfile } from "../../src/agentfile/types.js";
 import { Deployer } from "../../src/deploy/deployer.js";
 import { DeploymentsLog } from "../../src/deploy/deployments-log.js";
@@ -261,7 +261,7 @@ tools:
   });
 
   describe("plan() シークレット検証", () => {
-    it("Slack 有効 + SLACK_BOT_TOKEN 欠落で EasyflowError をスローする", async () => {
+    it("Slack 有効 + SLACK_BOT_TOKEN 欠落でも plan() 成功（再デプロイ対応）+ 警告出力", async () => {
       const agentfileWithSlack = `
 apiVersion: easyflow/v1
 kind: Agent
@@ -285,14 +285,64 @@ channels:
         layers: new Map([["config", configLayer]]),
       });
 
-      // secretFile なし = SLACK_BOT_TOKEN 欠落
-      await expect(
-        deployer.plan({
-          ref: "test/agent:slack",
-          target: "fly",
-          app: "slack-app",
-        }),
-      ).rejects.toThrow(EasyflowError);
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      // secretFile なし = SLACK_BOT_TOKEN 欠落でも成功
+      const plan = await deployer.plan({
+        ref: "test/agent:slack",
+        target: "fly",
+        app: "slack-app",
+      });
+
+      expect(plan.app).toBe("slack-app");
+      expect(warnSpy).toHaveBeenCalledWith(
+        "warn: SLACK_BOT_TOKEN not provided locally; assumed to exist in Fly secrets",
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it("LINE 有効 + トークン欠落でも plan() 成功（再デプロイ対応）+ 警告出力", async () => {
+      const agentfileWithLine = `
+apiVersion: easyflow/v1
+kind: Agent
+metadata:
+  name: test-agent
+  version: 1.0.0
+  description: Test
+  author: test
+identity:
+  name: TestAgent
+  soul: You are helpful.
+channels:
+  line:
+    enabled: true
+`.trim();
+
+      const configLayer = await createMockConfigLayer(agentfileWithLine);
+      await store.save("test/agent:line", {
+        manifest: {},
+        config: {},
+        layers: new Map([["config", configLayer]]),
+      });
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const plan = await deployer.plan({
+        ref: "test/agent:line",
+        target: "fly",
+        app: "line-app",
+      });
+
+      expect(plan.app).toBe("line-app");
+      expect(warnSpy).toHaveBeenCalledWith(
+        "warn: LINE_ACCESS_TOKEN not provided locally; assumed to exist in Fly secrets",
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        "warn: LINE_CHANNEL_SECRET not provided locally; assumed to exist in Fly secrets",
+      );
+
+      warnSpy.mockRestore();
     });
 
     it("Slack 有効 + 正常なシークレットで plan() が成功する", async () => {

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Agentfile } from "../../src/agentfile/types.js";
 import { buildOpenclawConfig } from "../../src/deploy/openclaw-config.js";
-import { EasyflowError } from "../../src/utils/errors.js";
 
 // biome-ignore lint/style/useTemplate: 意図的に文字列連結（template literal の lint 警告回避）
 const placeholder = (name: string): string => "$" + "{" + name + "}";
@@ -125,17 +124,20 @@ describe("buildOpenclawConfig", () => {
     });
   });
 
-  it("Slack チャンネルが有効でトークンなし: EasyflowError をスローする", () => {
+  it("Slack チャンネルが有効でトークンなし: throw せずプレースホルダで生成（再デプロイ対応）", () => {
     const agentfile = makeMinimalAgentfile({
       channels: { slack: { enabled: true } },
     });
 
-    expect(() =>
-      buildOpenclawConfig({
-        agentfile,
-        secrets: {},
-      }),
-    ).toThrow(EasyflowError);
+    const config = buildOpenclawConfig({
+      agentfile,
+      secrets: {},
+    });
+
+    expect(config.channels.slack).toMatchObject({
+      enabled: true,
+      botToken: placeholder("SLACK_BOT_TOKEN"),
+    });
   });
 
   it("Line チャンネルが有効でトークンあり: channels.line にプレースホルダを設定する", () => {
@@ -159,17 +161,38 @@ describe("buildOpenclawConfig", () => {
     });
   });
 
-  it("Line チャンネルが有効でトークン不足: EasyflowError をスローする", () => {
+  it("Line チャンネルが有効でトークンなし: throw せずプレースホルダで生成（再デプロイ対応）", () => {
     const agentfile = makeMinimalAgentfile({
       channels: { line: { enabled: true } },
     });
 
-    expect(() =>
-      buildOpenclawConfig({
-        agentfile,
-        secrets: { LINE_ACCESS_TOKEN: "token-only" },
-      }),
-    ).toThrow(EasyflowError);
+    const config = buildOpenclawConfig({
+      agentfile,
+      secrets: {},
+    });
+
+    expect(config.channels.line).toMatchObject({
+      enabled: true,
+      accessToken: placeholder("LINE_ACCESS_TOKEN"),
+      channelSecret: placeholder("LINE_CHANNEL_SECRET"),
+    });
+  });
+
+  it("Line チャンネルが有効で一部トークンのみ: throw せずプレースホルダで生成（再デプロイ対応）", () => {
+    const agentfile = makeMinimalAgentfile({
+      channels: { line: { enabled: true } },
+    });
+
+    const config = buildOpenclawConfig({
+      agentfile,
+      secrets: { LINE_ACCESS_TOKEN: "token-only" },
+    });
+
+    expect(config.channels.line).toMatchObject({
+      enabled: true,
+      accessToken: placeholder("LINE_ACCESS_TOKEN"),
+      channelSecret: placeholder("LINE_CHANNEL_SECRET"),
+    });
   });
 
   it("Webchat チャンネルが有効: plugins.allow に easy-flow-webchat を含める", () => {

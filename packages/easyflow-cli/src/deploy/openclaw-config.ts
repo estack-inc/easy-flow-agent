@@ -1,6 +1,5 @@
 import * as crypto from "node:crypto";
 import type { Agentfile } from "../agentfile/types.js";
-import { EasyflowError } from "../utils/errors.js";
 
 export interface OpenclawConfigInput {
   agentfile: Agentfile;
@@ -48,14 +47,8 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
 
   const slackEnabled = agentfile.channels?.slack?.enabled === true;
   if (slackEnabled) {
-    if (!secrets.SLACK_BOT_TOKEN) {
-      throw new EasyflowError(
-        "SLACK_BOT_TOKEN が設定されていません",
-        "Slack チャンネルが有効ですが、SLACK_BOT_TOKEN がシークレットファイルにありません",
-        "--secret-file でトークンを含むファイルを指定してください",
-      );
-    }
     // 実値ではなくプレースホルダを埋め込む（release_command で node スクリプトが展開）
+    // secret-file 欠落時も Fly secrets 上に存在する前提で再デプロイを許可
     // biome-ignore lint/suspicious/noTemplateCurlyInString: 意図的なプレースホルダ（runtime で展開）
     const slackBotTokenPlaceholder = "${SLACK_BOT_TOKEN}";
     // biome-ignore lint/suspicious/noTemplateCurlyInString: 意図的なプレースホルダ（runtime で展開）
@@ -63,20 +56,14 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     channels.slack = {
       enabled: true,
       botToken: slackBotTokenPlaceholder,
-      ...(secrets.SLACK_SIGNING_SECRET ? { signingSecret: slackSigningSecretPlaceholder } : {}),
+      signingSecret: slackSigningSecretPlaceholder,
     };
   }
 
   const lineEnabled = agentfile.channels?.line?.enabled === true;
   if (lineEnabled) {
-    if (!secrets.LINE_ACCESS_TOKEN || !secrets.LINE_CHANNEL_SECRET) {
-      throw new EasyflowError(
-        "LINE トークンが不足しています",
-        "Line チャンネルが有効ですが、LINE_ACCESS_TOKEN または LINE_CHANNEL_SECRET がシークレットファイルにありません",
-        "--secret-file でトークンを含むファイルを指定してください",
-      );
-    }
     // 実値ではなくプレースホルダを埋め込む（release_command で node スクリプトが展開）
+    // secret-file 欠落時も Fly secrets 上に存在する前提で再デプロイを許可
     // biome-ignore lint/suspicious/noTemplateCurlyInString: 意図的なプレースホルダ（runtime で展開）
     const lineAccessTokenPlaceholder = "${LINE_ACCESS_TOKEN}";
     // biome-ignore lint/suspicious/noTemplateCurlyInString: 意図的なプレースホルダ（runtime で展開）
