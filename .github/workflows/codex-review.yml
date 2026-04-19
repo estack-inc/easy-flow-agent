@@ -79,8 +79,9 @@ jobs:
           # 先に済ませ、`gh pr diff` は APPLICABLE=true のときだけ実行する。
           APPLICABLE=true
           REASONS=()
+          IS_FORK=false
           if [ "$IS_DRAFT" = "true" ]; then APPLICABLE=false; REASONS+=("draft PR"); fi
-          if [ "$HEAD_REPO" != "$REPO" ]; then APPLICABLE=false; REASONS+=("fork PR ($HEAD_REPO)"); fi
+          if [ "$HEAD_REPO" != "$REPO" ]; then APPLICABLE=false; IS_FORK=true; REASONS+=("fork PR ($HEAD_REPO)"); fi
 
           if [ "$APPLICABLE" = "true" ]; then
             # `gh pr diff` は GitHub API の一時障害・PAT 失効・gh 側の一過性エラーで落ち得る。
@@ -115,7 +116,8 @@ jobs:
           REASON_JOINED=$(IFS='; '; echo "${REASONS[*]}")
           echo "applicable=$APPLICABLE" >> "$GITHUB_OUTPUT"
           echo "reason=$REASON_JOINED" >> "$GITHUB_OUTPUT"
-          echo "applicable=$APPLICABLE reason=$REASON_JOINED"
+          echo "is_fork=$IS_FORK" >> "$GITHUB_OUTPUT"
+          echo "applicable=$APPLICABLE is_fork=$IS_FORK reason=$REASON_JOINED"
 
       - name: Dismiss stale bot approval (PR became not applicable)
         if: steps.applicable.outputs.applicable == 'false'
@@ -124,6 +126,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUM: ${{ github.event.pull_request.number }}
           REASON: ${{ steps.applicable.outputs.reason }}
+          IS_FORK: ${{ steps.applicable.outputs.is_fork }}
         run: |
           # 適用外に遷移した PR（draft 化・ファイル構成変化・fork 化など）では本 run で
           # レビュー verdict を提出しないため、過去の bot APPROVED が残ると stale 承認で
@@ -133,10 +136,17 @@ jobs:
           # fork PR では GitHub が secrets を渡さないため GH_TOKEN が空になる。このケースでは
           # そもそも bot が APPROVED を付けられた run が過去に無い（同じ token が無い）ので、
           # stale APPROVED が存在し得ず、dismiss 不要。listing で 401 にして fail-closed するのは
-          # 過剰保護なので、GH_TOKEN 未設定時は早期 exit 0 に倒す。
+          # 過剰保護なので、fork PR に限り早期 exit 0 に倒す。
+          # same-repo PR で GH_TOKEN が空の場合は、REPO_ACCESS_TOKEN 未設定 / 失効という
+          # misconfiguration なので fail-closed（exit 1）に倒す。ここで green を許すと、
+          # レビュー未実施・stale approval 未 cleanup のまま merge 可能な経路ができる。
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::notice::GH_TOKEN unavailable (likely fork PR without secrets) — skipping stale APPROVED dismissal (no prior bot approval could exist without token)"
-            exit 0
+            if [ "$IS_FORK" = "true" ]; then
+              echo "::notice::GH_TOKEN unavailable and PR is fork — skipping stale APPROVED dismissal (no prior bot approval could exist without token)"
+              exit 0
+            fi
+            echo "::error::REPO_ACCESS_TOKEN が未設定または失効しています。same-repo PR ではレビュー/cleanup 不能のため fail-closed で job を赤くします。"
+            exit 1
           fi
           # 移行期互換: 旧 workflow (openai/codex-action@v1 時代) の APPROVED には
           # 新マーカー `<!-- codex-reviewer-bot:v1 -->` が付いていない。旧 body の先頭定型文
