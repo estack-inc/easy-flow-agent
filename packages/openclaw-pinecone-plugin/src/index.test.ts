@@ -149,6 +149,7 @@ describe("pinecone-memory plugin", () => {
     });
     expect(PineconeContextEngine).toHaveBeenCalledWith(
       expect.objectContaining({
+        info: expect.objectContaining({ id: "pinecone-memory" }),
         pineconeClient: expect.objectContaining({
           _config: { apiKey: "test-key", indexName: "custom-index" },
         }),

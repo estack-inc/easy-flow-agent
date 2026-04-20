@@ -92,6 +92,7 @@ describe("openclaw-upstash-plugin", () => {
     });
     expect(PineconeContextEngine).toHaveBeenCalledWith(
       expect.objectContaining({
+        info: expect.objectContaining({ id: "upstash-memory" }),
         agentId: "tom",
         compactAfterDays: 14,
       }),
