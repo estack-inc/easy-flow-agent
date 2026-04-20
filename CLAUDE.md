@@ -217,7 +217,7 @@ MEMORY.md ファイルを Pinecone ベクトル DB へ移行する CLI ツール
 
 ### モジュール構造
 - **CommonJS への変換禁止**: `"type": "module"` を外す、`require()` を使う、`.cjs` ファイルを足す等は OpenClaw のローダー前提を壊す
-- **プラグインへのビルドステップ追加禁止**: 各パッケージは `exports: ./src/index.ts` のソース直接参照。`tsc` で `dist/` を出して `exports` を切り替えると OpenClaw 側の TypeScript 解決と二重になる（`openclaw-pinecone-plugin` / `migrate-memory` / `model-router` の 3 パッケージのみ既存で `dist/` 出力あり・例外）
+- **`exports` の差し替え禁止**: 各パッケージは `exports: ./src/index.ts` のソース直接参照（正本は各 `packages/*/package.json`）。一部パッケージには既存の `build` script（`tsc`）があるが、`exports` をビルド出力（`dist/`）へ切り替えると OpenClaw 側の TypeScript 解決と二重になるため、`exports` のパス変更は禁止
 - **OpenClaw を peer から dependencies へ昇格禁止**: 必ず peer のまま。プラグインは OpenClaw が提供する SDK インスタンスを使う
 
 ### 永続化互換
@@ -256,7 +256,7 @@ MEMORY.md ファイルを Pinecone ベクトル DB へ移行する CLI ツール
 ## 既知の罠（リポジトリ固有）
 
 - **ESM の `__dirname` / `require` 不在**: `import.meta.url` ベースに書き換える。CommonJS 流儀を持ち込まない
-- **ソース直接参照パターン**: `exports: ./src/index.ts` の前提なので `tsc` で出した `dist/index.js` を `exports` に置く改造は禁止（ビルド済 3 パッケージを除く）
+- **ソース直接参照パターン**: `exports: ./src/index.ts` の前提。一部パッケージには既存の `build` script があるが、`exports` を `dist/index.js` に差し替えると OpenClaw 側の TypeScript 解決と二重になるため禁止（正本は各 `packages/*/package.json`）
 - **JSON 永続化で Set / Map が静かに壊れる**: `JSON.stringify(new Set([...]))` は `{}`。永続化フィールドは必ず配列・オブジェクトリテラル
 - **Pinecone namespace の取り違え**: `agent:${agentId}` 形式。`agentId` を取り違えると別エージェントのメモリに混入
 - **`PINECONE_API_KEY` 未設定時の挙動**: プラグイン無効化（warn ログのみ）。サイレントに別パスへフォールバックしない設計を維持
@@ -275,7 +275,6 @@ MEMORY.md ファイルを Pinecone ベクトル DB へ移行する CLI ツール
 | 変数名 | 必須 | 説明 |
 |---|---|---|
 | `PINECONE_API_KEY` | ✅（プラグイン有効時） | Pinecone Vector DB / Inference API |
-| `PINECONE_INDEX` | ✅ | 利用 Index 名 |
 | `OPENCLAW_*` | — | OpenClaw 提供の SDK 環境変数（peer 経由） |
 | `PINECONE_INTEGRATION` | — | 統合テスト実行時のみ `true` |
 | `FLY_APP_NAME` | —（file-serve のみ） | publicUrl 解決のフォールバック |
