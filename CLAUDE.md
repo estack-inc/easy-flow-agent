@@ -114,8 +114,7 @@ npm run format       # コードフォーマットのみ
 
 テストフレームワークは **vitest**（各パッケージの `devDependencies` で管理）。
 Lint / Format は **Biome**（ルートの `biome.json` で統一設定）。
-ビルドは不要（ソース直接参照パターン: `exports` → `./src/index.ts`）。
-`openclaw-pinecone-plugin`、`migrate-memory`、`model-router` の 3 パッケージのみビルドあり（プラグインデプロイ / CLI バイナリ提供のため）。
+ビルド方式と `exports` の向き先はパッケージごとに異なる（ソース直接参照 / ビルド成果物参照 / 混在）。正本は各 `packages/*/package.json`。OpenClaw ホストへのプラグイン配布パッケージはビルド成果物（`./{subdir}/index.js`）を `exports` に設定する運用。
 
 ## リポジトリ構成
 
@@ -199,7 +198,7 @@ MEMORY.md ファイルを Pinecone ベクトル DB へ移行する CLI ツール
 ## 共通の設計規約
 
 - ESM モジュール（全パッケージ `"type": "module"`）
-- ソース直接参照パターン（`exports: { ".": "./src/index.ts" }`）— ビルド不要で開発効率を優先
+- `exports` の向き先（ソース直接参照 / ビルド成果物）はパッケージごとに異なる。正本は各 `packages/*/package.json`
 - `peerDependencies: openclaw`（optional）— OpenClaw なしでもテスト可能
 - テストは各パッケージの `devDependencies` で vitest を管理
 
@@ -217,7 +216,7 @@ MEMORY.md ファイルを Pinecone ベクトル DB へ移行する CLI ツール
 
 ### モジュール構造
 - **CommonJS への変換禁止**: `"type": "module"` を外す、`require()` を使う、`.cjs` ファイルを足す等は OpenClaw のローダー前提を壊す
-- **`exports` の差し替え禁止**: 各パッケージは `exports: ./src/index.ts` のソース直接参照（正本は各 `packages/*/package.json`）。一部パッケージには既存の `build` script（`tsc`）があるが、`exports` をビルド出力（`dist/`）へ切り替えると OpenClaw 側の TypeScript 解決と二重になるため、`exports` のパス変更は禁止
+- **`exports` の向き先変更禁止**: ソース直接参照（`./src/index.ts`）とビルド成果物参照（`./{subdir}/index.js` 等）がパッケージごとに使い分けられている（正本は各 `packages/*/package.json`）。片方へ統一する改変は OpenClaw 側のローダー解決やプラグイン配布前提を壊すため禁止
 - **OpenClaw を peer から dependencies へ昇格禁止**: 必ず peer のまま。プラグインは OpenClaw が提供する SDK インスタンスを使う
 
 ### 永続化互換
@@ -256,7 +255,7 @@ MEMORY.md ファイルを Pinecone ベクトル DB へ移行する CLI ツール
 ## 既知の罠（リポジトリ固有）
 
 - **ESM の `__dirname` / `require` 不在**: `import.meta.url` ベースに書き換える。CommonJS 流儀を持ち込まない
-- **ソース直接参照パターン**: `exports: ./src/index.ts` の前提。一部パッケージには既存の `build` script があるが、`exports` を `dist/index.js` に差し替えると OpenClaw 側の TypeScript 解決と二重になるため禁止（正本は各 `packages/*/package.json`）
+- **`exports` の向き先がパッケージで異なる**: ソース直接参照のパッケージ（`./src/index.ts`）とビルド成果物参照のパッケージ（`./{subdir}/index.js`）が混在するため、ルールとして統一せず各 `packages/*/package.json` を正本として確認する
 - **JSON 永続化で Set / Map が静かに壊れる**: `JSON.stringify(new Set([...]))` は `{}`。永続化フィールドは必ず配列・オブジェクトリテラル
 - **Pinecone namespace の取り違え**: `agent:${agentId}` 形式。`agentId` を取り違えると別エージェントのメモリに混入
 - **`PINECONE_API_KEY` 未設定時の挙動**: プラグイン無効化（warn ログのみ）。サイレントに別パスへフォールバックしない設計を維持
