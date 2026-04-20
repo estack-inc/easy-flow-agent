@@ -62,6 +62,7 @@ export default function register(api: OpenClawPluginApi): void {
   api.registerContextEngine("pgvector-memory", () => {
     const client = new PgVectorClient({ databaseUrl, geminiApiKey });
     return new PineconeContextEngine({
+      info: { id: "pgvector-memory", name: "pgVector Memory", version: "1.0.0" },
       pineconeClient: client,
       agentId,
       compactAfterDays,

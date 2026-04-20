@@ -40,12 +40,14 @@ import type { PineconeContextEngineParams } from "./types.js";
 // Re-export for backward compatibility
 export { buildEnrichedQuery, isQueryThin } from "./shared.js";
 
+const DEFAULT_INFO: ContextEngineInfo = {
+  id: "pinecone",
+  name: "Pinecone Context Engine",
+  version: "1.0.0",
+};
+
 export class PineconeContextEngine implements ContextEngine {
-  readonly info: ContextEngineInfo = {
-    id: "pinecone",
-    name: "Pinecone Context Engine",
-    version: "1.0.0",
-  };
+  readonly info: ContextEngineInfo;
 
   private readonly client: IPineconeClient;
   private readonly agentId: string;
@@ -66,6 +68,7 @@ export class PineconeContextEngine implements ContextEngine {
   private readonly maxQueryTokens: number;
 
   constructor(params: PineconeContextEngineParams) {
+    this.info = params.info ?? DEFAULT_INFO;
     this.client = params.pineconeClient;
     this.agentId = params.agentId;
     this.tokenBudget = params.tokenBudget ?? DEFAULT_TOKEN_BUDGET;

@@ -100,6 +100,23 @@ describe("openclaw-pgvector-plugin", () => {
     );
   });
 
+  it("should pass info with id 'pgvector-memory' so registered id matches engine info.id", () => {
+    process.env.PGVECTOR_DATABASE_URL = "postgres://test@localhost/db";
+    process.env.GEMINI_API_KEY = "test-key";
+
+    const api = createMockApi();
+    register(api as never);
+
+    const factory = api.getRegisteredFactory();
+    factory?.();
+
+    expect(PineconeContextEngine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        info: expect.objectContaining({ id: "pgvector-memory" }),
+      }),
+    );
+  });
+
   it("should use default agentId when not specified", () => {
     process.env.PGVECTOR_DATABASE_URL = "postgres://test@localhost/db";
     process.env.GEMINI_API_KEY = "test-key";

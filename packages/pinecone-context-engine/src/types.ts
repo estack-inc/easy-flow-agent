@@ -1,11 +1,16 @@
 import type { IPineconeClient } from "@easy-flow/pinecone-client";
-import type { ContextEngine } from "openclaw/plugin-sdk";
+import type { ContextEngine, ContextEngineInfo } from "openclaw/plugin-sdk";
 
 export type { IPineconeClient } from "@easy-flow/pinecone-client";
 
 export interface PineconeContextEngineParams {
   pineconeClient: IPineconeClient;
   agentId: string;
+  /**
+   * ContextEngine info の上書き。プラグイン側で登録 id と一致させる必要がある。
+   * 省略時は `{ id: "pinecone", name: "Pinecone Context Engine", version: "1.0.0" }`。
+   */
+  info?: ContextEngineInfo;
   tokenBudget?: number;
   ingestRoles?: ("user" | "assistant")[];
   compactAfterDays?: number;

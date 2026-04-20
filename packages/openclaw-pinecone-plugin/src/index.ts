@@ -98,6 +98,7 @@ export default function register(api: OpenClawPluginApi): void {
   api.registerContextEngine("pinecone-memory", () => {
     const client = new PineconeClient({ apiKey, indexName });
     return new PineconeContextEngine({
+      info: { id: "pinecone-memory", name: "Pinecone Memory", version: "1.0.0" },
       pineconeClient: client,
       agentId,
       compactAfterDays,

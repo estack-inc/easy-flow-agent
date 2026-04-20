@@ -30,6 +30,7 @@ export default function register(api: OpenClawPluginApi): void {
   api.registerContextEngine("upstash-memory", () => {
     const client = new UpstashVectorClient({ url, token });
     return new PineconeContextEngine({
+      info: { id: "upstash-memory", name: "Upstash Memory", version: "1.0.0" },
       pineconeClient: client,
       agentId,
       compactAfterDays,

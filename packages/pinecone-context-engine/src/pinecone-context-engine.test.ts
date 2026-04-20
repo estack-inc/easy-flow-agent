@@ -61,6 +61,17 @@ describe("PineconeContextEngine", () => {
       expect(engine.info.name).toBe("Pinecone Context Engine");
       expect(engine.info.version).toBe("1.0.0");
     });
+
+    it("accepts info override so plugins can register under their own id", () => {
+      const engine = new PineconeContextEngine({
+        pineconeClient: createMockClient(),
+        agentId: "test-agent",
+        info: { id: "pgvector-memory", name: "pgVector Memory", version: "2.0.0" },
+      });
+      expect(engine.info.id).toBe("pgvector-memory");
+      expect(engine.info.name).toBe("pgVector Memory");
+      expect(engine.info.version).toBe("2.0.0");
+    });
   });
 
   describe("bootstrap", () => {
