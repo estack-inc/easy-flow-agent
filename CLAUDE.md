@@ -206,7 +206,7 @@ MEMORY.md ファイルを Pinecone ベクトル DB へ移行する CLI ツール
 ## 編集禁止 / 慎重編集ファイル
 
 - 各パッケージの `package.json` の `"type": "module"` / `exports`: 変更すると OpenClaw のローダーが解決失敗
-- 各パッケージの `peerDependencies.openclaw`: `>=2026.3.22`（pinecone-context-engine / model-router / workflow-controller は `>=2026.3.7`）。範囲変更は社内 / クライアント全インスタンスの分布確認とセット
+- 各パッケージの `peerDependencies.openclaw`: ほとんどのパッケージは `>=2026.3.7`、`workflow-controller` のみ `>=2026.3.22`（正本は各 `packages/*/package.json`）。範囲変更は社内 / クライアント全インスタンスの分布確認とセット
 - `pinecone-context-engine/` の Re-ranking ロジック: `final = vectorScore × 0.7 + sourceTypeWeight × 0.2 + freshnessScore × 0.1`。重み変更は検索品質に直結
 - `openclaw-pinecone-plugin/` の `configSchema` 7 パラメータ: OpenClaw 設定 UI に直結。フィールド削除 / 型変更は既存設定壊し
 - `workflow-controller/` の TaskFlowDefinition（6 種）/ Validators（4 種）: 進行中ワークフローの永続化 JSON と整合
@@ -233,7 +233,7 @@ MEMORY.md ファイルを Pinecone ベクトル DB へ移行する CLI ツール
 ### OpenClaw 互換
 - **OpenClaw 内部モジュール参照禁止**: `LegacyContextEngine` 等はプラグインから不可。NoopDelegate で代替する設計を維持
 - **`openclaw.plugin.json` 必須フィールド削除禁止**: `id` / `configSchema` 等の OpenClaw 2026.4.8 必須フィールド
-- **`openclaw` peer 範囲の上方変更**: `>=2026.3.22` を上げる場合は社内 / クライアント全インスタンスのバージョン分布を確認してから
+- **`openclaw` peer 範囲の上方変更**: 現行範囲（多くは `>=2026.3.7`、`workflow-controller` は `>=2026.3.22`）を引き上げる場合は社内 / クライアント全インスタンスのバージョン分布を確認してから
 
 ## 整合性マトリクス
 
@@ -261,7 +261,7 @@ MEMORY.md ファイルを Pinecone ベクトル DB へ移行する CLI ツール
 - **Pinecone namespace の取り違え**: `agent:${agentId}` 形式。`agentId` を取り違えると別エージェントのメモリに混入
 - **`PINECONE_API_KEY` 未設定時の挙動**: プラグイン無効化（warn ログのみ）。サイレントに別パスへフォールバックしない設計を維持
 - **OpenClaw 内部モジュール非公開**: `LegacyContextEngine` はプラグインから参照不可。NoopDelegate で代替
-- **互換バージョン差異**: workflow-controller は openclaw `>=2026.3.22`、pinecone-context-engine / model-router は `>=2026.3.7`。横断的に揃えると上げ過ぎになる
+- **互換バージョン差異**: `workflow-controller` のみ openclaw `>=2026.3.22`、他の peer dep ありパッケージ（pinecone-context-engine / model-router / file-serve / openclaw-*-plugin 等）は `>=2026.3.7`。横断的に揃えると上げ過ぎになる（正本は各 `packages/*/package.json`）
 - **file-serve ネイティブプラグインの apiConfig 空問題**: `/data/extensions/file-serve/` 配置だと `api.pluginConfig` が空になる。`/data/openclaw.json` から fallback 読み込み（#126 fix）を消さない
 - **RAG モードのタイムアウト**: AGENTS-CORE.md 読み込みと Pinecone query を並列実行（`ASSEMBLE_TIMEOUT_MS: 5000ms`）。延長は体感レイテンシに直結
 - **Token 推定の近似**: CJK / 日本語は 1.5 tokens/char で近似。実 tokenizer ではないため予算ギリギリで切ると超過する
