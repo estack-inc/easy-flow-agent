@@ -14,6 +14,8 @@ const BASE_IMAGE = "ghcr.io/openclaw/openclaw:latest";
 const DEFAULT_REGION = "nrt";
 const DEFAULT_ORG = "personal";
 const LAYER_NAMES = ["identity", "knowledge", "tools", "config"] as const;
+const DEFAULT_MODEL = "claude-sonnet-4-5";
+const PROVIDER_SECRET_KEYS = ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY"] as const;
 
 /**
  * fly.toml テンプレートを生成する。
@@ -378,6 +380,19 @@ export class FlyDeployAdapter implements DeployAdapter {
       }
     }
 
+    const missingProviderSecrets = this.getRequiredProviderSecretKeys(agentfile).filter(
+      (key) =>
+        !availableSecretKeys.has(key) &&
+        !(typeof agentfile.config?.env?.[key] === "string" && agentfile.config.env[key].length > 0),
+    );
+    if (missingProviderSecrets.length > 0) {
+      throw new EasyflowError(
+        `provider secrets missing: ${missingProviderSecrets.join(", ")}`,
+        "モデル設定に必要な LLM プロバイダーのキーが local secret-file / Fly secrets / config.env のどれにも見つかりません",
+        "--secret-file で不足分を渡すか、Fly secrets に設定してください",
+      );
+    }
+
     const missingRequired = this.getRequiredSecretKeys(agentfile).filter(
       (key) => !availableSecretKeys.has(key),
     );
@@ -405,6 +420,52 @@ export class FlyDeployAdapter implements DeployAdapter {
       required.push("LINE_ACCESS_TOKEN", "LINE_CHANNEL_SECRET");
     }
     return required;
+  }
+
+  private getRequiredProviderSecretKeys(agentfile: Agentfile): string[] {
+    const models = [
+      agentfile.config?.model?.default ?? DEFAULT_MODEL,
+      agentfile.config?.model?.thinking,
+    ].filter((model): model is string => typeof model === "string" && model.length > 0);
+
+    const required = new Set<string>();
+    for (const model of models) {
+      const providerSecretKey = this.getProviderSecretKeyForModel(model);
+      if (providerSecretKey) {
+        required.add(providerSecretKey);
+      }
+    }
+
+    if (required.size > 0) {
+      return Array.from(required);
+    }
+
+    return ["ANTHROPIC_API_KEY"];
+  }
+
+  private getProviderSecretKeyForModel(
+    model: string,
+  ): (typeof PROVIDER_SECRET_KEYS)[number] | null {
+    const normalized = model.trim().toLowerCase();
+
+    if (normalized.startsWith("anthropic/") || normalized.includes("claude")) {
+      return "ANTHROPIC_API_KEY";
+    }
+
+    if (normalized.startsWith("google/") || normalized.includes("gemini")) {
+      return "GEMINI_API_KEY";
+    }
+
+    if (
+      normalized.startsWith("openai/") ||
+      normalized.startsWith("gpt-") ||
+      normalized.startsWith("chatgpt-") ||
+      /^o[134](?:-mini)?$/.test(normalized)
+    ) {
+      return "OPENAI_API_KEY";
+    }
+
+    return null;
   }
 
   private async listSecretKeys(app: string): Promise<Set<string>> {

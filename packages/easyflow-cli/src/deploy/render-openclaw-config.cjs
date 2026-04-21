@@ -2,21 +2,40 @@ const fs = require("node:fs");
 
 const src = process.argv[2] || "/app/openclaw.json.template";
 const dst = process.argv[3] || "/data/openclaw.json";
+const PLACEHOLDER_PATTERN = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
 
-const tpl = fs.readFileSync(src, "utf8");
-const missingKeys = [];
-const rendered = tpl.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (_, key) => {
-  const v = process.env[key];
-  if (v == null) {
-    missingKeys.push(key);
-    return _;
+function renderValue(value, missingKeys) {
+  if (typeof value === "string") {
+    return value.replace(PLACEHOLDER_PATTERN, (placeholder, key) => {
+      const envValue = process.env[key];
+      if (envValue == null) {
+        missingKeys.add(key);
+        return placeholder;
+      }
+      return envValue;
+    });
   }
-  return v;
-});
 
-if (missingKeys.length > 0) {
-  console.error(`render-openclaw-config: missing env: ${missingKeys.join(", ")}`);
+  if (Array.isArray(value)) {
+    return value.map((item) => renderValue(item, missingKeys));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entryValue]) => [key, renderValue(entryValue, missingKeys)]),
+    );
+  }
+
+  return value;
+}
+
+const template = JSON.parse(fs.readFileSync(src, "utf8"));
+const missingKeys = new Set();
+const rendered = renderValue(template, missingKeys);
+
+if (missingKeys.size > 0) {
+  console.error(`render-openclaw-config: missing env: ${Array.from(missingKeys).join(", ")}`);
   process.exit(1);
 }
 
-fs.writeFileSync(dst, rendered);
+fs.writeFileSync(dst, `${JSON.stringify(rendered, null, 2)}\n`);

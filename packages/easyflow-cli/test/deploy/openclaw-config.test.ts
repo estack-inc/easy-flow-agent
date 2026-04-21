@@ -34,6 +34,17 @@ describe("buildOpenclawConfig", () => {
     expect(config.gateway.auth.token).toBe(placeholder("GATEWAY_TOKEN"));
     expect(config.session.storage).toMatchObject({ type: "file", path: "/data/sessions" });
     expect(config.plugins.allow).toContain("easyflow-gateway");
+    expect(config.plugins.allow).toContain("lossless-claw");
+    expect(config.plugins.allow).toContain("file-serve");
+    expect(config.plugins.allow).toContain("model-router");
+    expect(config.plugins.slots?.contextEngine).toBe("lossless-claw");
+    expect(config.plugins.entries["lossless-claw"]).toMatchObject({
+      enabled: true,
+      config: {
+        summaryModel: "claude-haiku-4-5",
+        summaryProvider: "anthropic",
+      },
+    });
   });
 
   it("GATEWAY_TOKEN がシークレットにあっても gateway token はプレースホルダを使用する", () => {
@@ -114,6 +125,7 @@ describe("buildOpenclawConfig", () => {
       enabled: true,
       botToken: placeholder("SLACK_BOT_TOKEN"),
     });
+    expect(config.plugins.allow).toContain("slack");
   });
 
   it("Slack signingSecret がある場合もプレースホルダを設定する", () => {
@@ -168,6 +180,7 @@ describe("buildOpenclawConfig", () => {
       accessToken: placeholder("LINE_ACCESS_TOKEN"),
       channelSecret: placeholder("LINE_CHANNEL_SECRET"),
     });
+    expect(config.plugins.allow).toContain("line");
   });
 
   it("Line チャンネルが有効でトークンなし: throw せずプレースホルダで生成（再デプロイ対応）", () => {

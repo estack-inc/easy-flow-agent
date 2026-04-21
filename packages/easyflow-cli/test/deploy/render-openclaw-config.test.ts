@@ -100,4 +100,32 @@ describe("render-openclaw-config.cjs", () => {
 
     expect(parsed.gateway.auth.token).toBe("fixed-token");
   });
+
+  it("環境変数に JSON 特殊文字が含まれても有効な JSON として出力される", async () => {
+    const templatePath = path.join(tmpDir, "config.template");
+    const outputPath = path.join(tmpDir, "config.json");
+
+    const template = JSON.stringify({
+      channels: {
+        slack: {
+          botToken: placeholder("SLACK_BOT_TOKEN"),
+        },
+      },
+      message: `prefix:${placeholder("SLACK_BOT_TOKEN")}`,
+    });
+    await fs.writeFile(templatePath, template);
+
+    execSync(`node "${scriptPath}" "${templatePath}" "${outputPath}"`, {
+      env: {
+        ...process.env,
+        SLACK_BOT_TOKEN: 'token"with\\chars\nnext',
+      },
+    });
+
+    const output = await fs.readFile(outputPath, "utf-8");
+    const parsed = JSON.parse(output);
+
+    expect(parsed.channels.slack.botToken).toBe('token"with\\chars\nnext');
+    expect(parsed.message).toBe('prefix:token"with\\chars\nnext');
+  });
 });

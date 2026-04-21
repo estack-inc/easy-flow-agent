@@ -63,6 +63,13 @@ function makeDeployOptions(overrides: Partial<DeployOptions> = {}): DeployOption
   };
 }
 
+function makeProviderSecrets(overrides: Record<string, string> = {}): Record<string, string> {
+  return {
+    ANTHROPIC_API_KEY: "test-anthropic-key",
+    ...overrides,
+  };
+}
+
 describe("FlyDeployAdapter", () => {
   describe("plan()", () => {
     it("アプリが存在しない場合 createApp=true を返す", async () => {
@@ -72,7 +79,12 @@ describe("FlyDeployAdapter", () => {
       });
       const adapter = new FlyDeployAdapter(flyctl, () => {});
 
-      const plan = await adapter.plan(makeStoredImage(), makeAgentfile(), makeDeployOptions(), {});
+      const plan = await adapter.plan(
+        makeStoredImage(),
+        makeAgentfile(),
+        makeDeployOptions(),
+        makeProviderSecrets(),
+      );
 
       expect(plan.createApp).toBe(true);
       expect(plan.app).toBe("my-test-app");
@@ -87,7 +99,12 @@ describe("FlyDeployAdapter", () => {
       });
       const adapter = new FlyDeployAdapter(flyctl, () => {});
 
-      const plan = await adapter.plan(makeStoredImage(), makeAgentfile(), makeDeployOptions(), {});
+      const plan = await adapter.plan(
+        makeStoredImage(),
+        makeAgentfile(),
+        makeDeployOptions(),
+        makeProviderSecrets(),
+      );
 
       expect(plan.createApp).toBe(false);
       expect(plan.createVolume).toBe(false);
@@ -107,7 +124,7 @@ describe("FlyDeployAdapter", () => {
         makeStoredImage(),
         makeAgentfile(),
         makeDeployOptions({ dryRun: true }),
-        {},
+        makeProviderSecrets(),
       );
 
       // dry-run でも read-only 確認が実行される
@@ -129,7 +146,7 @@ describe("FlyDeployAdapter", () => {
         makeStoredImage(),
         makeAgentfile(),
         makeDeployOptions({ dryRun: true }),
-        {},
+        makeProviderSecrets(),
       );
 
       expect(plan.createApp).toBe(true);
@@ -148,7 +165,12 @@ describe("FlyDeployAdapter", () => {
       });
       const adapter = new FlyDeployAdapter(flyctl, () => {});
 
-      const plan = await adapter.plan(makeStoredImage(), makeAgentfile(), makeDeployOptions(), {});
+      const plan = await adapter.plan(
+        makeStoredImage(),
+        makeAgentfile(),
+        makeDeployOptions(),
+        makeProviderSecrets(),
+      );
 
       expect(plan.secretKeys).toContain("GATEWAY_TOKEN");
       expect(plan.secretKeys).toContain("GEMINI_API_KEY");
@@ -229,7 +251,11 @@ describe("FlyDeployAdapter", () => {
       const flyctl = makeMockFlyctl({
         apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
         volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
-        secretsList: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "GATEWAY_TOKEN" }])),
+        secretsList: vi
+          .fn()
+          .mockResolvedValue(
+            JSON.stringify([{ Name: "GATEWAY_TOKEN" }, { Name: "ANTHROPIC_API_KEY" }]),
+          ),
         deploy: vi.fn().mockResolvedValue(undefined),
         ssh: vi.fn().mockResolvedValue("200"),
         secrets: secretsFn,
@@ -241,7 +267,7 @@ describe("FlyDeployAdapter", () => {
         makeStoredImage(),
         makeAgentfile(),
         makeDeployOptions(),
-        {}, // 空のシークレット
+        {},
       );
 
       expect(secretsFn).not.toHaveBeenCalled();
@@ -263,7 +289,7 @@ describe("FlyDeployAdapter", () => {
         makeStoredImage(),
         makeAgentfile(),
         makeDeployOptions(),
-        {},
+        makeProviderSecrets({}),
       );
 
       expect(secretsFn).toHaveBeenCalledWith(
@@ -282,7 +308,11 @@ describe("FlyDeployAdapter", () => {
       const flyctl = makeMockFlyctl({
         apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
         volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
-        secretsList: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "GATEWAY_TOKEN" }])),
+        secretsList: vi
+          .fn()
+          .mockResolvedValue(
+            JSON.stringify([{ Name: "GATEWAY_TOKEN" }, { Name: "ANTHROPIC_API_KEY" }]),
+          ),
         deploy: vi.fn().mockResolvedValue(undefined),
         ssh: vi.fn().mockResolvedValue("200"),
         secrets: secretsFn,
@@ -314,9 +344,72 @@ describe("FlyDeployAdapter", () => {
           makeStoredImage(),
           makeAgentfile(),
           makeDeployOptions(),
-          {},
+          makeProviderSecrets(),
         ),
       ).rejects.toThrow("GATEWAY_TOKEN");
+    });
+
+    it("必要な provider secret が local/Fly/config.env のどれにも無い場合は失敗する", async () => {
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
+        volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
+        secretsList: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "GATEWAY_TOKEN" }])),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      await expect(
+        adapter.deploy(
+          { manifest: {}, config: {}, layers: new Map() },
+          makeStoredImage(),
+          makeAgentfile(),
+          makeDeployOptions(),
+          {},
+        ),
+      ).rejects.toThrow("ANTHROPIC_API_KEY");
+    });
+
+    it("モデルが gemini の場合は GEMINI_API_KEY を要求する", async () => {
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
+        volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
+        secretsList: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "GATEWAY_TOKEN" }])),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+      const agentfile = makeAgentfile();
+      agentfile.config = { model: { default: "gemini-2.5-flash" } };
+
+      await expect(
+        adapter.deploy(
+          { manifest: {}, config: {}, layers: new Map() },
+          makeStoredImage(),
+          agentfile,
+          makeDeployOptions(),
+          {},
+        ),
+      ).rejects.toThrow("GEMINI_API_KEY");
+    });
+
+    it("provider key が config.env にある場合は deploy を許可する", async () => {
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
+        volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
+        secretsList: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "GATEWAY_TOKEN" }])),
+        deploy: vi.fn().mockResolvedValue(undefined),
+        ssh: vi.fn().mockResolvedValue("200"),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+      const agentfile = makeAgentfile();
+      agentfile.config = { env: { ANTHROPIC_API_KEY: "from-agentfile-env" } };
+
+      const result = await adapter.deploy(
+        { manifest: {}, config: {}, layers: new Map() },
+        makeStoredImage(),
+        agentfile,
+        makeDeployOptions(),
+        {},
+      );
+
+      expect(result.healthCheck.ok).toBe(true);
     });
 
     it("既存 Fly secrets に GEMINI_API_KEY があれば tools.media を維持した template を生成する", async () => {
@@ -354,7 +447,7 @@ describe("FlyDeployAdapter", () => {
         makeStoredImage(),
         makeAgentfile(),
         makeDeployOptions(),
-        {},
+        makeProviderSecrets(),
       );
 
       const parsedConfig = JSON.parse(templateContent as string) as {
@@ -406,7 +499,7 @@ describe("FlyDeployAdapter", () => {
         makeStoredImage(),
         makeAgentfile(),
         makeDeployOptions(),
-        {},
+        makeProviderSecrets(),
       );
 
       expect(capturedCwd).toBeDefined();
@@ -425,7 +518,8 @@ describe("FlyDeployAdapter", () => {
       expect(parsedConfig.gateway).toBeDefined();
       // render スクリプトが存在し、プレースホルダ展開ロジックを含む
       expect(renderScriptContent).toBeDefined();
-      expect(renderScriptContent).toContain("process.env[key]");
+      expect(renderScriptContent).toContain("PLACEHOLDER_PATTERN");
+      expect(renderScriptContent).toContain("JSON.stringify(rendered, null, 2)");
       expect(renderScriptContent).toContain("process.exit(1)");
     });
 
@@ -457,7 +551,7 @@ describe("FlyDeployAdapter", () => {
         makeStoredImage(),
         makeAgentfile(),
         makeDeployOptions(),
-        {},
+        makeProviderSecrets(),
       );
 
       expect(flyTomlContent).toBeDefined();

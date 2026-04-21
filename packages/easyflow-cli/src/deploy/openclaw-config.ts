@@ -27,6 +27,15 @@ export interface OpenclawConfig {
   session: Record<string, unknown>;
 }
 
+const BASE_PLUGIN_ALLOW = [
+  "easyflow-gateway",
+  "pinecone-memory",
+  "workflow-controller",
+  "file-serve",
+  "lossless-claw",
+  "model-router",
+] as const;
+
 /**
  * Agentfile とシークレットから openclaw.json 相当の設定を生成する。
  */
@@ -87,13 +96,27 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
   }
 
   // ---- plugins ----
-  const allow: string[] = ["easyflow-gateway"];
+  const allow: string[] = [...BASE_PLUGIN_ALLOW];
+  if (slackEnabled) {
+    allow.push("slack");
+  }
+  if (lineEnabled) {
+    allow.push("line");
+  }
   if (webchatEnabled) {
     allow.push("easy-flow-webchat");
   }
 
   const builtinTools = agentfile.tools?.builtin ?? [];
   const pluginEntries: Record<string, { enabled: boolean; config: Record<string, unknown> }> = {};
+
+  pluginEntries["lossless-claw"] = {
+    enabled: true,
+    config: {
+      summaryModel: "claude-haiku-4-5",
+      summaryProvider: "anthropic",
+    },
+  };
 
   if (builtinTools.includes("workflow-controller")) {
     pluginEntries["workflow-controller"] = { enabled: true, config: {} };
@@ -159,7 +182,10 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     env,
     channels,
     plugins: {
-      allow,
+      allow: Array.from(new Set(allow)),
+      slots: {
+        contextEngine: "lossless-claw",
+      },
       entries: pluginEntries,
     },
     gateway: {
