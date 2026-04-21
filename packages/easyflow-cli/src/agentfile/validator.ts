@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import Ajv from "ajv";
-import addFormats from "ajv-formats";
+import type { Ajv as AjvType, ErrorObject } from "ajv";
+import AjvModule from "ajv";
+import addFormatsModule from "ajv-formats";
 import { agentfileSchema } from "./schema.js";
 import type { Agentfile } from "./types.js";
 
@@ -12,9 +13,21 @@ export interface AgentfileValidationError {
 }
 
 const KNOWN_BUILTIN_TOOLS = ["workflow-controller", "file-serve", "model-router"];
+const AjvCtor =
+  (
+    AjvModule as unknown as {
+      default?: new (options: { allErrors: boolean }) => AjvType;
+    }
+  ).default ?? (AjvModule as unknown as new (options: { allErrors: boolean }) => AjvType);
+const addFormats =
+  (
+    addFormatsModule as unknown as {
+      default?: (ajv: AjvType) => void;
+    }
+  ).default ?? (addFormatsModule as unknown as (ajv: AjvType) => void);
 
-function createAjv(): Ajv {
-  const ajv = new Ajv({ allErrors: true });
+function createAjv(): AjvType {
+  const ajv = new AjvCtor({ allErrors: true });
   addFormats(ajv);
 
   // SemVer 2.0.0 準拠: 数値識別子の先頭ゼロを禁止
@@ -47,7 +60,7 @@ export function validateSchema(data: unknown): AgentfileValidationError[] {
     return [];
   }
 
-  return (validate.errors ?? []).map((err) => ({
+  return (validate.errors ?? []).map((err: ErrorObject) => ({
     path: err.instancePath || "/",
     message: err.message ?? "Unknown validation error",
     keyword: err.keyword,

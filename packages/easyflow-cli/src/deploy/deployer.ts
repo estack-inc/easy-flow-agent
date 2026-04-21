@@ -3,7 +3,6 @@ import type { ImageStore } from "../store/image-store.js";
 import { EasyflowError } from "../utils/errors.js";
 import type { DeploymentsLog } from "./deployments-log.js";
 import { extractLayer } from "./layer-extractor.js";
-import { buildOpenclawConfig } from "./openclaw-config.js";
 import { loadSecretFile } from "./secret-file.js";
 import type { DeployAdapter, DeployOptions, DeployPlan, DeployResult } from "./types.js";
 
@@ -93,38 +92,12 @@ export class Deployer {
       Object.assign(secrets, fileSecrets);
     }
 
-    // channels 有効時に secret-file で値が与えられていない場合は警告
-    this.warnMissingChannelSecrets(agentfile, secrets);
-
-    buildOpenclawConfig({ agentfile, secrets });
-
     const adapter = this.adapters.get(options.target);
     if (!adapter) {
       throw new EasyflowError(`unsupported target: ${options.target}`);
     }
 
-    return adapter.plan(stored, agentfile, options);
-  }
-
-  private warnMissingChannelSecrets(
-    agentfile: import("../agentfile/types.js").Agentfile,
-    secrets: Record<string, string>,
-  ): void {
-    if (agentfile.channels?.slack?.enabled && !secrets.SLACK_BOT_TOKEN) {
-      console.warn("warn: SLACK_BOT_TOKEN not provided locally; assumed to exist in Fly secrets");
-    }
-    if (agentfile.channels?.line?.enabled) {
-      if (!secrets.LINE_ACCESS_TOKEN) {
-        console.warn(
-          "warn: LINE_ACCESS_TOKEN not provided locally; assumed to exist in Fly secrets",
-        );
-      }
-      if (!secrets.LINE_CHANNEL_SECRET) {
-        console.warn(
-          "warn: LINE_CHANNEL_SECRET not provided locally; assumed to exist in Fly secrets",
-        );
-      }
-    }
+    return adapter.plan(stored, agentfile, options, secrets);
   }
 
   private async extractAgentfile(

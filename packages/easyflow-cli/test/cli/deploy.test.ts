@@ -24,7 +24,7 @@ identity:
 function makeMockAdapter(): DeployAdapter {
   return {
     name: "fly" as const,
-    plan: vi.fn().mockImplementation(async (stored, _agentfile, options) => ({
+    plan: vi.fn().mockImplementation(async (stored, _agentfile, options, secrets) => ({
       app: options.app,
       region: options.region ?? "nrt",
       org: options.org ?? "personal",
@@ -33,7 +33,7 @@ function makeMockAdapter(): DeployAdapter {
       image: { ref: stored.ref, digest: stored.digest, size: stored.size },
       channels: [],
       tools: [],
-      secretKeys: [],
+      secretKeys: Object.keys(secrets),
     })),
     deploy: vi.fn().mockImplementation(async (_image, stored, _agentfile, options) => ({
       app: options.app,

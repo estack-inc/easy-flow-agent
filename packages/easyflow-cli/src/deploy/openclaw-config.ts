@@ -1,9 +1,9 @@
-import * as crypto from "node:crypto";
 import type { Agentfile } from "../agentfile/types.js";
 
 export interface OpenclawConfigInput {
   agentfile: Agentfile;
   secrets: Record<string, string>;
+  availableSecretKeys?: Iterable<string>;
   agentId?: string;
 }
 
@@ -32,9 +32,10 @@ export interface OpenclawConfig {
  */
 export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig {
   const { agentfile, secrets } = input;
-
-  // ---- gateway token ----
-  const gatewayToken = secrets.GATEWAY_TOKEN ?? crypto.randomBytes(24).toString("hex");
+  const availableSecretKeys = new Set<string>([
+    ...Object.keys(secrets),
+    ...(input.availableSecretKeys ?? []),
+  ]);
 
   // ---- env ----
   // Agentfile の config.env のみを含める。
@@ -128,7 +129,7 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
   // apiKey は Fly secrets 経由で process.env.GEMINI_API_KEY に注入され、
   // media プラグインが env から参照するため、設定ファイルには埋め込まない。
   const tools: Record<string, unknown> = {};
-  if (secrets.GEMINI_API_KEY) {
+  if (availableSecretKeys.has("GEMINI_API_KEY")) {
     tools.media = { enabled: true };
   }
 
@@ -163,7 +164,8 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     },
     gateway: {
       controlUi: { enabled: false },
-      auth: { mode: "token", token: gatewayToken },
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: 意図的なプレースホルダ（runtime で展開）
+      auth: { mode: "token", token: "${GATEWAY_TOKEN}" },
     },
     agents,
     session,

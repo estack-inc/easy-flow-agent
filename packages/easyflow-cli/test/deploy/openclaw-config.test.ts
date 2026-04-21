@@ -31,28 +31,27 @@ describe("buildOpenclawConfig", () => {
     });
 
     expect(config.gateway.auth.mode).toBe("token");
-    expect(config.gateway.auth.token).toBeTruthy();
+    expect(config.gateway.auth.token).toBe(placeholder("GATEWAY_TOKEN"));
     expect(config.session.storage).toMatchObject({ type: "file", path: "/data/sessions" });
     expect(config.plugins.allow).toContain("easyflow-gateway");
   });
 
-  it("GATEWAY_TOKEN がシークレットにある場合はそれを使用する", () => {
+  it("GATEWAY_TOKEN がシークレットにあっても gateway token はプレースホルダを使用する", () => {
     const config = buildOpenclawConfig({
       agentfile: makeMinimalAgentfile(),
       secrets: { GATEWAY_TOKEN: "my-fixed-token" },
     });
 
-    expect(config.gateway.auth.token).toBe("my-fixed-token");
+    expect(config.gateway.auth.token).toBe(placeholder("GATEWAY_TOKEN"));
   });
 
-  it("GATEWAY_TOKEN がない場合は自動生成する", () => {
+  it("GATEWAY_TOKEN がなくても gateway token はプレースホルダを使用する", () => {
     const config = buildOpenclawConfig({
       agentfile: makeMinimalAgentfile(),
       secrets: {},
     });
 
-    expect(config.gateway.auth.token).toBeTruthy();
-    expect(config.gateway.auth.token.length).toBeGreaterThan(0);
+    expect(config.gateway.auth.token).toBe(placeholder("GATEWAY_TOKEN"));
   });
 
   it("シークレット API キーは env に含めない（Fly secrets から process.env で参照）", () => {
@@ -72,7 +71,7 @@ describe("buildOpenclawConfig", () => {
     expect(config.env.PINECONE_API_KEY).toBeUndefined();
   });
 
-  it("GEMINI_API_KEY がない場合は tools.media を含めない", () => {
+  it("GEMINI_API_KEY が local/Fly のどちらにもない場合は tools.media を含めない", () => {
     const config = buildOpenclawConfig({
       agentfile: makeMinimalAgentfile(),
       secrets: {},
@@ -85,6 +84,16 @@ describe("buildOpenclawConfig", () => {
     const config = buildOpenclawConfig({
       agentfile: makeMinimalAgentfile(),
       secrets: { GEMINI_API_KEY: "gemini-key" },
+    });
+
+    expect(config.tools?.media).toEqual({ enabled: true });
+  });
+
+  it("GEMINI_API_KEY が local になくても既存 Fly secrets にあれば tools.media を含める", () => {
+    const config = buildOpenclawConfig({
+      agentfile: makeMinimalAgentfile(),
+      secrets: {},
+      availableSecretKeys: ["GEMINI_API_KEY"],
     });
 
     expect(config.tools?.media).toEqual({ enabled: true });

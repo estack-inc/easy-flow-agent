@@ -1,8 +1,10 @@
+import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Agentfile } from "../../agentfile/types.js";
 import type { ImageData, StoredImage } from "../../store/types.js";
+import { EasyflowError } from "../../utils/errors.js";
 import { extractLayer } from "../layer-extractor.js";
 import { buildOpenclawConfig } from "../openclaw-config.js";
 import type { DeployAdapter, DeployOptions, DeployPlan, DeployResult } from "../types.js";
@@ -12,23 +14,6 @@ const BASE_IMAGE = "ghcr.io/openclaw/openclaw:latest";
 const DEFAULT_REGION = "nrt";
 const DEFAULT_ORG = "personal";
 const LAYER_NAMES = ["identity", "knowledge", "tools", "config"] as const;
-
-const RENDER_SCRIPT = `const fs = require("node:fs");
-
-const src = process.argv[2] || "/app/openclaw.json.template";
-const dst = process.argv[3] || "/data/openclaw.json";
-
-const tpl = fs.readFileSync(src, "utf8");
-const rendered = tpl.replace(/\\$\\{([A-Z_][A-Z0-9_]*)\\}/g, (_, key) => {
-  const v = process.env[key];
-  if (v == null) {
-    console.error(\`render-openclaw-config: env \${key} not set\`);
-    return "";
-  }
-  return v;
-});
-fs.writeFileSync(dst, rendered);
-`;
 
 /**
  * fly.toml テンプレートを生成する。
@@ -88,6 +73,7 @@ export class FlyDeployAdapter implements DeployAdapter {
     stored: StoredImage,
     agentfile: Agentfile,
     options: DeployOptions,
+    secrets: Record<string, string>,
   ): Promise<DeployPlan> {
     const region = options.region ?? DEFAULT_REGION;
     const org = options.org ?? DEFAULT_ORG;
@@ -115,6 +101,13 @@ export class FlyDeployAdapter implements DeployAdapter {
       }
     }
 
+    const resolvedSecrets = await this.resolveSecrets(agentfile, app, secrets, createApp);
+    buildOpenclawConfig({
+      agentfile,
+      secrets,
+      availableSecretKeys: resolvedSecrets.availableSecretKeys,
+    });
+
     const channels: string[] = [];
     if (agentfile.channels?.slack?.enabled) channels.push("slack");
     if (agentfile.channels?.line?.enabled) channels.push("line");
@@ -135,7 +128,7 @@ export class FlyDeployAdapter implements DeployAdapter {
       },
       channels,
       tools,
-      secretKeys: [],
+      secretKeys: Array.from(resolvedSecrets.availableSecretKeys).sort(),
     };
   }
 
@@ -191,6 +184,8 @@ export class FlyDeployAdapter implements DeployAdapter {
       ]);
     }
 
+    const resolvedSecrets = await this.resolveSecrets(agentfile, app, secrets, !appExists);
+
     // Step 4: ビルドコンテキストを一時ディレクトリに構築
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyflow-deploy-"));
     try {
@@ -216,7 +211,11 @@ export class FlyDeployAdapter implements DeployAdapter {
       await fs.writeFile(path.join(tmpDir, "fly.toml"), buildFlyToml(app, region), "utf-8");
 
       // openclaw.json.template を生成（チャネル認証情報はプレースホルダ、release_command で展開）
-      const openclawConfig = buildOpenclawConfig({ agentfile, secrets });
+      const openclawConfig = buildOpenclawConfig({
+        agentfile,
+        secrets,
+        availableSecretKeys: resolvedSecrets.availableSecretKeys,
+      });
       await fs.writeFile(
         path.join(tmpDir, "openclaw.json.template"),
         JSON.stringify(openclawConfig, null, 2),
@@ -224,11 +223,15 @@ export class FlyDeployAdapter implements DeployAdapter {
       );
 
       // render-openclaw-config.cjs を生成（release_command から呼ばれる）
-      await fs.writeFile(path.join(tmpDir, "render-openclaw-config.cjs"), RENDER_SCRIPT, "utf-8");
+      const renderScript = await fs.readFile(
+        new URL("../render-openclaw-config.cjs", import.meta.url),
+        "utf-8",
+      );
+      await fs.writeFile(path.join(tmpDir, "render-openclaw-config.cjs"), renderScript, "utf-8");
 
       // Step 5: シークレット設定（--stage でまずステージングに）
       const secretPairs: string[] = [];
-      for (const [key, value] of Object.entries(secrets)) {
+      for (const [key, value] of Object.entries(resolvedSecrets.stagedSecrets)) {
         secretPairs.push(`${key}=${value}`);
       }
       if (secretPairs.length > 0) {
@@ -339,6 +342,93 @@ export class FlyDeployAdapter implements DeployAdapter {
         if (trimmed && !trimmed.startsWith("ID") && !trimmed.startsWith("-")) {
           const parts = trimmed.split(/\s+/);
           if (parts.length >= 2) names.push(parts[1]);
+        }
+      }
+      return names;
+    }
+  }
+
+  private async resolveSecrets(
+    agentfile: Agentfile,
+    app: string,
+    localSecrets: Record<string, string>,
+    createApp: boolean,
+  ): Promise<{
+    availableSecretKeys: Set<string>;
+    existingSecretKeys: Set<string>;
+    stagedSecrets: Record<string, string>;
+  }> {
+    const existingSecretKeys = createApp ? new Set<string>() : await this.listSecretKeys(app);
+    const stagedSecrets = { ...localSecrets };
+    const availableSecretKeys = new Set<string>([
+      ...existingSecretKeys,
+      ...Object.keys(localSecrets),
+    ]);
+
+    if (!availableSecretKeys.has("GATEWAY_TOKEN")) {
+      if (createApp) {
+        stagedSecrets.GATEWAY_TOKEN = crypto.randomBytes(24).toString("hex");
+        availableSecretKeys.add("GATEWAY_TOKEN");
+      } else {
+        throw new EasyflowError(
+          "GATEWAY_TOKEN が見つかりません",
+          "既存アプリの再デプロイでは GATEWAY_TOKEN を無言再生成できません",
+          "--secret-file で GATEWAY_TOKEN を渡すか、Fly secrets に GATEWAY_TOKEN を設定してください",
+        );
+      }
+    }
+
+    const missingRequired = this.getRequiredSecretKeys(agentfile).filter(
+      (key) => !availableSecretKeys.has(key),
+    );
+    if (missingRequired.length > 0) {
+      throw new EasyflowError(
+        `required secrets missing: ${missingRequired.join(", ")}`,
+        "必須シークレットが local secret-file / Fly secrets のどちらにも見つかりません",
+        "--secret-file で不足分を渡すか、Fly secrets に設定してください",
+      );
+    }
+
+    return {
+      availableSecretKeys,
+      existingSecretKeys,
+      stagedSecrets,
+    };
+  }
+
+  private getRequiredSecretKeys(agentfile: Agentfile): string[] {
+    const required = ["GATEWAY_TOKEN"];
+    if (agentfile.channels?.slack?.enabled) {
+      required.push("SLACK_BOT_TOKEN", "SLACK_SIGNING_SECRET");
+    }
+    if (agentfile.channels?.line?.enabled) {
+      required.push("LINE_ACCESS_TOKEN", "LINE_CHANNEL_SECRET");
+    }
+    return required;
+  }
+
+  private async listSecretKeys(app: string): Promise<Set<string>> {
+    try {
+      const output = await this.flyctl.secretsList(app);
+      return new Set(this.parseSecretsJson(output));
+    } catch {
+      return new Set<string>();
+    }
+  }
+
+  private parseSecretsJson(output: string): string[] {
+    try {
+      const jsonMatch = output.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) return [];
+      const parsed = JSON.parse(jsonMatch[0]) as Array<{ Name?: string; name?: string }>;
+      return parsed.map((secret) => secret.Name ?? secret.name ?? "").filter(Boolean);
+    } catch {
+      const names: string[] = [];
+      for (const line of output.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith("NAME") && !trimmed.startsWith("-")) {
+          const parts = trimmed.split(/\s+/);
+          if (parts[0]) names.push(parts[0]);
         }
       }
       return names;

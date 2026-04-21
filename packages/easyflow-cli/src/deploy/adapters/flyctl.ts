@@ -19,6 +19,10 @@ export class FlyctlRunner {
     await this.run(["secrets", ...args]);
   }
 
+  async secretsList(appName: string): Promise<string> {
+    return this.run(["secrets", "list", "--app", appName, "--json"]);
+  }
+
   async deploy(
     appName: string,
     args: string[],

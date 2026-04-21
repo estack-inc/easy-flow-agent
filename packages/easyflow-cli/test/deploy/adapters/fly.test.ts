@@ -14,6 +14,7 @@ function makeMockFlyctl(
     apps: vi.fn().mockResolvedValue("[]"),
     volumes: vi.fn().mockResolvedValue("[]"),
     secrets: vi.fn().mockResolvedValue(undefined),
+    secretsList: vi.fn().mockResolvedValue("[]"),
     deploy: vi.fn().mockResolvedValue(undefined),
     ssh: vi.fn().mockResolvedValue("200"),
     machines: vi.fn().mockResolvedValue("[]"),
@@ -71,7 +72,7 @@ describe("FlyDeployAdapter", () => {
       });
       const adapter = new FlyDeployAdapter(flyctl, () => {});
 
-      const plan = await adapter.plan(makeStoredImage(), makeAgentfile(), makeDeployOptions());
+      const plan = await adapter.plan(makeStoredImage(), makeAgentfile(), makeDeployOptions(), {});
 
       expect(plan.createApp).toBe(true);
       expect(plan.app).toBe("my-test-app");
@@ -82,10 +83,11 @@ describe("FlyDeployAdapter", () => {
       const flyctl = makeMockFlyctl({
         apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
         volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
+        secretsList: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "GATEWAY_TOKEN" }])),
       });
       const adapter = new FlyDeployAdapter(flyctl, () => {});
 
-      const plan = await adapter.plan(makeStoredImage(), makeAgentfile(), makeDeployOptions());
+      const plan = await adapter.plan(makeStoredImage(), makeAgentfile(), makeDeployOptions(), {});
 
       expect(plan.createApp).toBe(false);
       expect(plan.createVolume).toBe(false);
@@ -97,6 +99,7 @@ describe("FlyDeployAdapter", () => {
       const flyctl = makeMockFlyctl({
         apps: appsFn,
         volumes: volumesFn,
+        secretsList: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "GATEWAY_TOKEN" }])),
       });
       const adapter = new FlyDeployAdapter(flyctl, () => {});
 
@@ -104,6 +107,7 @@ describe("FlyDeployAdapter", () => {
         makeStoredImage(),
         makeAgentfile(),
         makeDeployOptions({ dryRun: true }),
+        {},
       );
 
       // dry-run でも read-only 確認が実行される
@@ -125,10 +129,29 @@ describe("FlyDeployAdapter", () => {
         makeStoredImage(),
         makeAgentfile(),
         makeDeployOptions({ dryRun: true }),
+        {},
       );
 
       expect(plan.createApp).toBe(true);
       expect(plan.createVolume).toBe(true);
+    });
+
+    it("既存アプリの plan では Fly secrets を読んで secretKeys に反映する", async () => {
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
+        volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
+        secretsList: vi
+          .fn()
+          .mockResolvedValue(
+            JSON.stringify([{ Name: "GATEWAY_TOKEN" }, { Name: "GEMINI_API_KEY" }]),
+          ),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      const plan = await adapter.plan(makeStoredImage(), makeAgentfile(), makeDeployOptions(), {});
+
+      expect(plan.secretKeys).toContain("GATEWAY_TOKEN");
+      expect(plan.secretKeys).toContain("GEMINI_API_KEY");
     });
   });
 
@@ -201,11 +224,12 @@ describe("FlyDeployAdapter", () => {
       expect(result.healthCheck.statusCode).toBe(200);
     });
 
-    it("シークレットが空の場合は flyctl secrets を呼ばない", async () => {
+    it("既存アプリで追加シークレットが不要な場合は flyctl secrets を呼ばない", async () => {
       const secretsFn = vi.fn().mockResolvedValue(undefined);
       const flyctl = makeMockFlyctl({
-        apps: vi.fn().mockResolvedValue("[]"),
-        volumes: vi.fn().mockResolvedValue("[]"),
+        apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
+        volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
+        secretsList: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "GATEWAY_TOKEN" }])),
         deploy: vi.fn().mockResolvedValue(undefined),
         ssh: vi.fn().mockResolvedValue("200"),
         secrets: secretsFn,
@@ -221,6 +245,122 @@ describe("FlyDeployAdapter", () => {
       );
 
       expect(secretsFn).not.toHaveBeenCalled();
+    });
+
+    it("初回デプロイでは GATEWAY_TOKEN を生成して secrets set に含める", async () => {
+      const secretsFn = vi.fn().mockResolvedValue(undefined);
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue("[]"),
+        volumes: vi.fn().mockResolvedValue("[]"),
+        deploy: vi.fn().mockResolvedValue(undefined),
+        ssh: vi.fn().mockResolvedValue("200"),
+        secrets: secretsFn,
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      await adapter.deploy(
+        { manifest: {}, config: {}, layers: new Map() },
+        makeStoredImage(),
+        makeAgentfile(),
+        makeDeployOptions(),
+        {},
+      );
+
+      expect(secretsFn).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          "set",
+          expect.stringMatching(/^GATEWAY_TOKEN=/),
+          "--app",
+          "my-test-app",
+          "--stage",
+        ]),
+      );
+    });
+
+    it("既存アプリで GATEWAY_TOKEN が Fly secrets にあれば再生成しない", async () => {
+      const secretsFn = vi.fn().mockResolvedValue(undefined);
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
+        volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
+        secretsList: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "GATEWAY_TOKEN" }])),
+        deploy: vi.fn().mockResolvedValue(undefined),
+        ssh: vi.fn().mockResolvedValue("200"),
+        secrets: secretsFn,
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      await adapter.deploy(
+        { manifest: {}, config: {}, layers: new Map() },
+        makeStoredImage(),
+        makeAgentfile(),
+        makeDeployOptions(),
+        {},
+      );
+
+      expect(secretsFn).not.toHaveBeenCalled();
+    });
+
+    it("既存アプリで GATEWAY_TOKEN が local/Fly のどちらにも無い場合は失敗する", async () => {
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
+        volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
+        secretsList: vi.fn().mockResolvedValue("[]"),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      await expect(
+        adapter.deploy(
+          { manifest: {}, config: {}, layers: new Map() },
+          makeStoredImage(),
+          makeAgentfile(),
+          makeDeployOptions(),
+          {},
+        ),
+      ).rejects.toThrow("GATEWAY_TOKEN");
+    });
+
+    it("既存 Fly secrets に GEMINI_API_KEY があれば tools.media を維持した template を生成する", async () => {
+      let templateContent: string | undefined;
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
+        volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
+        secretsList: vi
+          .fn()
+          .mockResolvedValue(
+            JSON.stringify([{ Name: "GATEWAY_TOKEN" }, { Name: "GEMINI_API_KEY" }]),
+          ),
+        deploy: vi
+          .fn()
+          .mockImplementation(
+            async (
+              _appName: string,
+              _args: string[],
+              opts?: { cwd?: string; timeoutMs?: number },
+            ) => {
+              if (opts?.cwd) {
+                templateContent = await fs.readFile(
+                  path.join(opts.cwd, "openclaw.json.template"),
+                  "utf-8",
+                );
+              }
+            },
+          ),
+        ssh: vi.fn().mockResolvedValue("200"),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      await adapter.deploy(
+        { manifest: {}, config: {}, layers: new Map() },
+        makeStoredImage(),
+        makeAgentfile(),
+        makeDeployOptions(),
+        {},
+      );
+
+      const parsedConfig = JSON.parse(templateContent as string) as {
+        tools?: { media?: { enabled: boolean } };
+      };
+      expect(parsedConfig.tools?.media).toEqual({ enabled: true });
     });
 
     it("Dockerfile と openclaw.json.template と render スクリプトがビルドコンテキストに生成される", async () => {
@@ -286,6 +426,7 @@ describe("FlyDeployAdapter", () => {
       // render スクリプトが存在し、プレースホルダ展開ロジックを含む
       expect(renderScriptContent).toBeDefined();
       expect(renderScriptContent).toContain("process.env[key]");
+      expect(renderScriptContent).toContain("process.exit(1)");
     });
 
     it("fly.toml に node render スクリプトを呼ぶ release_command が含まれ [build].image が含まれない", async () => {

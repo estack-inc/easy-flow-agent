@@ -59,7 +59,7 @@ describe("render-openclaw-config.cjs", () => {
     expect(parsed.channels.line.channelSecret).toBe("line-secret");
   });
 
-  it("環境変数が未設定の場合は空文字に置換される", async () => {
+  it("環境変数が未設定の場合は fail-fast する", async () => {
     const templatePath = path.join(tmpDir, "config.template");
     const outputPath = path.join(tmpDir, "config.json");
 
@@ -69,19 +69,17 @@ describe("render-openclaw-config.cjs", () => {
     });
     await fs.writeFile(templatePath, template);
 
-    execSync(`node "${scriptPath}" "${templatePath}" "${outputPath}"`, {
-      env: {
-        ...process.env,
-        PRESENT_VAR: "value",
-        MISSING_TOKEN: undefined,
-      },
-    });
+    expect(() =>
+      execSync(`node "${scriptPath}" "${templatePath}" "${outputPath}"`, {
+        env: {
+          ...process.env,
+          PRESENT_VAR: "value",
+          MISSING_TOKEN: undefined,
+        },
+      }),
+    ).toThrow();
 
-    const output = await fs.readFile(outputPath, "utf-8");
-    const parsed = JSON.parse(output);
-
-    expect(parsed.present).toBe("value");
-    expect(parsed.token).toBe("");
+    await expect(fs.readFile(outputPath, "utf-8")).rejects.toThrow();
   });
 
   it("プレースホルダがない場合はそのまま出力される", async () => {
