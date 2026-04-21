@@ -149,11 +149,13 @@ jobs:
             exit 1
           fi
           # 移行期互換: 旧 workflow (openai/codex-action@v1 時代) の APPROVED には
-          # 新マーカー `<!-- codex-reviewer-bot:v1 -->` が付いていない。旧 body の先頭定型文
+          # 新マーカー `<!-- codex-reviewer-bot:v1 ... -->` が付いていない。旧 body の先頭定型文
           # `🤖 AIレビュー判定` でも bot review を識別し、新旧双方の stale APPROVED を dismiss する。
+          # マーカーは sha 付き形式 (`<!-- codex-reviewer-bot:v1 sha=... -->`) に拡張したため、
+          # listing は末尾 `-->` を含まない接頭辞マッチで新旧両対応させる。
           set +e
           BOT_APPROVAL_IDS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
-            --jq '.[] | select(.state=="APPROVED" and ((.body // "") | (contains("<!-- codex-reviewer-bot:v1 -->") or contains("🤖 AIレビュー判定")))) | .id' 2>/dev/null)
+            --jq '.[] | select(.state=="APPROVED" and ((.body // "") | (contains("<!-- codex-reviewer-bot:v1") or contains("🤖 AIレビュー判定")))) | .id' 2>/dev/null)
           LISTING_RC=$?
           set -e
           DISMISS_FAILED=0
@@ -283,6 +285,7 @@ jobs:
           PR_NUM: ${{ github.event.pull_request.number }}
           HTTP_STATUS: ${{ steps.codex_review.outputs.http_status }}
           CURL_RC: ${{ steps.codex_review.outputs.curl_rc }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           # 意図: infra 障害（認証切れ・Funnel 停止・一時的 502・通信断 等）では
           # 本 run での新規 verdict 提出をスキップする。ただし前回 run の APPROVED が残ると、
@@ -293,10 +296,13 @@ jobs:
           # 本 step 末尾で job を fail させて未レビュー承認状態での merge を塞ぐ（fail-closed）。
           # 移行期互換: 旧 workflow 時代の APPROVED（マーカー無し、body 先頭 `🤖 AIレビュー判定`）も
           # dismiss 対象に含める。
-          MARKER='<!-- codex-reviewer-bot:v1 -->'
+          #
+          # コメント本体のマーカーには head SHA を埋め込み、head が変わるたびに新規コメントを
+          # 立てる（履歴保持）。同一 head 内の再試行は EXISTING_ID の prefix マッチで更新される。
+          MARKER="<!-- codex-reviewer-bot:v1 sha=${PR_HEAD_SHA} -->"
           set +e
           BOT_APPROVAL_IDS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
-            --jq '.[] | select(.state=="APPROVED" and ((.body // "") | (contains("<!-- codex-reviewer-bot:v1 -->") or contains("🤖 AIレビュー判定")))) | .id' 2>/dev/null)
+            --jq '.[] | select(.state=="APPROVED" and ((.body // "") | (contains("<!-- codex-reviewer-bot:v1") or contains("🤖 AIレビュー判定")))) | .id' 2>/dev/null)
           LISTING_RC=$?
           set -e
           DISMISS_FAILED=0
@@ -358,6 +364,7 @@ jobs:
           GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
           REPO: ${{ github.repository }}
           PR_NUM: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           # 空レスポンス（http=200 だが body が空）の場合でも Post step は失敗させない。
           # Submit verdict 側で VERDICT_COUNT=0 → --request-changes（fail-closed）に倒すため、
@@ -366,7 +373,11 @@ jobs:
           # 人手コメントを上書きしないため、--edit-last は使わない。
           # VERDICT マーカー本体だけを削ることで、Codex が同一行に他テキストを書いた場合でも
           # VERDICT マーカーの露出を防ぐ（server.js `ensureVerdict()` の正規表現と整合）。
-          MARKER='<!-- codex-reviewer-bot:v1 -->'
+          #
+          # マーカーに head SHA を埋め込む設計。synchronize で head が変わった 2 回目以降の
+          # レビューは新規コメントとして投稿され、過去 SHA のコメントは履歴として残す。
+          # 同一 head 内の再試行（rerun）は prefix 一致で既存コメントを更新する。
+          MARKER="<!-- codex-reviewer-bot:v1 sha=${PR_HEAD_SHA} -->"
           # sed の区切り文字には `#` を使う。`|` だと ERE の alternation（`|`）と衝突し、
           # `s|...(APPROVED|CHANGES_REQUESTED)...||g` は sed 側で pattern 終端と誤解釈されて
           # `RE error: parentheses not balanced` で step が落ちるため。
@@ -397,6 +408,7 @@ jobs:
           GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
           REPO: ${{ github.repository }}
           PR_NUM: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           # review body にも bot マーカーを埋め込む。infra 障害時の dismiss 対象を
           # 「このボット由来の review」に限定するために body 先頭でマーカーを照合する。
@@ -408,7 +420,9 @@ jobs:
           #   - Actions 側からの GitHub API 一時障害
           # いずれも早期検知が必要なので、config / 権限系の misconfig が green のまま埋もれるのを避ける。
           set -e
-          MARKER='<!-- codex-reviewer-bot:v1 -->'
+          # Post review comment と同じ sha 埋め込みマーカーを使う。review listing 側は
+          # prefix contains("<!-- codex-reviewer-bot:v1") で新旧両対応済み。
+          MARKER="<!-- codex-reviewer-bot:v1 sha=${PR_HEAD_SHA} -->"
           # server.js `ensureVerdict()` と同じ正規表現で APPROVED / CHANGES_REQUESTED を抽出。
           # 「ちょうど 1 件」の場合のみ --approve / --request-changes を実行する（fail-closed）。
           # 0 件・2 件以上・矛盾が来た場合は --request-changes に倒し、曖昧な出力を誤って
