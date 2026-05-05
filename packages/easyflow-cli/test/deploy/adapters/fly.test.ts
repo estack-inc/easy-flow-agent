@@ -503,8 +503,12 @@ describe("FlyDeployAdapter", () => {
       );
 
       expect(capturedCwd).toBeDefined();
-      // Dockerfile は .template と render スクリプトを COPY する
-      expect(dockerfileContent).toContain("FROM ghcr.io/openclaw/openclaw:latest");
+      // Dockerfile は easy-flow-base を digest pin し、base image 側の CMD /entrypoint.sh を継承する
+      expect(dockerfileContent).toContain(
+        "FROM ghcr.io/estack-inc/easy-flow-base@sha256:da7f2b41080943c65bbcd1e4448c69a10b80f82a179bd4beba3c298b07a12248",
+      );
+      expect(dockerfileContent).not.toContain("ghcr.io/openclaw/openclaw:latest");
+      expect(dockerfileContent).not.toMatch(/\b(?:CMD|ENTRYPOINT)\b/);
       expect(dockerfileContent).toContain("COPY layers/config/ /app/easyflow/config/");
       expect(dockerfileContent).toContain(
         "COPY openclaw.json.template /app/openclaw.json.template",

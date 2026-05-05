@@ -10,7 +10,8 @@ import { buildOpenclawConfig } from "../openclaw-config.js";
 import type { DeployAdapter, DeployOptions, DeployPlan, DeployResult } from "../types.js";
 import type { FlyctlRunner } from "./flyctl.js";
 
-const BASE_IMAGE = "ghcr.io/openclaw/openclaw:latest";
+const BASE_IMAGE =
+  "ghcr.io/estack-inc/easy-flow-base@sha256:da7f2b41080943c65bbcd1e4448c69a10b80f82a179bd4beba3c298b07a12248";
 const DEFAULT_REGION = "nrt";
 const DEFAULT_ORG = "personal";
 const LAYER_NAMES = ["identity", "knowledge", "tools", "config"] as const;
