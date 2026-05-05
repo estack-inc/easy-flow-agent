@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as zlib from "node:zlib";
 import * as tar from "tar";
 import { describe, expect, it } from "vitest";
 import { extractLayer } from "../../src/deploy/layer-extractor.js";
@@ -31,6 +32,31 @@ async function createTarGz(files: Record<string, string>): Promise<Buffer> {
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }
+}
+
+function createTarGzWithRawPath(filePath: string, content: string): Buffer {
+  const body = Buffer.from(content, "utf-8");
+  const header = Buffer.alloc(512, 0);
+
+  header.write(filePath, 0, 100, "utf-8");
+  header.write("0000644\0", 100, 8, "ascii");
+  header.write("0000000\0", 108, 8, "ascii");
+  header.write("0000000\0", 116, 8, "ascii");
+  header.write(`${body.length.toString(8).padStart(11, "0")}\0`, 124, 12, "ascii");
+  header.write("00000000000\0", 136, 12, "ascii");
+  header.fill(" ", 148, 156);
+  header.write("0", 156, 1, "ascii");
+  header.write("ustar\0", 257, 6, "ascii");
+  header.write("00", 263, 2, "ascii");
+
+  let checksum = 0;
+  for (const byte of header) {
+    checksum += byte;
+  }
+  header.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148, 8, "ascii");
+
+  const padding = Buffer.alloc((512 - (body.length % 512)) % 512, 0);
+  return zlib.gzipSync(Buffer.concat([header, body, padding, Buffer.alloc(1024, 0)]));
 }
 
 describe("extractLayer", () => {
@@ -70,14 +96,19 @@ describe("extractLayer", () => {
   });
 
   it("パストラバーサルを含むパスで EasyflowError をスローする", async () => {
-    // 通常のパックだと .. を含むパスは入れにくいので、
-    // モック的に .. を含むファイル名のテストはスキップし、
-    // extractLayer の内部ロジックのみをテストする
-    // 実際の tar.gz バッファでは ../escape のパスを直接作る方法がないため、
-    // 正常ケースのテストのみとする
-    const tarGz = await createTarGz({ "safe-file.txt": "content" });
-    const result = await extractLayer(tarGz);
-    expect(result.files.size).toBe(1);
+    const tarGz = createTarGzWithRawPath("../escape.txt", "content");
+
+    await expect(extractLayer(tarGz)).rejects.toMatchObject({
+      reason: "パストラバーサル (..) はレイヤー内で許可されていません",
+    });
+  });
+
+  it("絶対パスで EasyflowError をスローする", async () => {
+    const tarGz = createTarGzWithRawPath("/escape.txt", "content");
+
+    await expect(extractLayer(tarGz)).rejects.toMatchObject({
+      reason: "絶対パスはレイヤー内で許可されていません",
+    });
   });
 
   it("1 ファイルだけの tar.gz でも正常に動作する", async () => {

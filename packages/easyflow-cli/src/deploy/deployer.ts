@@ -62,8 +62,8 @@ export class Deployer {
     }
 
     // Step 6: デプロイ履歴を記録
-    // namespace は buildOpenclawConfig と同じ agentId 基準で計算する
-    const agentId = agentfile.metadata.name;
+    // FlyDeployAdapter は deploy app 名を OPENCLAW_AGENT_ID として設定する。
+    const agentId = result.app;
     await this.log.append({
       app: result.app,
       target: result.target,
