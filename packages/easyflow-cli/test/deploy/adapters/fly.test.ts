@@ -349,7 +349,7 @@ describe("FlyDeployAdapter", () => {
       ).rejects.toThrow("GATEWAY_TOKEN");
     });
 
-    it("必要な provider secret が local/Fly/config.env のどれにも無い場合は失敗する", async () => {
+    it("必要な provider secret が local/Fly のどちらにも無い場合は失敗する", async () => {
       const flyctl = makeMockFlyctl({
         apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
         volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
@@ -389,27 +389,50 @@ describe("FlyDeployAdapter", () => {
       ).rejects.toThrow("GEMINI_API_KEY");
     });
 
-    it("provider key が config.env にある場合は deploy を許可する", async () => {
+    it("provider key が config.env にある場合でも deploy を許可しない", async () => {
       const flyctl = makeMockFlyctl({
         apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
         volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
         secretsList: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "GATEWAY_TOKEN" }])),
-        deploy: vi.fn().mockResolvedValue(undefined),
-        ssh: vi.fn().mockResolvedValue("200"),
       });
       const adapter = new FlyDeployAdapter(flyctl, () => {});
       const agentfile = makeAgentfile();
       agentfile.config = { env: { ANTHROPIC_API_KEY: "from-agentfile-env" } };
 
-      const result = await adapter.deploy(
-        { manifest: {}, config: {}, layers: new Map() },
-        makeStoredImage(),
-        agentfile,
-        makeDeployOptions(),
-        {},
-      );
+      await expect(
+        adapter.deploy(
+          { manifest: {}, config: {}, layers: new Map() },
+          makeStoredImage(),
+          agentfile,
+          makeDeployOptions(),
+          {},
+        ),
+      ).rejects.toThrow("ANTHROPIC_API_KEY");
+    });
 
-      expect(result.healthCheck.ok).toBe(true);
+    it("Gemini モデルでも lossless-claw 用に ANTHROPIC_API_KEY を要求する", async () => {
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
+        volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
+        secretsList: vi
+          .fn()
+          .mockResolvedValue(
+            JSON.stringify([{ Name: "GATEWAY_TOKEN" }, { Name: "GEMINI_API_KEY" }]),
+          ),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+      const agentfile = makeAgentfile();
+      agentfile.config = { model: { default: "gemini-2.5-flash" } };
+
+      await expect(
+        adapter.deploy(
+          { manifest: {}, config: {}, layers: new Map() },
+          makeStoredImage(),
+          agentfile,
+          makeDeployOptions(),
+          {},
+        ),
+      ).rejects.toThrow("ANTHROPIC_API_KEY");
     });
 
     it("既存 Fly secrets に GEMINI_API_KEY があれば tools.media を維持した template を生成する", async () => {

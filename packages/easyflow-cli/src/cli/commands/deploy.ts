@@ -111,12 +111,7 @@ export function registerDeployCommand(program: Command): void {
         });
         progress.succeed(`createApp=${plan.createApp}, createVolume=${plan.createVolume}`);
 
-        progress.start(3, "設定生成・シークレット設定");
-
-        progress.start(4, "デプロイ実行");
-
-        progress.start(5, "ヘルスチェック");
-
+        progress.start(3, "設定生成・シークレット設定・デプロイ・ヘルスチェック");
         const result = await deployer.deploy({
           ref,
           target: "fly",

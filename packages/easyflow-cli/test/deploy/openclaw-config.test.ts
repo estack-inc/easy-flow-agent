@@ -285,7 +285,7 @@ describe("buildOpenclawConfig", () => {
     expect(config.env.NODE_ENV).toBe("production");
   });
 
-  it("Agentfile の env にシークレットキーがあっても env には含まれる（秘匿ではなく設定値の場合）", () => {
+  it("Agentfile の env にシークレットキーがあっても env には含めない", () => {
     const agentfile = makeMinimalAgentfile({
       config: { env: { ANTHROPIC_API_KEY: "from-agentfile", LOG_LEVEL: "debug" } },
     });
@@ -295,9 +295,7 @@ describe("buildOpenclawConfig", () => {
       secrets: { ANTHROPIC_API_KEY: "from-secret" },
     });
 
-    // Agentfile.config.env に明示的に書かれた値はそのまま env に含まれる
-    // シークレットからの上書きは行わない（process.env 経由で解決）
-    expect(config.env.ANTHROPIC_API_KEY).toBe("from-agentfile");
+    expect(config.env.ANTHROPIC_API_KEY).toBeUndefined();
     expect(config.env.LOG_LEVEL).toBe("debug");
   });
 

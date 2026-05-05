@@ -382,14 +382,12 @@ export class FlyDeployAdapter implements DeployAdapter {
     }
 
     const missingProviderSecrets = this.getRequiredProviderSecretKeys(agentfile).filter(
-      (key) =>
-        !availableSecretKeys.has(key) &&
-        !(typeof agentfile.config?.env?.[key] === "string" && agentfile.config.env[key].length > 0),
+      (key) => !availableSecretKeys.has(key),
     );
     if (missingProviderSecrets.length > 0) {
       throw new EasyflowError(
         `provider secrets missing: ${missingProviderSecrets.join(", ")}`,
-        "モデル設定に必要な LLM プロバイダーのキーが local secret-file / Fly secrets / config.env のどれにも見つかりません",
+        "モデル設定に必要な LLM プロバイダーのキーが local secret-file / Fly secrets のどちらにも見つかりません",
         "--secret-file で不足分を渡すか、Fly secrets に設定してください",
       );
     }
@@ -429,7 +427,7 @@ export class FlyDeployAdapter implements DeployAdapter {
       agentfile.config?.model?.thinking,
     ].filter((model): model is string => typeof model === "string" && model.length > 0);
 
-    const required = new Set<string>();
+    const required = new Set<string>(["ANTHROPIC_API_KEY"]);
     for (const model of models) {
       const providerSecretKey = this.getProviderSecretKeyForModel(model);
       if (providerSecretKey) {

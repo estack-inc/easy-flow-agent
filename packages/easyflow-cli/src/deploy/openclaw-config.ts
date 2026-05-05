@@ -35,6 +35,17 @@ const BASE_PLUGIN_ALLOW = [
   "lossless-claw",
   "model-router",
 ] as const;
+const SECRET_ENV_KEYS = new Set([
+  "ANTHROPIC_API_KEY",
+  "GEMINI_API_KEY",
+  "OPENAI_API_KEY",
+  "PINECONE_API_KEY",
+  "SLACK_BOT_TOKEN",
+  "SLACK_SIGNING_SECRET",
+  "LINE_ACCESS_TOKEN",
+  "LINE_CHANNEL_SECRET",
+  "GATEWAY_TOKEN",
+]);
 
 /**
  * Agentfile とシークレットから openclaw.json 相当の設定を生成する。
@@ -50,7 +61,9 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
   // Agentfile の config.env のみを含める。
   // シークレット（ANTHROPIC_API_KEY 等）は Fly secrets 経由で process.env に注入され、
   // 各プラグインが process.env から参照するため、ここには埋め込まない。
-  const env: Record<string, string> = { ...(agentfile.config?.env ?? {}) };
+  const env = Object.fromEntries(
+    Object.entries(agentfile.config?.env ?? {}).filter(([key]) => !SECRET_ENV_KEYS.has(key)),
+  );
 
   // ---- channels ----
   const channels: Record<string, unknown> = {};
