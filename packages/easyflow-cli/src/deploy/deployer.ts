@@ -1,4 +1,5 @@
 import { parseAgentfile } from "../agentfile/parser.js";
+import type { Agentfile } from "../agentfile/types.js";
 import type { ImageStore } from "../store/image-store.js";
 import { EasyflowError } from "../utils/errors.js";
 import type { DeploymentsLog } from "./deployments-log.js";
@@ -52,6 +53,13 @@ export class Deployer {
 
     // Step 5: デプロイ実行
     const result = await adapter.deploy(imageData, stored, agentfile, options, secrets);
+    if (!result.healthCheck.ok) {
+      throw new EasyflowError(
+        `deploy health check failed: ${result.app}`,
+        result.healthCheck.message ?? "デプロイ後のヘルスチェックが成功しませんでした",
+        `fly logs -a ${result.app} でアプリの起動ログを確認してください`,
+      );
+    }
 
     // Step 6: デプロイ履歴を記録
     await this.log.append({
@@ -100,14 +108,17 @@ export class Deployer {
     return adapter.plan(stored, agentfile, options, secrets);
   }
 
-  private async extractAgentfile(
-    layers: Map<string, Buffer>,
-  ): Promise<import("../agentfile/types.js").Agentfile> {
+  private async extractAgentfile(layers: Map<string, Buffer>): Promise<Agentfile> {
     // config レイヤー (ImageBuilder は "config" キーで保存) から Agentfile を取り出す
     const configLayer = layers.get("config");
     if (configLayer) {
       try {
         const extracted = await extractLayer(configLayer);
+        const resolvedEntry = extracted.files.get("Agentfile.resolved.json");
+        if (resolvedEntry) {
+          return JSON.parse(resolvedEntry.content.toString("utf-8")) as Agentfile;
+        }
+
         const entry = extracted.files.get("Agentfile");
         if (entry) {
           const result = await parseAgentfile(entry.content.toString("utf-8"), {

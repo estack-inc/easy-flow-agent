@@ -78,6 +78,13 @@ describe("loadSecretFile", () => {
     await expect(loadSecretFile(filePath)).rejects.toThrow(EasyflowError);
   });
 
+  it("= を含まない行で EasyflowError をスローする", async () => {
+    const filePath = path.join(tmpDir, "test.env");
+    await fs.writeFile(filePath, "ANTHROPIC_API_KEY\n");
+
+    await expect(loadSecretFile(filePath)).rejects.toThrow(EasyflowError);
+  });
+
   it("ファイルが存在しない場合 EasyflowError をスローする", async () => {
     const filePath = path.join(tmpDir, "nonexistent.env");
     await expect(loadSecretFile(filePath)).rejects.toThrow(EasyflowError);

@@ -25,7 +25,7 @@ export async function loadSecretFile(filePath: string): Promise<Record<string, s
   const result: Record<string, string> = {};
   const lines = content.split(/\r?\n/);
 
-  for (const rawLine of lines) {
+  for (const [index, rawLine] of lines.entries()) {
     const line = rawLine.trim();
 
     // 空行・コメント行をスキップ
@@ -35,7 +35,11 @@ export async function loadSecretFile(filePath: string): Promise<Record<string, s
 
     const eqIdx = line.indexOf("=");
     if (eqIdx === -1) {
-      continue;
+      throw new EasyflowError(
+        `シークレットファイルの形式が不正です: ${index + 1} 行目`,
+        "`KEY=VALUE` 形式で指定してください",
+        "空行またはコメントにする場合は行頭に # を付けてください",
+      );
     }
 
     const key = line.slice(0, eqIdx).trim();

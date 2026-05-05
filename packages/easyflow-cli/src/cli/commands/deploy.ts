@@ -121,23 +121,13 @@ export function registerDeployCommand(program: Command): void {
           secretFile: options.secretFile,
         });
 
-        progress.succeed(
-          result.healthCheck.ok
-            ? `ok (${result.healthCheck.latencyMs ?? 0}ms)`
-            : `warn: ${result.healthCheck.message ?? "ヘルスチェック失敗"}`,
-        );
+        progress.succeed(`ok (${result.healthCheck.latencyMs ?? 0}ms)`);
 
         console.log(`\nSuccessfully deployed ${result.ref}`);
         console.log(`URL:       ${result.url}`);
         console.log(`App:       ${result.app}`);
         console.log(`Digest:    ${result.digest.slice(0, 19)}...`);
         console.log(`DeployedAt: ${result.deployedAt}`);
-
-        if (!result.healthCheck.ok) {
-          console.warn(
-            `\n警告: ヘルスチェックが成功しませんでした。アプリのログを確認してください。`,
-          );
-        }
       } catch (error) {
         handleError(error);
       }

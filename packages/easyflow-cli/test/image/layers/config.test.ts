@@ -38,7 +38,12 @@ describe("buildConfigLayer", () => {
     const layer = await buildConfigLayer(agentfile, rawYaml);
     const files = await extractTarGz(layer.content);
 
-    expect([...files.keys()].sort()).toEqual(["Agentfile", "channels.json", "openclaw.json"]);
+    expect([...files.keys()].sort()).toEqual([
+      "Agentfile",
+      "Agentfile.resolved.json",
+      "channels.json",
+      "openclaw.json",
+    ]);
 
     const openclaw = JSON.parse(readText(files, "openclaw.json"));
     expect(openclaw.model).toEqual({ default: "claude-sonnet-4-6" });
@@ -50,6 +55,10 @@ describe("buildConfigLayer", () => {
     expect(channels.webchat).toEqual({ enabled: true, invite_codes: ["ABC"] });
 
     expect(readText(files, "Agentfile")).toBe(rawYaml);
+
+    const resolvedAgentfile = JSON.parse(readText(files, "Agentfile.resolved.json"));
+    expect(resolvedAgentfile.config.env.LOG_LEVEL).toBe("debug");
+    expect(resolvedAgentfile.channels.webchat.invite_codes).toEqual(["ABC"]);
   });
 
   it("config/channels 未指定時は空の openclaw.json / channels.json を出力する", async () => {

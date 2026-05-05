@@ -8,6 +8,7 @@ import type { LayerData } from "../types.js";
  * - openclaw.json: `{ model, rag, env }` の最小スキーマ（Phase 1）
  * - channels.json: Agentfile の channels セクションをそのまま保存
  * - Agentfile: 元 YAML テキストを再現用に保存
+ * - Agentfile.resolved.json: base 継承を解決したビルド時点の Agentfile
  */
 export async function buildConfigLayer(
   agentfile: Agentfile,
@@ -36,6 +37,11 @@ export async function buildConfigLayer(
       kind: "file",
       name: "Agentfile",
       content: agentfileRawContent,
+    },
+    {
+      kind: "file",
+      name: "Agentfile.resolved.json",
+      content: `${JSON.stringify(agentfile, null, 2)}\n`,
     },
   ];
 

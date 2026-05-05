@@ -29,14 +29,26 @@ identity:
   soul: You are helpful.
 `.trim();
 
-async function createMockConfigLayer(agentfileYaml: string): Promise<Buffer> {
+async function createMockConfigLayer(
+  agentfileYaml: string,
+  resolvedAgentfile?: Agentfile,
+): Promise<Buffer> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyflow-deployer-test-"));
   try {
     // ImageBuilder は config レイヤー内のファイルを "Agentfile" という名前で保存する
     await fs.writeFile(path.join(tmpDir, "Agentfile"), agentfileYaml, "utf-8");
+    const entries = ["Agentfile"];
+    if (resolvedAgentfile) {
+      await fs.writeFile(
+        path.join(tmpDir, "Agentfile.resolved.json"),
+        `${JSON.stringify(resolvedAgentfile, null, 2)}\n`,
+        "utf-8",
+      );
+      entries.push("Agentfile.resolved.json");
+    }
 
     const chunks: Buffer[] = [];
-    const stream = tar.create({ gzip: true, cwd: tmpDir, portable: true }, ["Agentfile"]);
+    const stream = tar.create({ gzip: true, cwd: tmpDir, portable: true }, entries);
     for await (const chunk of stream) {
       chunks.push(Buffer.from(chunk));
     }
@@ -48,17 +60,26 @@ async function createMockConfigLayer(agentfileYaml: string): Promise<Buffer> {
 
 class MockAdapter implements DeployAdapter {
   readonly name = "fly" as const;
-  deployCalledWith: { options: DeployOptions; secrets: Record<string, string> } | null = null;
-  planCalledWith: { options: DeployOptions; secrets: Record<string, string> } | null = null;
+  deployCalledWith: {
+    agentfile: Agentfile;
+    options: DeployOptions;
+    secrets: Record<string, string>;
+  } | null = null;
+  planCalledWith: {
+    agentfile: Agentfile;
+    options: DeployOptions;
+    secrets: Record<string, string>;
+  } | null = null;
+  healthCheck: DeployResult["healthCheck"] = { ok: true, statusCode: 200, latencyMs: 100 };
 
   async deploy(
     _image: import("../../src/store/types.js").ImageData,
     stored: import("../../src/store/types.js").StoredImage,
-    _agentfile: Agentfile,
+    agentfile: Agentfile,
     options: DeployOptions,
     secrets: Record<string, string>,
   ): Promise<DeployResult> {
-    this.deployCalledWith = { options, secrets };
+    this.deployCalledWith = { agentfile, options, secrets };
     return {
       app: options.app,
       target: "fly",
@@ -66,17 +87,17 @@ class MockAdapter implements DeployAdapter {
       digest: stored.digest,
       url: `https://${options.app}.fly.dev`,
       deployedAt: new Date().toISOString(),
-      healthCheck: { ok: true, statusCode: 200, latencyMs: 100 },
+      healthCheck: this.healthCheck,
     };
   }
 
   async plan(
     stored: import("../../src/store/types.js").StoredImage,
-    _agentfile: Agentfile,
+    agentfile: Agentfile,
     options: DeployOptions,
     secrets: Record<string, string>,
   ): Promise<DeployPlan> {
-    this.planCalledWith = { options, secrets };
+    this.planCalledWith = { agentfile, options, secrets };
     return {
       app: options.app,
       region: options.region ?? "nrt",
@@ -171,6 +192,27 @@ describe("Deployer", () => {
     expect(entries[0].app).toBe("my-app");
   });
 
+  it("ヘルスチェック失敗時は履歴を記録せず EasyflowError をスローする", async () => {
+    const configLayer = await createMockConfigLayer(MINIMAL_AGENTFILE_YAML);
+    await store.save("test/agent:health-fail", {
+      manifest: {},
+      config: {},
+      layers: new Map([["config", configLayer]]),
+    });
+    mockAdapter.healthCheck = { ok: false, message: "gateway status timeout" };
+
+    await expect(
+      deployer.deploy({
+        ref: "test/agent:health-fail",
+        target: "fly",
+        app: "health-fail-app",
+      }),
+    ).rejects.toThrow("deploy health check failed");
+
+    const entries = await deploymentsLog.list();
+    expect(entries).toHaveLength(0);
+  });
+
   it("plan() でアダプターの plan が呼ばれる", async () => {
     const configLayer = await createMockConfigLayer(MINIMAL_AGENTFILE_YAML);
     await store.save("test/agent:1.0", {
@@ -187,6 +229,39 @@ describe("Deployer", () => {
 
     expect(plan.app).toBe("my-app");
     expect(plan.createApp).toBe(true);
+  });
+
+  it("Agentfile.resolved.json があれば raw Agentfile を再パースせず利用する", async () => {
+    const rawAgentfileWithoutTools = MINIMAL_AGENTFILE_YAML;
+    const resolvedAgentfile: Agentfile = {
+      apiVersion: "easyflow/v1",
+      kind: "Agent",
+      metadata: {
+        name: "test-agent",
+        version: "1.0.0",
+        description: "Test",
+        author: "test",
+      },
+      identity: {
+        name: "TestAgent",
+        soul: "You are helpful.",
+      },
+      tools: { builtin: ["workflow-controller"] },
+    };
+    const configLayer = await createMockConfigLayer(rawAgentfileWithoutTools, resolvedAgentfile);
+    await store.save("test/agent:resolved", {
+      manifest: {},
+      config: {},
+      layers: new Map([["config", configLayer]]),
+    });
+
+    await deployer.plan({
+      ref: "test/agent:resolved",
+      target: "fly",
+      app: "resolved-app",
+    });
+
+    expect(mockAdapter.planCalledWith?.agentfile.tools?.builtin).toEqual(["workflow-controller"]);
   });
 
   it("ImageBuilder.build() の実出力から Agentfile を正しく取得できる（回帰）", async () => {
