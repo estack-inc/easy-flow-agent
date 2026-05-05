@@ -88,10 +88,10 @@ const result = await client.send({
 | `200` `sent>0` `pending=0` | 成功終了 |
 | `200` `pending>0` | `retryPendingDelayMs` 後に同 `idempotencyKey` で再送（最大 `retryPendingMaxAttempts` 回） |
 | `200` `sent=0` `failed>0` `pending=0` | （portal が 502 にする想定だが）即停止、`PortalDeliveryError` |
-| `404` no active member | warn ログのみ、`{ ok: true, sent: 0, failed: 0 }` で終了 |
+| `404` no active member | `{ ok: false, reason: "no_active_member", status: 404 }` で終了（retry しない） |
 | `400` Bad Request | 即停止、`PortalValidationError` |
 | `401` Unauthorized | 即停止、`PortalAuthError` |
-| `410` Gone | 即停止、`PortalSubscriptionGoneError`（agent 側で全 notify を停止すべき） |
+| `410` Gone | `{ ok: false, reason: "subscription_gone", status: 410 }` で終了（agent 側で全 notify を停止すべき） |
 | `502` Bad Gateway | `retryFailedDelaysMs` で指数バックオフ |
 | network error / その他 5xx | `retryFailedDelaysMs` で指数バックオフ |
 

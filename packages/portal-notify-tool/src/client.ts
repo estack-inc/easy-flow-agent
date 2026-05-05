@@ -11,6 +11,7 @@
 // idempotencyKey 8〜128 文字）は portal が validate するためここでは pre-check しない。
 // 不正な input は 400 → PortalValidationError として返ってくる。
 
+import { randomUUID } from "node:crypto";
 import { type PortalNotifyConfig, type PortalNotifyConfigInput, resolveConfig } from "./config.js";
 import { addJitter, type RetryStep, retryWithBackoff } from "./retry.js";
 import {
@@ -61,16 +62,23 @@ export function createPortalNotifyClient(
   return {
     config: cfg,
     async send(input: NotifySendInput): Promise<NotifySendOutcome> {
+      // idempotencyKey が未指定の場合は自動生成して retry 中の重複配信を防ぐ。
+      // pending 再送・502 retry はすべて同じ key を使う。
+      const inputWithKey: NotifySendInput = {
+        ...input,
+        idempotencyKey: input.idempotencyKey ?? randomUUID(),
+      };
+
       // 1) 502 / 5xx / network error は retryWithBackoff で吸収
       const baseOutcome = await retryWithBackoff(
-        () => attemptSend(input, cfg, fetchImpl),
+        () => attemptSend(inputWithKey, cfg, fetchImpl),
         cfg.retryFailedDelaysMs.map(addJitter),
         sleep,
       );
 
       // 2) 成功時、pending を含むなら同 idempotencyKey で再送して確定を狙う
       if (baseOutcome.kind === "ok" && baseOutcome.response.pending > 0) {
-        return await retryPending(input, baseOutcome.response, cfg, fetchImpl, sleep);
+        return await retryPending(inputWithKey, baseOutcome.response, cfg, fetchImpl, sleep);
       }
 
       // outcome → public NotifySendOutcome に正規化
@@ -121,6 +129,11 @@ async function attemptSend(
   // 4xx / 410 / 404 は retry しない。throw or 結果値で即終了。
   if (res.status === 200) {
     const body = (await res.json()) as NotifySendResponse;
+    // sent=0 && pending=0 && failed>0 は全件未達。portal が 502 にする想定だが
+    // 200 で返してきた場合も PortalDeliveryError で即停止する。
+    if (body.sent === 0 && body.pending === 0 && body.failed > 0) {
+      throw new PortalDeliveryError("portal returned 200 but all deliveries failed", body.results);
+    }
     return { retry: false, value: { kind: "ok", response: body } };
   }
   if (res.status === 404) {
@@ -184,16 +197,18 @@ async function retryPending(
   let current = initialResponse;
   for (let i = 0; i < cfg.retryPendingMaxAttempts; i++) {
     await sleep(cfg.retryPendingDelayMs);
-    const step = await attemptSend(input, cfg, fetchImpl);
-    if (step.retry) {
-      // retry 中の transient 失敗は throw（pending 再送で 5xx は希）
-      throw step.error;
-    }
-    if (step.value.kind !== "ok") {
+    // pending 再送中に 502 / 5xx / network error が発生した場合も
+    // retryFailedDelaysMs のバックオフを適用する（PR 本文の retry policy と整合）。
+    const step = await retryWithBackoff(
+      () => attemptSend(input, cfg, fetchImpl),
+      cfg.retryFailedDelaysMs.map(addJitter),
+      sleep,
+    );
+    if (step.kind !== "ok") {
       // 410 / 404 への遷移：そのまま返す
-      return materializeOutcome(step.value);
+      return materializeOutcome(step);
     }
-    current = step.value.response;
+    current = step.response;
     if (current.pending === 0) break;
   }
   // 上限に達してもまだ pending がいれば ok: true で返す（caller 判断に委ねる）

@@ -8,14 +8,17 @@
 //   - 200 sent: 成功で結果を返す
 //   - 200 pending: retryPendingDelayMs 後に再送、再送も pending なら ok: true で終了
 //   - 200 pending → 200 sent (再送で確定): 1 回だけ retry
+//   - 200 sent=0 failed>0 pending=0 → PortalDeliveryError（全件未達）
 //   - 200 sent + body の Authorization / JSON 形式の検証
-//   - 404 no active member: ok: true sent: 0 で終了 + warn ログ
+//   - idempotencyKey 未指定時は自動生成して全 retry で同一 key を使う
+//   - 404 no active member: ok: false reason: no_active_member で終了
 //   - 400 → PortalValidationError + missingMemberIds 含む details
 //   - 401 → PortalAuthError, retry しない
 //   - 410 → ok: false reason: 'subscription_gone'
 //   - 502 → retryFailedDelaysMs 全件 retry 後 PortalDeliveryError
 //   - network error → retry, 全失敗で PortalUnavailableError
 //   - timeout → AbortError 経由で retry
+//   - pending 再送中の 5xx → retryFailedDelaysMs で backoff して回復
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPortalNotifyClient } from "./client.js";
 import {
@@ -126,12 +129,47 @@ describe("createPortalNotifyClient.send - 成功系", () => {
       memberIds: ["uuid-1", "uuid-2"],
     });
     const [, init] = fetchMock.mock.calls[0];
-    expect(JSON.parse(init.body)).toEqual({
+    const parsed = JSON.parse(init.body);
+    // idempotencyKey は未指定時に自動生成されるため文字列であることだけ確認
+    expect(typeof parsed.idempotencyKey).toBe("string");
+    expect(parsed).toMatchObject({
       kind: "reaction_received",
       body: "新規問合せ",
       subject: "件名",
       memberIds: ["uuid-1", "uuid-2"],
     });
+  });
+
+  it("idempotencyKey 未指定時は自動生成し、全 retry で同一 key を使う", async () => {
+    fetchMock
+      .mockResolvedValueOnce(makeResponse(502, { sent: 0, pending: 0, failed: 1, results: [] }))
+      .mockResolvedValueOnce(makeResponse(200, { sent: 1, pending: 0, failed: 0, results: [] }));
+
+    const client = buildClient({ retryFailedDelaysMs: [10] });
+    await client.send({ kind: "system", body: "msg" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const key0 = JSON.parse(fetchMock.mock.calls[0][1].body).idempotencyKey;
+    const key1 = JSON.parse(fetchMock.mock.calls[1][1].body).idempotencyKey;
+    expect(typeof key0).toBe("string");
+    expect(key0.length).toBeGreaterThanOrEqual(8);
+    expect(key0).toBe(key1);
+  });
+
+  it("200 sent=0 failed>0 pending=0 → PortalDeliveryError（全件未達）", async () => {
+    fetchMock.mockResolvedValueOnce(
+      makeResponse(200, {
+        sent: 0,
+        pending: 0,
+        failed: 1,
+        results: [{ memberId: "m1", notificationId: "n1", channel: "line", status: "failed" }],
+      }),
+    );
+    const client = buildClient();
+    await expect(client.send({ kind: "system", body: "msg" })).rejects.toBeInstanceOf(
+      PortalDeliveryError,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -194,6 +232,27 @@ describe("createPortalNotifyClient.send - pending retry", () => {
     const result = await client.send({ kind: "system", body: "msg" });
     expect(result).toMatchObject({ ok: true, pending: 1 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("pending 再送中に 5xx が発生した場合 retryFailedDelaysMs で backoff して回復", async () => {
+    fetchMock
+      .mockResolvedValueOnce(makeResponse(200, { sent: 0, pending: 1, failed: 0, results: [] }))
+      .mockResolvedValueOnce(makeResponse(502, { sent: 0, pending: 0, failed: 1, results: [] }))
+      .mockResolvedValueOnce(makeResponse(200, { sent: 1, pending: 0, failed: 0, results: [] }));
+
+    const client = buildClient({
+      retryPendingDelayMs: 5,
+      retryPendingMaxAttempts: 1,
+      retryFailedDelaysMs: [10],
+    });
+    const result = await client.send({ kind: "system", body: "msg", idempotencyKey: "key-retry" });
+    expect(result).toMatchObject({ ok: true, sent: 1 });
+    // 初回 pending + pending内の 502 backoff retry
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    // retryPendingDelayMs(5) + retryFailedDelaysMs[0] のバックオフ sleep が呼ばれる
+    expect(sleepMock).toHaveBeenCalledTimes(2);
+    expect(sleepMock.mock.calls[0][0]).toBe(5); // retryPendingDelayMs
+    expect(typeof sleepMock.mock.calls[1][0]).toBe("number"); // jittered backoff
   });
 
   it("最大 attempts 後も pending なら ok: true pending で終了 (失敗扱いにしない)", async () => {
