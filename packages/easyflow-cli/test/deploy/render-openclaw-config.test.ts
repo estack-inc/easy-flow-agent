@@ -64,8 +64,8 @@ describe("render-openclaw-config.js", () => {
     const outputPath = path.join(tmpDir, "config.json");
 
     const template = JSON.stringify({
-      token: placeholder("MISSING_TOKEN"),
-      present: placeholder("PRESENT_VAR"),
+      token: placeholder("GATEWAY_TOKEN"),
+      present: placeholder("SLACK_BOT_TOKEN"),
     });
     await fs.writeFile(templatePath, template);
 
@@ -73,8 +73,8 @@ describe("render-openclaw-config.js", () => {
       execSync(`node "${scriptPath}" "${templatePath}" "${outputPath}"`, {
         env: {
           ...process.env,
-          PRESENT_VAR: "value",
-          MISSING_TOKEN: undefined,
+          SLACK_BOT_TOKEN: "value",
+          GATEWAY_TOKEN: undefined,
         },
       }),
     ).toThrow();
@@ -99,6 +99,34 @@ describe("render-openclaw-config.js", () => {
     const parsed = JSON.parse(output);
 
     expect(parsed.gateway.auth.token).toBe("fixed-token");
+  });
+
+  it("許可されていないプレースホルダは展開せず missing 扱いにしない", async () => {
+    const templatePath = path.join(tmpDir, "config.template");
+    const outputPath = path.join(tmpDir, "config.json");
+
+    const template = JSON.stringify({
+      agents: { default: { model: placeholder("MODEL_NAME") } },
+      channels: { webchat: { invite_codes: [placeholder("INVITE_CODE")] } },
+      gateway: { auth: { token: placeholder("GATEWAY_TOKEN") } },
+    });
+    await fs.writeFile(templatePath, template);
+
+    execSync(`node "${scriptPath}" "${templatePath}" "${outputPath}"`, {
+      env: {
+        ...process.env,
+        GATEWAY_TOKEN: "gateway-token",
+        MODEL_NAME: undefined,
+        INVITE_CODE: undefined,
+      },
+    });
+
+    const output = await fs.readFile(outputPath, "utf-8");
+    const parsed = JSON.parse(output);
+
+    expect(parsed.agents.default.model).toBe(placeholder("MODEL_NAME"));
+    expect(parsed.channels.webchat.invite_codes).toEqual([placeholder("INVITE_CODE")]);
+    expect(parsed.gateway.auth.token).toBe("gateway-token");
   });
 
   it("環境変数に JSON 特殊文字が含まれても有効な JSON として出力される", async () => {

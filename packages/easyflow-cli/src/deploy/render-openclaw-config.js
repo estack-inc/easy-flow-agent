@@ -3,15 +3,25 @@ import * as fs from "node:fs";
 const src = process.argv[2] || "/app/openclaw.json.template";
 const dst = process.argv[3] || "/data/openclaw.json";
 const PLACEHOLDER_PATTERN = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+const EXPANDABLE_PLACEHOLDER_KEYS = new Set([
+  "GATEWAY_TOKEN",
+  "SLACK_BOT_TOKEN",
+  "SLACK_SIGNING_SECRET",
+  "LINE_ACCESS_TOKEN",
+  "LINE_CHANNEL_SECRET",
+]);
 
 // env セクションはユーザー定義値（Agentfile の config.env）を含むため展開対象外とする。
-// その他のセクション（channels, gateway 等）は意図的なプレースホルダを含むため展開する。
+// その他のセクションでも、意図的に生成した secret placeholder だけを展開する。
 const NON_EXPANDABLE_TOP_LEVEL_KEYS = new Set(["env"]);
 
 function renderValue(value, missingKeys, expandable) {
   if (typeof value === "string") {
     if (!expandable) return value;
     return value.replace(PLACEHOLDER_PATTERN, (placeholder, key) => {
+      if (!EXPANDABLE_PLACEHOLDER_KEYS.has(key)) {
+        return placeholder;
+      }
       const envValue = process.env[key];
       if (envValue == null) {
         missingKeys.add(key);
