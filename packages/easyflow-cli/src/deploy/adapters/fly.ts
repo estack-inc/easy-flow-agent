@@ -101,6 +101,7 @@ export class FlyDeployAdapter implements DeployAdapter {
       agentfile,
       secrets,
       availableSecretKeys: resolvedSecrets.availableSecretKeys,
+      agentId: app,
     });
 
     const channels: string[] = [];
@@ -200,6 +201,7 @@ export class FlyDeployAdapter implements DeployAdapter {
         agentfile,
         secrets,
         availableSecretKeys: resolvedSecrets.availableSecretKeys,
+        agentId: app,
       });
       await fs.writeFile(
         path.join(tmpDir, "openclaw.json.template"),
@@ -251,7 +253,7 @@ export class FlyDeployAdapter implements DeployAdapter {
       healthCheck,
       knowledge:
         stored.metadata.knowledgeChunks !== undefined
-          ? { chunks: stored.metadata.knowledgeChunks, namespace: app }
+          ? { chunks: stored.metadata.knowledgeChunks, namespace: `agent:${app}` }
           : undefined,
     };
   }
