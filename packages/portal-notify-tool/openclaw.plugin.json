@@ -1,0 +1,36 @@
+{
+  "id": "portal-notify-tool",
+  "kind": "plugin",
+  "name": "Portal Notify Tool",
+  "description": "Relays agent notifications (task completion / inquiry arrival / followup reminders) to the easy.flow portal, which delivers them to tenant members via LINE or email. Provides the `notify_send` tool to AI agents.",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "origin": {
+        "type": "string",
+        "description": "Portal origin (e.g. https://easy-flow-real-estate-portal.fly.dev). Falls back to PORTAL_ORIGIN env var."
+      },
+      "notificationToken": {
+        "type": "string",
+        "description": "Per-subscription bearer token (UUID) issued by the portal. Falls back to PORTAL_NOTIFICATION_TOKEN env var."
+      },
+      "timeoutMs": {
+        "type": "number",
+        "description": "HTTP timeout for portal calls (ms). Default 5000."
+      },
+      "retryFailedDelaysMs": {
+        "type": "array",
+        "items": { "type": "number" },
+        "description": "Delay schedule (ms) for retrying 502 / network failures. Empty array disables retry."
+      },
+      "retryPendingDelayMs": {
+        "type": "number",
+        "description": "Delay (ms) before re-sending when portal returns pending status."
+      },
+      "retryPendingMaxAttempts": {
+        "type": "number",
+        "description": "Maximum number of pending re-send attempts. 0 disables pending retry."
+      }
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "@openclaw/portal-notify-tool",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "OpenClaw tool / client for relaying agent notifications to the easy.flow portal (LINE / email).",
+  "exports": {
+    ".": {
+      "import": "./portal-notify-tool/index.js",
+      "types": "./portal-notify-tool/index.d.ts",
+      "default": "./portal-notify-tool/index.js"
+    },
+    "./client": {
+      "import": "./portal-notify-tool/client.js",
+      "types": "./portal-notify-tool/client.d.ts",
+      "default": "./portal-notify-tool/client.js"
+    }
+  },
+  "main": "./portal-notify-tool/index.js",
+  "types": "./portal-notify-tool/index.d.ts",
+  "openclaw": {
+    "extensions": ["./src/index.ts"]
+  },
+  "files": ["portal-notify-tool"],
+  "scripts": {
+    "build": "tsc && cp openclaw.plugin.json portal-notify-tool/openclaw.plugin.json",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.7"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0",
+    "undici": "^7.0.0",
+    "vitest": "^3.0.0"
+  }
+}
