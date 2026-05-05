@@ -175,6 +175,57 @@ describe("FlyDeployAdapter", () => {
       expect(plan.secretKeys).toContain("GATEWAY_TOKEN");
       expect(plan.secretKeys).toContain("GEMINI_API_KEY");
     });
+
+    it("アプリ一覧の取得に失敗した場合は createApp=true にせずエラーを伝播する", async () => {
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockRejectedValue(new Error("fly apps unavailable")),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      await expect(
+        adapter.plan(
+          makeStoredImage(),
+          makeAgentfile(),
+          makeDeployOptions(),
+          makeProviderSecrets(),
+        ),
+      ).rejects.toThrow("fly apps unavailable");
+    });
+
+    it("既存アプリのボリューム一覧取得に失敗した場合は createVolume=true にせずエラーを伝播する", async () => {
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
+        volumes: vi.fn().mockRejectedValue(new Error("fly volumes unavailable")),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      await expect(
+        adapter.plan(
+          makeStoredImage(),
+          makeAgentfile(),
+          makeDeployOptions(),
+          makeProviderSecrets(),
+        ),
+      ).rejects.toThrow("fly volumes unavailable");
+    });
+
+    it("既存アプリの secrets 一覧取得に失敗した場合は missing secrets にせずエラーを伝播する", async () => {
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
+        volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
+        secretsList: vi.fn().mockRejectedValue(new Error("fly secrets unavailable")),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      await expect(
+        adapter.plan(
+          makeStoredImage(),
+          makeAgentfile(),
+          makeDeployOptions(),
+          makeProviderSecrets(),
+        ),
+      ).rejects.toThrow("fly secrets unavailable");
+    });
   });
 
   describe("deploy()", () => {
@@ -244,6 +295,48 @@ describe("FlyDeployAdapter", () => {
 
       expect(result.healthCheck.ok).toBe(true);
       expect(result.healthCheck.statusCode).toBe(200);
+    });
+
+    it("アプリ一覧の取得に失敗した場合はアプリ作成に進まずエラーを伝播する", async () => {
+      const appsFn = vi.fn().mockRejectedValue(new Error("fly apps unavailable"));
+      const flyctl = makeMockFlyctl({
+        apps: appsFn,
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      await expect(
+        adapter.deploy(
+          { manifest: {}, config: {}, layers: new Map() },
+          makeStoredImage(),
+          makeAgentfile(),
+          makeDeployOptions(),
+          makeProviderSecrets(),
+        ),
+      ).rejects.toThrow("fly apps unavailable");
+
+      expect(appsFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("ボリューム一覧の取得に失敗した場合はボリューム作成に進まずエラーを伝播する", async () => {
+      const volumesFn = vi.fn().mockRejectedValue(new Error("fly volumes unavailable"));
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
+        volumes: volumesFn,
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      await expect(
+        adapter.deploy(
+          { manifest: {}, config: {}, layers: new Map() },
+          makeStoredImage(),
+          makeAgentfile(),
+          makeDeployOptions(),
+          makeProviderSecrets(),
+        ),
+      ).rejects.toThrow("fly volumes unavailable");
+
+      expect(volumesFn).toHaveBeenCalledWith(["list", "--app", "my-test-app", "--json"]);
+      expect(volumesFn).toHaveBeenCalledTimes(1);
     });
 
     it("既存アプリで追加シークレットが不要な場合は flyctl secrets を呼ばない", async () => {

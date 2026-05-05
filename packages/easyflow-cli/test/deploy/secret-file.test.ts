@@ -42,6 +42,22 @@ describe("loadSecretFile", () => {
     expect(result.FOO).toBe("bar");
   });
 
+  it("dotenv 互換の inline comment を値から除外する", async () => {
+    const filePath = path.join(tmpDir, "test.env");
+    await fs.writeFile(filePath, "OPENAI_API_KEY=sk-test # prod\n");
+
+    const result = await loadSecretFile(filePath);
+    expect(result.OPENAI_API_KEY).toBe("sk-test");
+  });
+
+  it("dotenv 互換の export KEY=VALUE をパースする", async () => {
+    const filePath = path.join(tmpDir, "test.env");
+    await fs.writeFile(filePath, "export ANTHROPIC_API_KEY=test-anthropic-key\n");
+
+    const result = await loadSecretFile(filePath);
+    expect(result.ANTHROPIC_API_KEY).toBe("test-anthropic-key");
+  });
+
   it("空行をスキップする", async () => {
     const filePath = path.join(tmpDir, "test.env");
     await fs.writeFile(filePath, "\nFOO=bar\n\nBAZ=qux\n");

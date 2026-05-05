@@ -1,7 +1,9 @@
 import * as fs from "node:fs/promises";
+import { parse as parseDotenv } from "dotenv";
 import { EasyflowError } from "../utils/errors.js";
 
 const KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const ASSIGNMENT_PATTERN = /^(?:export\s+)?([^=\s]+)\s*=/;
 
 /**
  * .env 形式のシークレットファイルをパースして Record<string, string> を返す。
@@ -22,7 +24,6 @@ export async function loadSecretFile(filePath: string): Promise<Record<string, s
     throw err;
   }
 
-  const result: Record<string, string> = {};
   const lines = content.split(/\r?\n/);
 
   for (const [index, rawLine] of lines.entries()) {
@@ -33,17 +34,16 @@ export async function loadSecretFile(filePath: string): Promise<Record<string, s
       continue;
     }
 
-    const eqIdx = line.indexOf("=");
-    if (eqIdx === -1) {
+    const assignmentMatch = line.match(ASSIGNMENT_PATTERN);
+    if (!assignmentMatch) {
       throw new EasyflowError(
         `シークレットファイルの形式が不正です: ${index + 1} 行目`,
         "`KEY=VALUE` 形式で指定してください",
-        "空行またはコメントにする場合は行頭に # を付けてください",
+        "dotenv 互換の `KEY=VALUE` または `export KEY=VALUE` 形式で指定してください",
       );
     }
 
-    const key = line.slice(0, eqIdx).trim();
-    let value = line.slice(eqIdx + 1).trim();
+    const key = assignmentMatch[1];
 
     if (!KEY_PATTERN.test(key)) {
       throw new EasyflowError(
@@ -52,13 +52,17 @@ export async function loadSecretFile(filePath: string): Promise<Record<string, s
         "シークレットファイルのキー名を修正してください",
       );
     }
+  }
 
-    // 前後の二重引用符を除去
-    if (value.startsWith('"') && value.endsWith('"')) {
-      value = value.slice(1, -1);
+  const result = parseDotenv(content);
+  for (const key of Object.keys(result)) {
+    if (!KEY_PATTERN.test(key)) {
+      throw new EasyflowError(
+        `無効なキー名: "${key}"`,
+        "キーは [A-Za-z_][A-Za-z0-9_]* のパターンに一致する必要があります",
+        "シークレットファイルのキー名を修正してください",
+      );
     }
-
-    result[key] = value;
   }
 
   return result;

@@ -86,22 +86,14 @@ export class FlyDeployAdapter implements DeployAdapter {
     let createVolume = true;
 
     // dry-run でも read-only の存在確認は実行（正確な plan を表示するため）
-    try {
-      const appsOutput = await this.flyctl.apps(["list", "--json"]);
-      const apps = this.parseAppsJson(appsOutput);
-      createApp = !apps.includes(app);
-    } catch {
-      // flyctl が使えない場合は新規とみなす
-    }
+    const appsOutput = await this.flyctl.apps(["list", "--json"]);
+    const apps = this.parseAppsJson(appsOutput);
+    createApp = !apps.includes(app);
 
     if (!createApp) {
-      try {
-        const volOutput = await this.flyctl.volumes(["list", "--app", app, "--json"]);
-        const volumes = this.parseVolumesJson(volOutput);
-        createVolume = !volumes.includes("data");
-      } catch {
-        // ボリューム確認失敗 → 新規とみなす
-      }
+      const volOutput = await this.flyctl.volumes(["list", "--app", app, "--json"]);
+      const volumes = this.parseVolumesJson(volOutput);
+      createVolume = !volumes.includes("data");
     }
 
     const resolvedSecrets = await this.resolveSecrets(agentfile, app, secrets, createApp);
@@ -148,14 +140,9 @@ export class FlyDeployAdapter implements DeployAdapter {
 
     // Step 1: アプリ存在確認
     this.log(`[fly] アプリ確認: ${app}`);
-    let appExists = false;
-    try {
-      const appsOutput = await this.flyctl.apps(["list", "--json"]);
-      const apps = this.parseAppsJson(appsOutput);
-      appExists = apps.includes(app);
-    } catch {
-      // flyctl エラーは上位に伝播
-    }
+    const appsOutput = await this.flyctl.apps(["list", "--json"]);
+    const apps = this.parseAppsJson(appsOutput);
+    const appExists = apps.includes(app);
 
     // Step 2: アプリ作成
     if (!appExists) {
@@ -164,14 +151,9 @@ export class FlyDeployAdapter implements DeployAdapter {
     }
 
     // Step 3: ボリューム確認・作成
-    let volumeExists = false;
-    try {
-      const volOutput = await this.flyctl.volumes(["list", "--app", app, "--json"]);
-      const volumes = this.parseVolumesJson(volOutput);
-      volumeExists = volumes.includes("data");
-    } catch {
-      // ignore
-    }
+    const volOutput = await this.flyctl.volumes(["list", "--app", app, "--json"]);
+    const volumes = this.parseVolumesJson(volOutput);
+    const volumeExists = volumes.includes("data");
 
     if (!volumeExists) {
       this.log(`[fly] ボリューム作成: data (region: ${region})`);
@@ -468,12 +450,8 @@ export class FlyDeployAdapter implements DeployAdapter {
   }
 
   private async listSecretKeys(app: string): Promise<Set<string>> {
-    try {
-      const output = await this.flyctl.secretsList(app);
-      return new Set(this.parseSecretsJson(output));
-    } catch {
-      return new Set<string>();
-    }
+    const output = await this.flyctl.secretsList(app);
+    return new Set(this.parseSecretsJson(output));
   }
 
   private parseSecretsJson(output: string): string[] {
