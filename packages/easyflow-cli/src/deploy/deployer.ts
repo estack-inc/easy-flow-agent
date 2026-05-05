@@ -62,6 +62,8 @@ export class Deployer {
     }
 
     // Step 6: デプロイ履歴を記録
+    // namespace は buildOpenclawConfig と同じ agentId 基準で計算する
+    const agentId = agentfile.metadata.name;
     await this.log.append({
       app: result.app,
       target: result.target,
@@ -74,7 +76,7 @@ export class Deployer {
             liveChunks: result.knowledge.chunks,
             namespace: result.knowledge.namespace,
           }
-        : { chunks: 0, liveChunks: 0, namespace: `agent:${result.app}` },
+        : { chunks: 0, liveChunks: 0, namespace: `agent:${agentId}` },
     });
 
     return result;

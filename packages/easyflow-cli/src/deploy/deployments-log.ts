@@ -51,16 +51,23 @@ export class DeploymentsLog {
   }
 
   private async readFile(): Promise<LogFile> {
+    let content: string;
     try {
-      const content = await fs.readFile(this.filepath, "utf-8");
-      const parsed = JSON.parse(content) as LogFile;
-      if (!Array.isArray(parsed.deployments)) {
+      content = await fs.readFile(this.filepath, "utf-8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         return { deployments: [] };
       }
-      return parsed;
-    } catch {
-      return { deployments: [] };
+      throw err;
     }
+
+    const parsed = JSON.parse(content) as LogFile;
+    if (!Array.isArray(parsed.deployments)) {
+      throw new Error(
+        `deployments.json が壊れています (deployments が配列ではありません): ${this.filepath}`,
+      );
+    }
+    return parsed;
   }
 
   private async writeFile(data: LogFile): Promise<void> {
