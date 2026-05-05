@@ -194,13 +194,16 @@ describe("createPortalNotifyClient.send - pending retry", () => {
   });
 
   it("最大 attempts 後も pending なら ok: true pending で終了 (失敗扱いにしない)", async () => {
-    fetchMock.mockResolvedValue(
-      makeResponse(200, {
-        sent: 0,
-        pending: 1,
-        failed: 0,
-        results: [],
-      }),
+    // Response は body を 1 度しか読めないため、毎回新しい Response を返す
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        makeResponse(200, {
+          sent: 0,
+          pending: 1,
+          failed: 0,
+          results: [],
+        }),
+      ),
     );
     const client = buildClient({ retryPendingMaxAttempts: 2 });
     const result = await client.send({ kind: "system", body: "msg" });
@@ -277,7 +280,9 @@ describe("createPortalNotifyClient.send - 5xx / network", () => {
         },
       ],
     };
-    fetchMock.mockResolvedValue(makeResponse(502, failedBody));
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(makeResponse(502, failedBody)),
+    );
 
     const client = buildClient({ retryFailedDelaysMs: [10, 20] });
     await expect(
@@ -304,7 +309,7 @@ describe("createPortalNotifyClient.send - 5xx / network", () => {
   });
 
   it("network error も retry し全部失敗で PortalUnavailableError", async () => {
-    fetchMock.mockRejectedValue(new Error("ECONNRESET"));
+    fetchMock.mockImplementation(() => Promise.reject(new Error("ECONNRESET")));
     const client = buildClient({ retryFailedDelaysMs: [10, 20] });
     await expect(
       client.send({ kind: "system", body: "msg" }),
