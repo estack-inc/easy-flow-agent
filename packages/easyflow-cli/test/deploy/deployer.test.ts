@@ -190,6 +190,7 @@ describe("Deployer", () => {
     const entries = await deploymentsLog.list();
     expect(entries).toHaveLength(1);
     expect(entries[0].app).toBe("my-app");
+    expect(entries[0].knowledge.namespace).toBe("agent:my-app");
   });
 
   it("ヘルスチェック失敗時は履歴を記録せず EasyflowError をスローする", async () => {

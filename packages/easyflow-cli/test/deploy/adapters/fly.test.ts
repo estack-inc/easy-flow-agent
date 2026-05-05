@@ -297,6 +297,28 @@ describe("FlyDeployAdapter", () => {
       expect(result.healthCheck.statusCode).toBe(200);
     });
 
+    it("knowledge namespace は pinecone-memory の namespace と同じ agent:<app> を返す", async () => {
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue("[]"),
+        volumes: vi.fn().mockResolvedValue("[]"),
+        deploy: vi.fn().mockResolvedValue(undefined),
+        ssh: vi.fn().mockResolvedValue("200"),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+      const stored = makeStoredImage();
+      stored.metadata.knowledgeChunks = 3;
+
+      const result = await adapter.deploy(
+        { manifest: {}, config: {}, layers: new Map() },
+        stored,
+        makeAgentfile(),
+        makeDeployOptions(),
+        { ANTHROPIC_API_KEY: "test" },
+      );
+
+      expect(result.knowledge).toEqual({ chunks: 3, namespace: "agent:my-test-app" });
+    });
+
     it("アプリ一覧の取得に失敗した場合はアプリ作成に進まずエラーを伝播する", async () => {
       const appsFn = vi.fn().mockRejectedValue(new Error("fly apps unavailable"));
       const flyctl = makeMockFlyctl({
@@ -503,6 +525,31 @@ describe("FlyDeployAdapter", () => {
       ).rejects.toThrow("ANTHROPIC_API_KEY");
     });
 
+    it("RAG 有効時は PINECONE_API_KEY を要求する", async () => {
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
+        volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
+        secretsList: vi
+          .fn()
+          .mockResolvedValue(
+            JSON.stringify([{ Name: "GATEWAY_TOKEN" }, { Name: "ANTHROPIC_API_KEY" }]),
+          ),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+      const agentfile = makeAgentfile();
+      agentfile.config = { rag: { enabled: true } };
+
+      await expect(
+        adapter.deploy(
+          { manifest: {}, config: {}, layers: new Map() },
+          makeStoredImage(),
+          agentfile,
+          makeDeployOptions(),
+          {},
+        ),
+      ).rejects.toThrow("PINECONE_API_KEY");
+    });
+
     it("Gemini モデルでも lossless-claw 用に ANTHROPIC_API_KEY を要求する", async () => {
       const flyctl = makeMockFlyctl({
         apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
@@ -636,6 +683,11 @@ describe("FlyDeployAdapter", () => {
       expect(templateContent).toBeDefined();
       const parsedConfig = JSON.parse(templateContent as string) as Record<string, unknown>;
       expect(parsedConfig.gateway).toBeDefined();
+      expect((parsedConfig.env as Record<string, unknown>).OPENCLAW_AGENT_ID).toBe("my-test-app");
+      expect(
+        (parsedConfig.plugins as { entries?: Record<string, { config?: Record<string, unknown> }> })
+          .entries?.["pinecone-memory"]?.config?.agentId,
+      ).toBe("my-test-app");
       // render スクリプトが存在し、プレースホルダ展開ロジックを含む
       expect(renderScriptContent).toBeDefined();
       expect(renderScriptContent).toContain("PLACEHOLDER_PATTERN");

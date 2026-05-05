@@ -74,7 +74,7 @@ export class Deployer {
             liveChunks: result.knowledge.chunks,
             namespace: result.knowledge.namespace,
           }
-        : { chunks: 0, liveChunks: 0, namespace: result.app },
+        : { chunks: 0, liveChunks: 0, namespace: `agent:${result.app}` },
     });
 
     return result;

@@ -402,6 +402,9 @@ export class FlyDeployAdapter implements DeployAdapter {
     if (agentfile.channels?.line?.enabled) {
       required.push("LINE_ACCESS_TOKEN", "LINE_CHANNEL_SECRET");
     }
+    if (agentfile.config?.rag?.enabled === true) {
+      required.push("PINECONE_API_KEY");
+    }
     return required;
   }
 

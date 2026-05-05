@@ -38,6 +38,7 @@ describe("buildOpenclawConfig", () => {
     expect(config.plugins.allow).toContain("file-serve");
     expect(config.plugins.allow).toContain("model-router");
     expect(config.plugins.slots?.contextEngine).toBe("lossless-claw");
+    expect(config.env.OPENCLAW_AGENT_ID).toBe("test-agent");
     expect(config.plugins.entries["lossless-claw"]).toMatchObject({
       enabled: true,
       config: {
@@ -108,6 +109,16 @@ describe("buildOpenclawConfig", () => {
     });
 
     expect(config.tools?.media).toEqual({ enabled: true });
+  });
+
+  it("PINECONE_API_KEY が利用可能な場合は pinecone-memory を contextEngine にする", () => {
+    const config = buildOpenclawConfig({
+      agentfile: makeMinimalAgentfile(),
+      secrets: {},
+      availableSecretKeys: ["PINECONE_API_KEY"],
+    });
+
+    expect(config.plugins.slots?.contextEngine).toBe("pinecone-memory");
   });
 
   it("Slack チャンネルが有効でトークンあり: channels.slack にプレースホルダを設定する", () => {
@@ -243,6 +254,7 @@ describe("buildOpenclawConfig", () => {
 
     expect(config.plugins.entries["pinecone-memory"]?.enabled).toBe(true);
     expect(config.plugins.entries["pinecone-memory"]?.config.ragEnabled).toBe(true);
+    expect(config.plugins.slots?.contextEngine).toBe("pinecone-memory");
   });
 
   it("RAG が無効/未指定: pinecone-memory エントリは enabled=true のまま config.ragEnabled=false で制御", () => {
@@ -259,6 +271,7 @@ describe("buildOpenclawConfig", () => {
     expect(config.plugins.entries["pinecone-memory"]?.enabled).toBe(true);
     // RAG 動作は config.ragEnabled で制御
     expect(config.plugins.entries["pinecone-memory"]?.config.ragEnabled).toBe(false);
+    expect(config.plugins.slots?.contextEngine).toBe("lossless-claw");
   });
 
   it("モデル設定が Agentfile に含まれる場合は agents に反映する", () => {
@@ -339,7 +352,9 @@ describe("buildOpenclawConfig", () => {
 
       const pmConfig = config.plugins.entries["pinecone-memory"]?.config;
       expect(config.plugins.entries["pinecone-memory"]?.enabled).toBe(true);
+      expect(config.plugins.slots?.contextEngine).toBe("pinecone-memory");
       expect(pmConfig?.ragEnabled).toBe(true);
+      expect(pmConfig?.agentId).toBe("test-agent");
       expect(pmConfig?.agentsCorePath).toBe("/app/easyflow/identity/AGENTS-CORE.md");
       expect(pmConfig?.ragTopK).toBe(5);
       expect(pmConfig?.ragMinScore).toBe(0.8);
@@ -401,6 +416,22 @@ describe("buildOpenclawConfig", () => {
       expect(
         configWithoutSecret.plugins.entries["pinecone-memory"]?.config?.apiKey,
       ).toBeUndefined();
+    });
+
+    it("agentId を指定した場合は env と pinecone-memory config に同じ値を設定する", () => {
+      const agentfile = makeMinimalAgentfile({
+        config: { rag: { enabled: true } },
+      });
+
+      const config = buildOpenclawConfig({
+        agentfile,
+        secrets: {},
+        agentId: "my-fly-app",
+      });
+
+      expect(config.env.OPENCLAW_AGENT_ID).toBe("my-fly-app");
+      expect(config.plugins.entries["pinecone-memory"]?.config.agentId).toBe("my-fly-app");
+      expect(config.plugins.slots?.contextEngine).toBe("pinecone-memory");
     });
   });
 });

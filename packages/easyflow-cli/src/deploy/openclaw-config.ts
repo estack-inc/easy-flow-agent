@@ -52,6 +52,7 @@ const SECRET_ENV_KEYS = new Set([
  */
 export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig {
   const { agentfile, secrets } = input;
+  const agentId = input.agentId ?? agentfile.metadata.name;
   const availableSecretKeys = new Set<string>([
     ...Object.keys(secrets),
     ...(input.availableSecretKeys ?? []),
@@ -64,6 +65,7 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
   const env = Object.fromEntries(
     Object.entries(agentfile.config?.env ?? {}).filter(([key]) => !SECRET_ENV_KEYS.has(key)),
   );
+  env.OPENCLAW_AGENT_ID = agentId;
 
   // ---- channels ----
   const channels: Record<string, unknown> = {};
@@ -148,6 +150,7 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     agentfile.agents_core?.file != null || agentfile.agents_core?.inline != null;
 
   const pineconeConfig: Record<string, unknown> = {
+    agentId,
     ragEnabled,
     ragTopK: ragConfig.top_k ?? 10,
     ragMinScore: ragConfig.min_score ?? 0.75,
@@ -155,9 +158,6 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
   };
   if (hasAgentsCore) {
     pineconeConfig.agentsCorePath = "/app/easyflow/identity/AGENTS-CORE.md";
-  }
-  if (input.agentId) {
-    pineconeConfig.agentId = input.agentId;
   }
   // apiKey は Fly secrets 経由で process.env.PINECONE_API_KEY に注入され、
   // pinecone-memory プラグインが env から参照するため、設定ファイルには埋め込まない。
@@ -202,7 +202,7 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     plugins: {
       allow: Array.from(new Set(allow)),
       slots: {
-        contextEngine: pineconeApiKeyAvailable ? "pinecone-memory" : "lossless-claw",
+        contextEngine: ragEnabled || pineconeApiKeyAvailable ? "pinecone-memory" : "lossless-claw",
       },
       entries: pluginEntries,
     },
