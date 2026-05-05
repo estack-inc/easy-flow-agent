@@ -27,14 +27,7 @@ export interface OpenclawConfig {
   session: Record<string, unknown>;
 }
 
-const BASE_PLUGIN_ALLOW = [
-  "easyflow-gateway",
-  "pinecone-memory",
-  "workflow-controller",
-  "file-serve",
-  "lossless-claw",
-  "model-router",
-] as const;
+const BASE_PLUGIN_ALLOW = ["easyflow-gateway", "pinecone-memory", "lossless-claw"] as const;
 const SECRET_ENV_KEYS = new Set([
   "ANTHROPIC_API_KEY",
   "GEMINI_API_KEY",
@@ -105,7 +98,7 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     channels.webchat = {
       enabled: true,
       ...(agentfile.channels?.webchat && "invite_codes" in agentfile.channels.webchat
-        ? { inviteCodes: agentfile.channels.webchat.invite_codes ?? [] }
+        ? { invite_codes: agentfile.channels.webchat.invite_codes ?? [] }
         : {}),
     };
   }
@@ -123,6 +116,16 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
   }
 
   const builtinTools = agentfile.tools?.builtin ?? [];
+  if (builtinTools.includes("workflow-controller")) {
+    allow.push("workflow-controller");
+  }
+  if (builtinTools.includes("file-serve")) {
+    allow.push("file-serve");
+  }
+  if (builtinTools.includes("model-router")) {
+    allow.push("model-router");
+  }
+
   const pluginEntries: Record<string, { enabled: boolean; config: Record<string, unknown> }> = {};
 
   pluginEntries["lossless-claw"] = {

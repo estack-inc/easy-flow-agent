@@ -1,4 +1,4 @@
-const fs = require("node:fs");
+import * as fs from "node:fs";
 
 const src = process.argv[2] || "/app/openclaw.json.template";
 const dst = process.argv[3] || "/data/openclaw.json";

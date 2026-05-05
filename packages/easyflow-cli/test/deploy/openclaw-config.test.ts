@@ -35,8 +35,8 @@ describe("buildOpenclawConfig", () => {
     expect(config.session.storage).toMatchObject({ type: "file", path: "/data/sessions" });
     expect(config.plugins.allow).toContain("easyflow-gateway");
     expect(config.plugins.allow).toContain("lossless-claw");
-    expect(config.plugins.allow).toContain("file-serve");
-    expect(config.plugins.allow).toContain("model-router");
+    expect(config.plugins.allow).not.toContain("file-serve");
+    expect(config.plugins.allow).not.toContain("model-router");
     expect(config.plugins.slots?.contextEngine).toBe("lossless-claw");
     expect(config.env.OPENCLAW_AGENT_ID).toBe("test-agent");
     expect(config.plugins.entries["lossless-claw"]).toMatchObject({
@@ -230,7 +230,7 @@ describe("buildOpenclawConfig", () => {
 
   it("Webchat チャンネルが有効: plugins.allow に easy-flow-webchat を含める", () => {
     const agentfile = makeMinimalAgentfile({
-      channels: { webchat: { enabled: true } },
+      channels: { webchat: { enabled: true, invite_codes: ["ABC123"] } },
     });
 
     const config = buildOpenclawConfig({
@@ -240,6 +240,10 @@ describe("buildOpenclawConfig", () => {
 
     expect(config.plugins.allow).toContain("easy-flow-webchat");
     expect(config.webchat).toBeDefined();
+    expect(config.channels.webchat).toMatchObject({
+      enabled: true,
+      invite_codes: ["ABC123"],
+    });
   });
 
   it("RAG が有効: pinecone-memory エントリが enabled=true かつ config.ragEnabled=true", () => {
@@ -320,6 +324,7 @@ describe("buildOpenclawConfig", () => {
     const config = buildOpenclawConfig({ agentfile, secrets: {} });
 
     expect(config.plugins.entries["model-router"]?.enabled).toBe(true);
+    expect(config.plugins.allow).toContain("model-router");
   });
 
   it("tools.builtin に workflow-controller と model-router がある場合、両方の entries が設定される", () => {
@@ -331,6 +336,8 @@ describe("buildOpenclawConfig", () => {
 
     expect(config.plugins.entries["workflow-controller"]?.enabled).toBe(true);
     expect(config.plugins.entries["model-router"]?.enabled).toBe(true);
+    expect(config.plugins.allow).toContain("workflow-controller");
+    expect(config.plugins.allow).toContain("model-router");
   });
 
   describe("pinecone-memory RAG 設定", () => {

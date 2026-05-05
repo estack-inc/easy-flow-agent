@@ -27,7 +27,7 @@ function buildFlyToml(appName: string, region: string): string {
   return `app = "${appName}"
 primary_region = "${region}"
 
-release_command = "node /app/render-openclaw-config.cjs /app/openclaw.json.template /data/openclaw.json"
+release_command = "node /app/render-openclaw-config.js /app/openclaw.json.template /data/openclaw.json"
 
 [[mounts]]
   source = "data"
@@ -57,7 +57,7 @@ COPY layers/knowledge/ /app/easyflow/knowledge/
 COPY layers/tools/ /app/easyflow/tools/
 COPY layers/config/ /app/easyflow/config/
 COPY openclaw.json.template /app/openclaw.json.template
-COPY render-openclaw-config.cjs /app/render-openclaw-config.cjs
+COPY render-openclaw-config.js /app/render-openclaw-config.js
 `;
 }
 
@@ -209,12 +209,12 @@ export class FlyDeployAdapter implements DeployAdapter {
         "utf-8",
       );
 
-      // render-openclaw-config.cjs を生成（release_command から呼ばれる）
+      // render-openclaw-config.js を生成（release_command から呼ばれる）
       const renderScript = await fs.readFile(
-        new URL("../render-openclaw-config.cjs", import.meta.url),
+        new URL("../render-openclaw-config.js", import.meta.url),
         "utf-8",
       );
-      await fs.writeFile(path.join(tmpDir, "render-openclaw-config.cjs"), renderScript, "utf-8");
+      await fs.writeFile(path.join(tmpDir, "render-openclaw-config.js"), renderScript, "utf-8");
 
       // Step 5: シークレット設定（--stage でまずステージングに）
       const secretPairs: string[] = [];

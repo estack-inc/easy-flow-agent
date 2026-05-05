@@ -7,11 +7,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 // biome-ignore lint/style/useTemplate: 意図的に文字列連結（template literal の lint 警告回避）
 const placeholder = (name: string): string => "$" + "{" + name + "}";
 
-describe("render-openclaw-config.cjs", () => {
+describe("render-openclaw-config.js", () => {
   let tmpDir: string;
   const scriptPath = path.resolve(
     import.meta.dirname,
-    "../../src/deploy/render-openclaw-config.cjs",
+    "../../src/deploy/render-openclaw-config.js",
   );
 
   beforeEach(async () => {

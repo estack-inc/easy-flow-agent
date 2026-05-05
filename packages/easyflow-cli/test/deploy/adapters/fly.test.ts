@@ -647,7 +647,7 @@ describe("FlyDeployAdapter", () => {
                   "utf-8",
                 );
                 renderScriptContent = await fs.readFile(
-                  path.join(capturedCwd, "render-openclaw-config.cjs"),
+                  path.join(capturedCwd, "render-openclaw-config.js"),
                   "utf-8",
                 );
               }
@@ -677,7 +677,7 @@ describe("FlyDeployAdapter", () => {
         "COPY openclaw.json.template /app/openclaw.json.template",
       );
       expect(dockerfileContent).toContain(
-        "COPY render-openclaw-config.cjs /app/render-openclaw-config.cjs",
+        "COPY render-openclaw-config.js /app/render-openclaw-config.js",
       );
       // テンプレートファイルが存在し、gateway 設定を含む
       expect(templateContent).toBeDefined();
@@ -729,7 +729,7 @@ describe("FlyDeployAdapter", () => {
       expect(flyTomlContent).toBeDefined();
       // release_command で node スクリプトがプレースホルダを展開
       expect(flyTomlContent).toContain("release_command");
-      expect(flyTomlContent).toContain("node /app/render-openclaw-config.cjs");
+      expect(flyTomlContent).toContain("node /app/render-openclaw-config.js");
       expect(flyTomlContent).toContain("/app/openclaw.json.template");
       expect(flyTomlContent).toContain("/data/openclaw.json");
       expect(flyTomlContent).not.toContain("[build]");
