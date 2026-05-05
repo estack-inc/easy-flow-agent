@@ -53,15 +53,10 @@ export const DEFAULT_PORTAL_NOTIFY_CONFIG: Omit<
 };
 
 /** 環境変数を一括 resolve する。 */
-export function resolveConfig(
-  pluginConfig: PortalNotifyConfigInput = {},
-): PortalNotifyConfig {
-  const origin =
-    pluginConfig.origin ?? process.env.PORTAL_ORIGIN ?? undefined;
+export function resolveConfig(pluginConfig: PortalNotifyConfigInput = {}): PortalNotifyConfig {
+  const origin = pluginConfig.origin ?? process.env.PORTAL_ORIGIN ?? undefined;
   const notificationToken =
-    pluginConfig.notificationToken ??
-    process.env.PORTAL_NOTIFICATION_TOKEN ??
-    undefined;
+    pluginConfig.notificationToken ?? process.env.PORTAL_NOTIFICATION_TOKEN ?? undefined;
 
   if (!origin || !notificationToken) {
     throw new PortalNotifyConfigError(
@@ -120,9 +115,7 @@ function pickPositiveInt(
 ): number {
   if (pluginValue !== undefined) {
     if (!Number.isFinite(pluginValue) || pluginValue <= 0) {
-      throw new PortalNotifyConfigError(
-        `${name} must be a positive number (got ${pluginValue})`,
-      );
+      throw new PortalNotifyConfigError(`${name} must be a positive number (got ${pluginValue})`);
     }
     return pluginValue;
   }
@@ -181,7 +174,10 @@ function pickIntArray(
     return [...pluginValue];
   }
   if (envValue !== undefined && envValue !== "") {
-    const parts = envValue.split(",").map((s) => s.trim()).filter(Boolean);
+    const parts = envValue
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     const out: number[] = [];
     for (const p of parts) {
       const n = Number(p);

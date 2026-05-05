@@ -14,9 +14,7 @@
  * - `retry: true` なら delays[i] だけ sleep してから再試行
  * - 全 retry 後も `retry: true` のままなら最後の error を throw する
  */
-export type RetryStep<T> =
-  | { retry: false; value: T }
-  | { retry: true; error: Error };
+export type RetryStep<T> = { retry: false; value: T } | { retry: true; error: Error };
 
 /**
  * 指数バックオフで fn を試行する。

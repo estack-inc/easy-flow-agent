@@ -25,9 +25,7 @@ describe("retryWithBackoff", () => {
       retry: true as const,
       error: new Error("transient"),
     }));
-    await expect(
-      retryWithBackoff(fn, [10, 20, 30], sleep),
-    ).rejects.toThrow("transient");
+    await expect(retryWithBackoff(fn, [10, 20, 30], sleep)).rejects.toThrow("transient");
     expect(fn).toHaveBeenCalledTimes(4); // 初回 + 3 回 retry
     expect(sleep).toHaveBeenCalledTimes(3);
     expect(sleep).toHaveBeenNthCalledWith(1, 10);
@@ -67,9 +65,7 @@ describe("retryWithBackoff", () => {
     const fn = vi.fn(async () => {
       throw new Error("fatal");
     });
-    await expect(
-      retryWithBackoff(fn, [10, 20], sleep),
-    ).rejects.toThrow("fatal");
+    await expect(retryWithBackoff(fn, [10, 20], sleep)).rejects.toThrow("fatal");
     expect(fn).toHaveBeenCalledTimes(1);
     expect(sleep).not.toHaveBeenCalled();
   });

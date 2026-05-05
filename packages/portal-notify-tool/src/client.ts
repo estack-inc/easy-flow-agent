@@ -11,12 +11,8 @@
 // idempotencyKey 8〜128 文字）は portal が validate するためここでは pre-check しない。
 // 不正な input は 400 → PortalValidationError として返ってくる。
 
-import {
-  type PortalNotifyConfig,
-  type PortalNotifyConfigInput,
-  resolveConfig,
-} from "./config.js";
-import { addJitter, retryWithBackoff, type RetryStep } from "./retry.js";
+import { type PortalNotifyConfig, type PortalNotifyConfigInput, resolveConfig } from "./config.js";
+import { addJitter, type RetryStep, retryWithBackoff } from "./retry.js";
 import {
   type NotifyDeliveryResult,
   type NotifySendInput,
@@ -74,13 +70,7 @@ export function createPortalNotifyClient(
 
       // 2) 成功時、pending を含むなら同 idempotencyKey で再送して確定を狙う
       if (baseOutcome.kind === "ok" && baseOutcome.response.pending > 0) {
-        return await retryPending(
-          input,
-          baseOutcome.response,
-          cfg,
-          fetchImpl,
-          sleep,
-        );
+        return await retryPending(input, baseOutcome.response, cfg, fetchImpl, sleep);
       }
 
       // outcome → public NotifySendOutcome に正規化

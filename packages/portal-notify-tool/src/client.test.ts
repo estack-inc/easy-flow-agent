@@ -19,11 +19,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPortalNotifyClient } from "./client.js";
 import {
+  type NotifySendResponse,
   PortalAuthError,
   PortalDeliveryError,
   PortalUnavailableError,
   PortalValidationError,
-  type NotifySendResponse,
 } from "./types.js";
 
 const ORIGIN = "https://portal.example";
@@ -39,12 +39,14 @@ function makeResponse(status: number, body: unknown): Response {
   });
 }
 
-function buildClient(overrides: {
-  retryFailedDelaysMs?: number[];
-  retryPendingDelayMs?: number;
-  retryPendingMaxAttempts?: number;
-  timeoutMs?: number;
-} = {}) {
+function buildClient(
+  overrides: {
+    retryFailedDelaysMs?: number[];
+    retryPendingDelayMs?: number;
+    retryPendingMaxAttempts?: number;
+    timeoutMs?: number;
+  } = {},
+) {
   return createPortalNotifyClient({
     origin: ORIGIN,
     notificationToken: TOKEN,
@@ -102,8 +104,9 @@ describe("createPortalNotifyClient.send - 成功系", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://portal.example/api/notifications/send");
     expect(init.method).toBe("POST");
-    expect(init.headers["authorization"]).toBe(`Bearer ${TOKEN}`);
+    expect(init.headers.authorization).toBe(`Bearer ${TOKEN}`);
     expect(init.headers["content-type"]).toBe("application/json");
+    // content-type は hyphen を含むため bracket 必須（biome useLiteralKeys 例外）
     expect(JSON.parse(init.body)).toEqual({
       kind: "task_completed",
       body: "msg",
@@ -229,9 +232,7 @@ describe("createPortalNotifyClient.send - 4xx", () => {
   });
 
   it("401 → PortalAuthError, retry しない", async () => {
-    fetchMock.mockResolvedValueOnce(
-      makeResponse(401, { error: "Unauthorized" }),
-    );
+    fetchMock.mockResolvedValueOnce(makeResponse(401, { error: "Unauthorized" }));
     const client = buildClient();
     await expect(client.send({ kind: "system", body: "msg" })).rejects.toBeInstanceOf(
       PortalAuthError,
@@ -240,9 +241,7 @@ describe("createPortalNotifyClient.send - 4xx", () => {
   });
 
   it("404 → ok: false reason: no_active_member", async () => {
-    fetchMock.mockResolvedValueOnce(
-      makeResponse(404, { error: "no active member" }),
-    );
+    fetchMock.mockResolvedValueOnce(makeResponse(404, { error: "no active member" }));
     const client = buildClient();
     const result = await client.send({ kind: "system", body: "msg" });
     expect(result).toEqual({ ok: false, reason: "no_active_member", status: 404 });
@@ -250,9 +249,7 @@ describe("createPortalNotifyClient.send - 4xx", () => {
   });
 
   it("410 → ok: false reason: subscription_gone, retry しない", async () => {
-    fetchMock.mockResolvedValueOnce(
-      makeResponse(410, { error: "subscription gone" }),
-    );
+    fetchMock.mockResolvedValueOnce(makeResponse(410, { error: "subscription gone" }));
     const client = buildClient();
     const result = await client.send({ kind: "system", body: "msg" });
     expect(result).toEqual({
@@ -280,14 +277,12 @@ describe("createPortalNotifyClient.send - 5xx / network", () => {
         },
       ],
     };
-    fetchMock.mockImplementation(() =>
-      Promise.resolve(makeResponse(502, failedBody)),
-    );
+    fetchMock.mockImplementation(() => Promise.resolve(makeResponse(502, failedBody)));
 
     const client = buildClient({ retryFailedDelaysMs: [10, 20] });
-    await expect(
-      client.send({ kind: "system", body: "msg" }),
-    ).rejects.toBeInstanceOf(PortalDeliveryError);
+    await expect(client.send({ kind: "system", body: "msg" })).rejects.toBeInstanceOf(
+      PortalDeliveryError,
+    );
 
     expect(fetchMock).toHaveBeenCalledTimes(3); // 初回 + 2 回 retry
     expect(sleepMock).toHaveBeenCalledTimes(2);
@@ -295,12 +290,8 @@ describe("createPortalNotifyClient.send - 5xx / network", () => {
 
   it("502 が途中で 200 になれば成功", async () => {
     fetchMock
-      .mockResolvedValueOnce(
-        makeResponse(502, { sent: 0, pending: 0, failed: 1, results: [] }),
-      )
-      .mockResolvedValueOnce(
-        makeResponse(200, { sent: 1, pending: 0, failed: 0, results: [] }),
-      );
+      .mockResolvedValueOnce(makeResponse(502, { sent: 0, pending: 0, failed: 1, results: [] }))
+      .mockResolvedValueOnce(makeResponse(200, { sent: 1, pending: 0, failed: 0, results: [] }));
 
     const client = buildClient({ retryFailedDelaysMs: [10, 20] });
     const result = await client.send({ kind: "system", body: "msg" });
@@ -311,18 +302,16 @@ describe("createPortalNotifyClient.send - 5xx / network", () => {
   it("network error も retry し全部失敗で PortalUnavailableError", async () => {
     fetchMock.mockImplementation(() => Promise.reject(new Error("ECONNRESET")));
     const client = buildClient({ retryFailedDelaysMs: [10, 20] });
-    await expect(
-      client.send({ kind: "system", body: "msg" }),
-    ).rejects.toBeInstanceOf(PortalUnavailableError);
+    await expect(client.send({ kind: "system", body: "msg" })).rejects.toBeInstanceOf(
+      PortalUnavailableError,
+    );
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("503 / 500 など 5xx も retry 対象", async () => {
     fetchMock
       .mockResolvedValueOnce(makeResponse(503, { error: "unavailable" }))
-      .mockResolvedValueOnce(
-        makeResponse(200, { sent: 1, pending: 0, failed: 0, results: [] }),
-      );
+      .mockResolvedValueOnce(makeResponse(200, { sent: 1, pending: 0, failed: 0, results: [] }));
     const client = buildClient({ retryFailedDelaysMs: [10] });
     const result = await client.send({ kind: "system", body: "msg" });
     expect(result).toMatchObject({ ok: true, sent: 1 });
@@ -336,9 +325,7 @@ describe("createPortalNotifyClient.send - timeout", () => {
     abortErr.name = "AbortError";
     fetchMock
       .mockRejectedValueOnce(abortErr)
-      .mockResolvedValueOnce(
-        makeResponse(200, { sent: 1, pending: 0, failed: 0, results: [] }),
-      );
+      .mockResolvedValueOnce(makeResponse(200, { sent: 1, pending: 0, failed: 0, results: [] }));
     const client = buildClient({ retryFailedDelaysMs: [10] });
     const result = await client.send({ kind: "system", body: "msg" });
     expect(result).toMatchObject({ ok: true, sent: 1 });

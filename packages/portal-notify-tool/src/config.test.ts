@@ -3,10 +3,7 @@
 // すべての閾値（timeout / retry 配列 / pending 設定）は外部設定で上書き可能であり、
 // ハードコーディング禁止のルールに従っていることを検証する。
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  DEFAULT_PORTAL_NOTIFY_CONFIG,
-  resolveConfig,
-} from "./config.js";
+import { DEFAULT_PORTAL_NOTIFY_CONFIG, resolveConfig } from "./config.js";
 import { PortalNotifyConfigError } from "./types.js";
 
 const ENV_KEYS = [
@@ -41,15 +38,13 @@ describe("resolveConfig", () => {
     });
 
     it("origin だけある場合も PortalNotifyConfigError", () => {
-      expect(() =>
-        resolveConfig({ origin: "https://portal.example" }),
-      ).toThrow(PortalNotifyConfigError);
+      expect(() => resolveConfig({ origin: "https://portal.example" })).toThrow(
+        PortalNotifyConfigError,
+      );
     });
 
     it("notificationToken だけある場合も PortalNotifyConfigError", () => {
-      expect(() =>
-        resolveConfig({ notificationToken: "uuid" }),
-      ).toThrow(PortalNotifyConfigError);
+      expect(() => resolveConfig({ notificationToken: "uuid" })).toThrow(PortalNotifyConfigError);
     });
 
     it("pluginConfig で両方与えれば既定値で resolve される", () => {
@@ -138,9 +133,9 @@ describe("resolveConfig", () => {
 
     it("env の retryFailedDelaysMs に非数値が混じれば PortalNotifyConfigError", () => {
       process.env.PORTAL_NOTIFY_RETRY_FAILED_MS = "100,abc,300";
-      expect(() =>
-        resolveConfig({ origin: "https://x", notificationToken: "x" }),
-      ).toThrow(PortalNotifyConfigError);
+      expect(() => resolveConfig({ origin: "https://x", notificationToken: "x" })).toThrow(
+        PortalNotifyConfigError,
+      );
     });
   });
 
@@ -162,16 +157,16 @@ describe("resolveConfig", () => {
 
     it("env の数値が不正なら PortalNotifyConfigError", () => {
       process.env.PORTAL_NOTIFY_TIMEOUT_MS = "not-a-number";
-      expect(() =>
-        resolveConfig({ origin: "https://x", notificationToken: "x" }),
-      ).toThrow(PortalNotifyConfigError);
+      expect(() => resolveConfig({ origin: "https://x", notificationToken: "x" })).toThrow(
+        PortalNotifyConfigError,
+      );
     });
 
     it("env の数値が負数なら PortalNotifyConfigError", () => {
       process.env.PORTAL_NOTIFY_TIMEOUT_MS = "-100";
-      expect(() =>
-        resolveConfig({ origin: "https://x", notificationToken: "x" }),
-      ).toThrow(PortalNotifyConfigError);
+      expect(() => resolveConfig({ origin: "https://x", notificationToken: "x" })).toThrow(
+        PortalNotifyConfigError,
+      );
     });
   });
 
@@ -186,9 +181,7 @@ describe("resolveConfig", () => {
     it("すべての既定値が正の数", () => {
       expect(DEFAULT_PORTAL_NOTIFY_CONFIG.timeoutMs).toBeGreaterThan(0);
       expect(DEFAULT_PORTAL_NOTIFY_CONFIG.retryPendingDelayMs).toBeGreaterThan(0);
-      expect(
-        DEFAULT_PORTAL_NOTIFY_CONFIG.retryPendingMaxAttempts,
-      ).toBeGreaterThanOrEqual(0);
+      expect(DEFAULT_PORTAL_NOTIFY_CONFIG.retryPendingMaxAttempts).toBeGreaterThanOrEqual(0);
     });
   });
 });

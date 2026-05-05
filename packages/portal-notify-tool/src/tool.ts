@@ -10,12 +10,12 @@
 
 import type { PortalNotifyClient } from "./client.js";
 import {
+  type NotifyKind,
+  type NotifySendInput,
   PortalAuthError,
   PortalDeliveryError,
   PortalUnavailableError,
   PortalValidationError,
-  type NotifyKind,
-  type NotifySendInput,
 } from "./types.js";
 
 // AnyAgentTool は openclaw/plugin-sdk の型だが、本パッケージは optional peerDep にしているため
@@ -30,16 +30,9 @@ export interface AgentToolLike {
   ) => Promise<{ content: Array<{ type: "text"; text: string }> }>;
 }
 
-const VALID_KINDS: NotifyKind[] = [
-  "task_completed",
-  "reaction_received",
-  "followup_due",
-  "system",
-];
+const VALID_KINDS: NotifyKind[] = ["task_completed", "reaction_received", "followup_due", "system"];
 
-export function createNotifySendTool(
-  client: Pick<PortalNotifyClient, "send">,
-): AgentToolLike {
+export function createNotifySendTool(client: Pick<PortalNotifyClient, "send">): AgentToolLike {
   return {
     name: "notify_send",
     description:
@@ -74,8 +67,7 @@ export function createNotifySendTool(
         },
         idempotencyKey: {
           type: "string",
-          description:
-            "Optional 8-128 char key for retry-safe delivery. Use task ID + run ID.",
+          description: "Optional 8-128 char key for retry-safe delivery. Use task ID + run ID.",
         },
       },
       required: ["kind", "body"],
@@ -116,9 +108,7 @@ export function createNotifySendTool(
 // バリデーション
 // ─────────────────────────────────────────────────────
 
-type ValidatedArgs =
-  | { ok: true; value: NotifySendInput }
-  | { ok: false; error: string };
+type ValidatedArgs = { ok: true; value: NotifySendInput } | { ok: false; error: string };
 
 function validateArgs(args: Record<string, unknown>): ValidatedArgs {
   const kind = args.kind;

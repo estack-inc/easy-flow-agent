@@ -19,10 +19,7 @@
 //     （workflow-controller / model-router と同じ「未設定なら無効化」パターン）。
 
 import { createPortalNotifyClient } from "./client.js";
-import {
-  type PortalNotifyConfigInput,
-  resolveConfig,
-} from "./config.js";
+import { type PortalNotifyConfig, type PortalNotifyConfigInput, resolveConfig } from "./config.js";
 import { createNotifySendTool } from "./tool.js";
 import { PortalNotifyConfigError } from "./types.js";
 
@@ -60,7 +57,7 @@ const portalNotifyToolPlugin = {
   register(api: PluginApiLike): void {
     const rawConfig = (api.pluginConfig ?? {}) as PortalNotifyConfigInput;
 
-    let cfg;
+    let cfg: PortalNotifyConfig;
     try {
       cfg = resolveConfig(rawConfig);
     } catch (err) {
@@ -92,9 +89,7 @@ const portalNotifyToolPlugin = {
       },
     );
 
-    api.logger.info(
-      `[portal-notify-tool] registered notify_send tool (origin=${cfg.origin})`,
-    );
+    api.logger.info(`[portal-notify-tool] registered notify_send tool (origin=${cfg.origin})`);
   },
 };
 

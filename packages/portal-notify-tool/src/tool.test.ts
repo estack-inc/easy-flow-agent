@@ -10,12 +10,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { createNotifySendTool } from "./tool.js";
 import {
+  type NotifySendInput,
+  type NotifySendOutcome,
   PortalAuthError,
   PortalDeliveryError,
   PortalUnavailableError,
   PortalValidationError,
-  type NotifySendInput,
-  type NotifySendOutcome,
 } from "./types.js";
 
 function makeClient(send: (input: NotifySendInput) => Promise<NotifySendOutcome>) {

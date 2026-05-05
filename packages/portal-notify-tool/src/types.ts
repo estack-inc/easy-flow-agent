@@ -12,10 +12,10 @@
  * 任意の string ではなく明示的な union で受ける。
  */
 export type NotifyKind =
-  | "task_completed"      // 能動型 AI のタスク完了
-  | "reaction_received"   // 反響着信
-  | "followup_due"        // 追客リマインド
-  | "system";             // 運用通知（プラン変更・障害告知など）
+  | "task_completed" // 能動型 AI のタスク完了
+  | "reaction_received" // 反響着信
+  | "followup_due" // 追客リマインド
+  | "system"; // 運用通知（プラン変更・障害告知など）
 
 /**
  * portal `POST /api/notifications/send` のリクエスト body。
@@ -74,7 +74,10 @@ export type NotifySendOutcome =
 // ─────────────────────────────────────────────────────
 
 export class PortalNotifyError extends Error {
-  constructor(message: string, public readonly status?: number) {
+  constructor(
+    message: string,
+    public readonly status?: number,
+  ) {
     super(message);
     this.name = "PortalNotifyError";
   }
@@ -99,7 +102,10 @@ export class PortalAuthError extends PortalNotifyError {
 /** 400 Bad Request：仕様違反のリクエスト。retry しない。 */
 export class PortalValidationError extends PortalNotifyError {
   /** portal が返す `missingMemberIds` 等の補助情報。caller が診断に使う。 */
-  constructor(message: string, public readonly details?: Record<string, unknown>) {
+  constructor(
+    message: string,
+    public readonly details?: Record<string, unknown>,
+  ) {
     super(message, 400);
     this.name = "PortalValidationError";
   }
