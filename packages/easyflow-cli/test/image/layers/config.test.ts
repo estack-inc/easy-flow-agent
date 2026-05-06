@@ -61,6 +61,28 @@ describe("buildConfigLayer", () => {
     expect(resolvedAgentfile.channels.webchat.invite_codes).toEqual(["ABC"]);
   });
 
+  it("Agentfile.resolved.json のシークレット env キーはマスクされる", async () => {
+    const rawYaml = "apiVersion: easyflow/v1\n";
+    const agentfile = baseAgentfile({
+      config: {
+        env: {
+          LOG_LEVEL: "debug",
+          ANTHROPIC_API_KEY: "sk-secret-value",
+          PINECONE_API_KEY: "pc-secret",
+          GEMINI_API_KEY: "gm-secret",
+        },
+      },
+    });
+    const layer = await buildConfigLayer(agentfile, rawYaml);
+    const files = await extractTarGz(layer.content);
+
+    const resolvedAgentfile = JSON.parse(readText(files, "Agentfile.resolved.json"));
+    expect(resolvedAgentfile.config.env.LOG_LEVEL).toBe("debug");
+    expect(resolvedAgentfile.config.env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(resolvedAgentfile.config.env.PINECONE_API_KEY).toBeUndefined();
+    expect(resolvedAgentfile.config.env.GEMINI_API_KEY).toBeUndefined();
+  });
+
   it("config/channels 未指定時は空の openclaw.json / channels.json を出力する", async () => {
     const rawYaml = "apiVersion: easyflow/v1\n";
     const layer = await buildConfigLayer(baseAgentfile(), rawYaml);
