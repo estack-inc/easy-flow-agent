@@ -183,5 +183,21 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     config.tools = tools;
   }
 
+  // ---- agents ----
+  // Agentfile のモデル設定を agents.default に反映する。
+  // これにより deploy 後の OpenClaw がモデル選択を再現できる。
+  const modelDefault = agentfile.config?.model?.default;
+  const modelThinking = agentfile.config?.model?.thinking;
+  if (modelDefault || modelThinking) {
+    const defaultAgent: Record<string, unknown> = {};
+    if (modelDefault) {
+      defaultAgent.model = modelDefault;
+    }
+    if (modelThinking) {
+      defaultAgent.thinkingModel = modelThinking;
+    }
+    config.agents = { default: defaultAgent };
+  }
+
   return config;
 }

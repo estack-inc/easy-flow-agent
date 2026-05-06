@@ -276,13 +276,37 @@ describe("buildOpenclawConfig", () => {
     expect(config.plugins.slots?.contextEngine).toBe("lossless-claw");
   });
 
-  it("モデル設定が Agentfile に含まれる場合も現行 OpenClaw schema 外の agents.default は生成しない", () => {
+  it("モデル設定が Agentfile にある場合 agents.default.model に反映される", () => {
     const agentfile = makeMinimalAgentfile({
       config: { model: { default: "claude-opus-4-5" } },
     });
 
     const config = buildOpenclawConfig({
       agentfile,
+      secrets: {},
+    });
+
+    expect(config.agents).toEqual({ default: { model: "claude-opus-4-5" } });
+  });
+
+  it("thinking モデルが Agentfile にある場合 agents.default.thinkingModel に反映される", () => {
+    const agentfile = makeMinimalAgentfile({
+      config: { model: { default: "claude-sonnet-4-6", thinking: "claude-opus-4-7" } },
+    });
+
+    const config = buildOpenclawConfig({
+      agentfile,
+      secrets: {},
+    });
+
+    expect(config.agents).toEqual({
+      default: { model: "claude-sonnet-4-6", thinkingModel: "claude-opus-4-7" },
+    });
+  });
+
+  it("モデル設定が Agentfile にない場合 agents は生成しない", () => {
+    const config = buildOpenclawConfig({
+      agentfile: makeMinimalAgentfile(),
       secrets: {},
     });
 
