@@ -168,7 +168,11 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     plugins: {
       allow: Array.from(new Set(allow)),
       slots: {
-        contextEngine: ragEnabled || pineconeApiKeyAvailable ? "pinecone-memory" : "lossless-claw",
+        contextEngine: builtinTools.includes("workflow-controller")
+          ? "workflow"
+          : ragEnabled || pineconeApiKeyAvailable
+            ? "pinecone-memory"
+            : "lossless-claw",
       },
       entries: pluginEntries,
     },

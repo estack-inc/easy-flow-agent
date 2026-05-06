@@ -349,6 +349,33 @@ describe("buildOpenclawConfig", () => {
     expect(config.plugins.allow).toContain("model-router");
   });
 
+  it("tools.builtin に workflow-controller がある場合、contextEngine スロットが workflow になる", () => {
+    const agentfile = makeMinimalAgentfile({
+      tools: { builtin: ["workflow-controller"] },
+    });
+
+    const config = buildOpenclawConfig({ agentfile, secrets: {} });
+
+    expect(config.plugins.slots?.contextEngine).toBe("workflow");
+    expect(config.plugins.entries["workflow-controller"]?.enabled).toBe(true);
+    expect(config.plugins.allow).toContain("workflow-controller");
+  });
+
+  it("tools.builtin に workflow-controller + PINECONE_API_KEY あり: contextEngine は workflow（内部で Pinecone を delegate）", () => {
+    const agentfile = makeMinimalAgentfile({
+      tools: { builtin: ["workflow-controller"] },
+      config: { rag: { enabled: true } },
+    });
+
+    const config = buildOpenclawConfig({
+      agentfile,
+      secrets: { PINECONE_API_KEY: "pk-test" },
+    });
+
+    expect(config.plugins.slots?.contextEngine).toBe("workflow");
+    expect(config.plugins.entries["workflow-controller"]?.enabled).toBe(true);
+  });
+
   it("tools.builtin に workflow-controller と model-router がある場合、両方の entries が設定される", () => {
     const agentfile = makeMinimalAgentfile({
       tools: { builtin: ["workflow-controller", "model-router"] },
@@ -360,6 +387,7 @@ describe("buildOpenclawConfig", () => {
     expect(config.plugins.entries["model-router"]?.enabled).toBe(true);
     expect(config.plugins.allow).toContain("workflow-controller");
     expect(config.plugins.allow).toContain("model-router");
+    expect(config.plugins.slots?.contextEngine).toBe("workflow");
   });
 
   describe("pinecone-memory RAG 設定", () => {
