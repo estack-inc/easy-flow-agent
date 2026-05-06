@@ -116,6 +116,16 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     };
   }
 
+  const webchatEnabled = agentfile.channels?.webchat?.enabled === true;
+  if (webchatEnabled) {
+    const webchatConfig: Record<string, unknown> = { enabled: true };
+    const inviteCodes = agentfile.channels?.webchat?.invite_codes;
+    if (inviteCodes && inviteCodes.length > 0) {
+      webchatConfig.invite_codes = inviteCodes;
+    }
+    channels.webchat = webchatConfig;
+  }
+
   // ---- plugins ----
   const allow: string[] = [...BASE_PLUGIN_ALLOW];
   if (slackEnabled) {

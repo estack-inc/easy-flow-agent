@@ -19,6 +19,14 @@ export class FlyctlRunner {
     await this.run(["secrets", ...args]);
   }
 
+  async secretsImport(app: string, secretPairs: string[], stage: boolean): Promise<void> {
+    const input = secretPairs.join("\n");
+    await this.runWithInput(
+      ["secrets", "import", "--app", app, ...(stage ? ["--stage"] : [])],
+      input,
+    );
+  }
+
   async secretsList(appName: string): Promise<string> {
     return this.run(["secrets", "list", "--app", appName, "--json"]);
   }
@@ -40,6 +48,32 @@ export class FlyctlRunner {
 
   async machines(args: string[]): Promise<string> {
     return this.run(["machines", ...args]);
+  }
+
+  private async runWithInput(args: string[], input: string): Promise<void> {
+    try {
+      const result = await execa("flyctl", args, {
+        reject: true,
+        all: true,
+        input,
+      });
+      const output = result.all ?? result.stdout ?? "";
+      for (const line of output.split("\n")) {
+        if (line.trim()) {
+          this.log(line);
+        }
+      }
+    } catch (err) {
+      const nodeErr = err as NodeJS.ErrnoException;
+      if (nodeErr.code === "ENOENT") {
+        throw new EasyflowError(
+          "flyctl が見つかりません",
+          "flyctl がインストールされていないか、PATH に含まれていません",
+          "https://fly.io/docs/hands-on/install-flyctl/ からインストールしてください",
+        );
+      }
+      throw new EasyflowError(`flyctl コマンドが失敗しました: flyctl ${args[0]}`);
+    }
   }
 
   private async run(

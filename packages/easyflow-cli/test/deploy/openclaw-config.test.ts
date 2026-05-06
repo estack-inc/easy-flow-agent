@@ -229,7 +229,7 @@ describe("buildOpenclawConfig", () => {
     });
   });
 
-  it("Webchat チャンネルが有効でも OpenClaw schema 外の webchat channel/plugin は生成しない", () => {
+  it("Webchat チャンネルが有効の場合 channels.webchat に enabled と invite_codes を設定する", () => {
     const agentfile = makeMinimalAgentfile({
       channels: { webchat: { enabled: true, invite_codes: ["ABC123"] } },
     });
@@ -241,7 +241,21 @@ describe("buildOpenclawConfig", () => {
 
     expect(config.plugins.allow).not.toContain("easy-flow-webchat");
     expect("webchat" in config).toBe(false);
-    expect(config.channels.webchat).toBeUndefined();
+    expect(config.channels.webchat).toMatchObject({ enabled: true, invite_codes: ["ABC123"] });
+  });
+
+  it("Webchat チャンネルが有効で invite_codes なしの場合は invite_codes を含めない", () => {
+    const agentfile = makeMinimalAgentfile({
+      channels: { webchat: { enabled: true } },
+    });
+
+    const config = buildOpenclawConfig({
+      agentfile,
+      secrets: {},
+    });
+
+    expect(config.channels.webchat).toMatchObject({ enabled: true });
+    expect((config.channels.webchat as Record<string, unknown>)?.invite_codes).toBeUndefined();
   });
 
   it("RAG が有効: pinecone-memory エントリが enabled=true かつ config.ragEnabled=true", () => {

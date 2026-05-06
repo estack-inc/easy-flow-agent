@@ -235,13 +235,14 @@ export class FlyDeployAdapter implements DeployAdapter {
       await fs.writeFile(path.join(tmpDir, "render-openclaw-config.js"), renderScript, "utf-8");
 
       // Step 5: シークレット設定（--stage でまずステージングに）
+      // stdin 経由で渡してプロセス引数への平文露出を防ぐ
       const secretPairs: string[] = [];
       for (const [key, value] of Object.entries(resolvedSecrets.stagedSecrets)) {
         secretPairs.push(`${key}=${value}`);
       }
       if (secretPairs.length > 0) {
         this.log(`[fly] シークレット設定 (${secretPairs.length} 件)`);
-        await this.flyctl.secrets(["set", ...secretPairs, "--app", app, "--stage"]);
+        await this.flyctl.secretsImport(app, secretPairs, true);
       }
 
       // Step 6: デプロイ（tmpDir をビルドコンテキストとして flyctl に渡す）

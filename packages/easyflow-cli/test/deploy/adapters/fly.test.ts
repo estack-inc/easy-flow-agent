@@ -15,6 +15,7 @@ function makeMockFlyctl(
     apps: vi.fn().mockResolvedValue("[]"),
     volumes: vi.fn().mockResolvedValue("[]"),
     secrets: vi.fn().mockResolvedValue(undefined),
+    secretsImport: vi.fn().mockResolvedValue(undefined),
     secretsList: vi.fn().mockResolvedValue("[]"),
     deploy: vi.fn().mockResolvedValue(undefined),
     ssh: vi.fn().mockResolvedValue("200"),
@@ -252,8 +253,8 @@ describe("FlyDeployAdapter", () => {
           callOrder.push("volumes:create");
           return "";
         }),
-        secrets: vi.fn().mockImplementation(async () => {
-          callOrder.push("secrets:set");
+        secretsImport: vi.fn().mockImplementation(async () => {
+          callOrder.push("secrets:import");
         }),
         deploy: vi.fn().mockImplementation(async (...args: unknown[]) => {
           deployCalls.push(args);
@@ -286,7 +287,7 @@ describe("FlyDeployAdapter", () => {
         "my-test-app",
         "--yes",
       ]);
-      expect(callOrder).toContain("secrets:set");
+      expect(callOrder).toContain("secrets:import");
       expect(callOrder).toContain("deploy");
       expect(deployCalls[0]?.[1]).toEqual(
         expect.arrayContaining([
@@ -408,7 +409,7 @@ describe("FlyDeployAdapter", () => {
     });
 
     it("既存アプリで追加シークレットが不要な場合は flyctl secrets を呼ばない", async () => {
-      const secretsFn = vi.fn().mockResolvedValue(undefined);
+      const secretsImportFn = vi.fn().mockResolvedValue(undefined);
       const flyctl = makeMockFlyctl({
         apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
         volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
@@ -419,7 +420,7 @@ describe("FlyDeployAdapter", () => {
           ),
         deploy: vi.fn().mockResolvedValue(undefined),
         ssh: vi.fn().mockResolvedValue("200"),
-        secrets: secretsFn,
+        secretsImport: secretsImportFn,
       });
       const adapter = new FlyDeployAdapter(flyctl, () => {});
 
@@ -431,17 +432,17 @@ describe("FlyDeployAdapter", () => {
         {},
       );
 
-      expect(secretsFn).not.toHaveBeenCalled();
+      expect(secretsImportFn).not.toHaveBeenCalled();
     });
 
-    it("初回デプロイでは GATEWAY_TOKEN を生成して secrets set に含める", async () => {
-      const secretsFn = vi.fn().mockResolvedValue(undefined);
+    it("初回デプロイでは GATEWAY_TOKEN を生成して secretsImport に含める", async () => {
+      const secretsImportFn = vi.fn().mockResolvedValue(undefined);
       const flyctl = makeMockFlyctl({
         apps: vi.fn().mockResolvedValue("[]"),
         volumes: vi.fn().mockResolvedValue("[]"),
         deploy: vi.fn().mockResolvedValue(undefined),
         ssh: vi.fn().mockResolvedValue("200"),
-        secrets: secretsFn,
+        secretsImport: secretsImportFn,
       });
       const adapter = new FlyDeployAdapter(flyctl, () => {});
 
@@ -453,19 +454,15 @@ describe("FlyDeployAdapter", () => {
         makeProviderSecrets({}),
       );
 
-      expect(secretsFn).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          "set",
-          expect.stringMatching(/^GATEWAY_TOKEN=/),
-          "--app",
-          "my-test-app",
-          "--stage",
-        ]),
+      expect(secretsImportFn).toHaveBeenCalledWith(
+        "my-test-app",
+        expect.arrayContaining([expect.stringMatching(/^GATEWAY_TOKEN=/)]),
+        true,
       );
     });
 
     it("既存アプリで GATEWAY_TOKEN が Fly secrets にあれば再生成しない", async () => {
-      const secretsFn = vi.fn().mockResolvedValue(undefined);
+      const secretsImportFn = vi.fn().mockResolvedValue(undefined);
       const flyctl = makeMockFlyctl({
         apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
         volumes: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "data" }])),
@@ -476,7 +473,7 @@ describe("FlyDeployAdapter", () => {
           ),
         deploy: vi.fn().mockResolvedValue(undefined),
         ssh: vi.fn().mockResolvedValue("200"),
-        secrets: secretsFn,
+        secretsImport: secretsImportFn,
       });
       const adapter = new FlyDeployAdapter(flyctl, () => {});
 
@@ -488,7 +485,7 @@ describe("FlyDeployAdapter", () => {
         {},
       );
 
-      expect(secretsFn).not.toHaveBeenCalled();
+      expect(secretsImportFn).not.toHaveBeenCalled();
     });
 
     it("既存アプリで GATEWAY_TOKEN が local/Fly のどちらにも無い場合は失敗する", async () => {
