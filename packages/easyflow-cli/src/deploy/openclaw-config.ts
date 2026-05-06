@@ -39,6 +39,30 @@ const SECRET_ENV_KEYS = new Set([
   "GATEWAY_TOKEN",
 ]);
 
+function normalizeOpenclawModel(model: string): string {
+  const normalized = model.trim();
+  const lower = normalized.toLowerCase();
+
+  if (lower.includes("/")) {
+    return normalized;
+  }
+  if (lower.includes("claude")) {
+    return `anthropic/${normalized}`;
+  }
+  if (lower.includes("gemini")) {
+    return `google/${normalized}`;
+  }
+  if (
+    lower.startsWith("gpt-") ||
+    lower.startsWith("chatgpt-") ||
+    /^o[134](?:-mini)?$/.test(lower)
+  ) {
+    return `openai/${normalized}`;
+  }
+
+  return normalized;
+}
+
 /**
  * Agentfile とシークレットから openclaw.json 相当の設定を生成する。
  */
@@ -160,6 +184,16 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     tools.media = { enabled: true };
   }
 
+  // ---- agents ----
+  const modelConfig = agentfile.config?.model;
+  const agentDefaults: Record<string, unknown> = {};
+  if (modelConfig?.default) {
+    agentDefaults.model = normalizeOpenclawModel(modelConfig.default);
+  }
+  if (modelConfig?.thinking) {
+    agentDefaults.thinkingModel = normalizeOpenclawModel(modelConfig.thinking);
+  }
+
   const pineconeApiKeyAvailable = availableSecretKeys.has("PINECONE_API_KEY");
 
   const config: OpenclawConfig = {
@@ -187,20 +221,8 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     config.tools = tools;
   }
 
-  // ---- agents ----
-  // Agentfile のモデル設定を agents.default に反映する。
-  // これにより deploy 後の OpenClaw がモデル選択を再現できる。
-  const modelDefault = agentfile.config?.model?.default;
-  const modelThinking = agentfile.config?.model?.thinking;
-  if (modelDefault || modelThinking) {
-    const defaultAgent: Record<string, unknown> = {};
-    if (modelDefault) {
-      defaultAgent.model = modelDefault;
-    }
-    if (modelThinking) {
-      defaultAgent.thinkingModel = modelThinking;
-    }
-    config.agents = { default: defaultAgent };
+  if (Object.keys(agentDefaults).length > 0) {
+    config.agents = { defaults: agentDefaults };
   }
 
   return config;

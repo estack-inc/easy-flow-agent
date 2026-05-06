@@ -276,22 +276,9 @@ describe("buildOpenclawConfig", () => {
     expect(config.plugins.slots?.contextEngine).toBe("lossless-claw");
   });
 
-  it("モデル設定が Agentfile にある場合 agents.default.model に反映される", () => {
+  it("モデル設定が Agentfile に含まれる場合は agents.defaults に反映する", () => {
     const agentfile = makeMinimalAgentfile({
-      config: { model: { default: "claude-opus-4-5" } },
-    });
-
-    const config = buildOpenclawConfig({
-      agentfile,
-      secrets: {},
-    });
-
-    expect(config.agents).toEqual({ default: { model: "claude-opus-4-5" } });
-  });
-
-  it("thinking モデルが Agentfile にある場合 agents.default.thinkingModel に反映される", () => {
-    const agentfile = makeMinimalAgentfile({
-      config: { model: { default: "claude-sonnet-4-6", thinking: "claude-opus-4-7" } },
+      config: { model: { default: "claude-opus-4-5", thinking: "gemini-2.5-pro" } },
     });
 
     const config = buildOpenclawConfig({
@@ -300,7 +287,27 @@ describe("buildOpenclawConfig", () => {
     });
 
     expect(config.agents).toEqual({
-      default: { model: "claude-sonnet-4-6", thinkingModel: "claude-opus-4-7" },
+      defaults: {
+        model: "anthropic/claude-opus-4-5",
+        thinkingModel: "google/gemini-2.5-pro",
+      },
+    });
+  });
+
+  it("provider prefix 付きモデルはそのまま agents.defaults に反映する", () => {
+    const agentfile = makeMinimalAgentfile({
+      config: { model: { default: "openai/gpt-5.5" } },
+    });
+
+    const config = buildOpenclawConfig({
+      agentfile,
+      secrets: {},
+    });
+
+    expect(config.agents).toEqual({
+      defaults: {
+        model: "openai/gpt-5.5",
+      },
     });
   });
 
