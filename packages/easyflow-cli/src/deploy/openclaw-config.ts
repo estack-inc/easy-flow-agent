@@ -17,17 +17,16 @@ export interface OpenclawConfig {
     entries: Record<string, { enabled: boolean; config: Record<string, unknown> }>;
     installs?: Record<string, unknown>;
   };
-  webchat?: Record<string, unknown>;
   gateway: {
     controlUi: { enabled: boolean };
     auth: { mode: "token"; token: string };
   };
   tools?: Record<string, unknown>;
-  agents: Record<string, unknown>;
-  session: Record<string, unknown>;
+  agents?: Record<string, unknown>;
+  session?: Record<string, unknown>;
 }
 
-const BASE_PLUGIN_ALLOW = ["easyflow-gateway", "pinecone-memory", "lossless-claw"] as const;
+const BASE_PLUGIN_ALLOW = ["pinecone-memory", "lossless-claw"] as const;
 const SECRET_ENV_KEYS = new Set([
   "ANTHROPIC_API_KEY",
   "GEMINI_API_KEY",
@@ -65,7 +64,7 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
 
   const slackEnabled = agentfile.channels?.slack?.enabled === true;
   if (slackEnabled) {
-    // 実値ではなくプレースホルダを埋め込む（release_command で node スクリプトが展開）
+    // 実値ではなくプレースホルダを埋め込む（app process 起動時に node スクリプトが展開）
     // secret-file 欠落時も Fly secrets 上に存在する前提で再デプロイを許可
     // biome-ignore lint/suspicious/noTemplateCurlyInString: 意図的なプレースホルダ（runtime で展開）
     const slackBotTokenPlaceholder = "${SLACK_BOT_TOKEN}";
@@ -80,7 +79,7 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
 
   const lineEnabled = agentfile.channels?.line?.enabled === true;
   if (lineEnabled) {
-    // 実値ではなくプレースホルダを埋め込む（release_command で node スクリプトが展開）
+    // 実値ではなくプレースホルダを埋め込む（app process 起動時に node スクリプトが展開）
     // secret-file 欠落時も Fly secrets 上に存在する前提で再デプロイを許可
     // biome-ignore lint/suspicious/noTemplateCurlyInString: 意図的なプレースホルダ（runtime で展開）
     const lineAccessTokenPlaceholder = "${LINE_ACCESS_TOKEN}";
@@ -93,16 +92,6 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     };
   }
 
-  const webchatEnabled = agentfile.channels?.webchat?.enabled === true;
-  if (webchatEnabled) {
-    channels.webchat = {
-      enabled: true,
-      ...(agentfile.channels?.webchat && "invite_codes" in agentfile.channels.webchat
-        ? { invite_codes: agentfile.channels.webchat.invite_codes ?? [] }
-        : {}),
-    };
-  }
-
   // ---- plugins ----
   const allow: string[] = [...BASE_PLUGIN_ALLOW];
   if (slackEnabled) {
@@ -111,10 +100,6 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
   if (lineEnabled) {
     allow.push("line");
   }
-  if (webchatEnabled) {
-    allow.push("easy-flow-webchat");
-  }
-
   const builtinTools = agentfile.tools?.builtin ?? [];
   if (builtinTools.includes("workflow-controller")) {
     allow.push("workflow-controller");
@@ -175,28 +160,6 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     tools.media = { enabled: true };
   }
 
-  // ---- agents ----
-  const modelConfig = agentfile.config?.model ?? {};
-  const agents: Record<string, unknown> = {
-    default: {
-      model: modelConfig.default ?? "claude-sonnet-4-5",
-      ...(modelConfig.thinking ? { thinkingModel: modelConfig.thinking } : {}),
-    },
-  };
-
-  // ---- session ----
-  const session: Record<string, unknown> = {
-    storage: { type: "file", path: "/data/sessions" },
-  };
-
-  // ---- webchat section ----
-  let webchat: Record<string, unknown> | undefined;
-  if (webchatEnabled) {
-    webchat = {
-      enabled: true,
-    };
-  }
-
   const pineconeApiKeyAvailable = availableSecretKeys.has("PINECONE_API_KEY");
 
   const config: OpenclawConfig = {
@@ -214,16 +177,10 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
       // biome-ignore lint/suspicious/noTemplateCurlyInString: 意図的なプレースホルダ（runtime で展開）
       auth: { mode: "token", token: "${GATEWAY_TOKEN}" },
     },
-    agents,
-    session,
   };
 
   if (Object.keys(tools).length > 0) {
     config.tools = tools;
-  }
-
-  if (webchat) {
-    config.webchat = webchat;
   }
 
   return config;

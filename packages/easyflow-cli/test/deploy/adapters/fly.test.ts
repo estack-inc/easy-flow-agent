@@ -231,6 +231,8 @@ describe("FlyDeployAdapter", () => {
   describe("deploy()", () => {
     it("正常デプロイフロー: 必要なステップが順に実行される", async () => {
       const callOrder: string[] = [];
+      const volumesCalls: string[][] = [];
+      const deployCalls: unknown[][] = [];
       const flyctl = makeMockFlyctl({
         apps: vi.fn().mockImplementation(async (args: string[]) => {
           if (args[0] === "list") {
@@ -241,6 +243,7 @@ describe("FlyDeployAdapter", () => {
           return "";
         }),
         volumes: vi.fn().mockImplementation(async (args: string[]) => {
+          volumesCalls.push(args);
           if (args[0] === "list") {
             callOrder.push("volumes:list");
             return "[]";
@@ -251,7 +254,8 @@ describe("FlyDeployAdapter", () => {
         secrets: vi.fn().mockImplementation(async () => {
           callOrder.push("secrets:set");
         }),
-        deploy: vi.fn().mockImplementation(async () => {
+        deploy: vi.fn().mockImplementation(async (...args: unknown[]) => {
+          deployCalls.push(args);
           callOrder.push("deploy");
         }),
         ssh: vi.fn().mockResolvedValue("200"),
@@ -270,8 +274,28 @@ describe("FlyDeployAdapter", () => {
       expect(callOrder).toContain("apps:create");
       expect(callOrder).toContain("volumes:list");
       expect(callOrder).toContain("volumes:create");
+      expect(volumesCalls).toContainEqual([
+        "create",
+        "data",
+        "--region",
+        "nrt",
+        "--size",
+        "1",
+        "--app",
+        "my-test-app",
+        "--yes",
+      ]);
       expect(callOrder).toContain("secrets:set");
       expect(callOrder).toContain("deploy");
+      expect(deployCalls[0]?.[1]).toEqual(
+        expect.arrayContaining([
+          "--config",
+          expect.stringContaining("fly.toml"),
+          "--yes",
+          "--local-only",
+        ]),
+      );
+      expect(deployCalls[0]?.[2]).toMatchObject({ timeoutMs: 900_000 });
       expect(result.app).toBe("my-test-app");
       expect(result.target).toBe("fly");
     });
@@ -282,6 +306,27 @@ describe("FlyDeployAdapter", () => {
         volumes: vi.fn().mockResolvedValue("[]"),
         deploy: vi.fn().mockResolvedValue(undefined),
         ssh: vi.fn().mockResolvedValue("200"),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      const result = await adapter.deploy(
+        { manifest: {}, config: {}, layers: new Map() },
+        makeStoredImage(),
+        makeAgentfile(),
+        makeDeployOptions(),
+        { ANTHROPIC_API_KEY: "test" },
+      );
+
+      expect(result.healthCheck.ok).toBe(true);
+      expect(result.healthCheck.statusCode).toBe(200);
+    });
+
+    it("ヘルスチェックは fly ssh の接続メッセージが混ざっても末尾の HTTP status を読む", async () => {
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue("[]"),
+        volumes: vi.fn().mockResolvedValue("[]"),
+        deploy: vi.fn().mockResolvedValue(undefined),
+        ssh: vi.fn().mockResolvedValue("Connecting to fdaa:example...\n200"),
       });
       const adapter = new FlyDeployAdapter(flyctl, () => {});
 
@@ -666,9 +711,9 @@ describe("FlyDeployAdapter", () => {
       );
 
       expect(capturedCwd).toBeDefined();
-      // Dockerfile は easy-flow-base を digest pin し、base image 側の CMD /entrypoint.sh を継承する
+      // Dockerfile は easy-flow-base を digest pin し、Fly runtime 向けに amd64 を明示する。
       expect(dockerfileContent).toContain(
-        "FROM ghcr.io/estack-inc/easy-flow-base@sha256:da7f2b41080943c65bbcd1e4448c69a10b80f82a179bd4beba3c298b07a12248",
+        "FROM --platform=linux/amd64 ghcr.io/estack-inc/easy-flow-base@sha256:da7f2b41080943c65bbcd1e4448c69a10b80f82a179bd4beba3c298b07a12248",
       );
       expect(dockerfileContent).not.toContain("ghcr.io/openclaw/openclaw:latest");
       expect(dockerfileContent).not.toMatch(/\b(?:CMD|ENTRYPOINT)\b/);
@@ -695,7 +740,7 @@ describe("FlyDeployAdapter", () => {
       expect(renderScriptContent).toContain("process.exit(1)");
     });
 
-    it("fly.toml に node render スクリプトを呼ぶ release_command が含まれ [build].image が含まれない", async () => {
+    it("fly.toml に node render スクリプトを呼ぶ app process が含まれ [build].image が含まれない", async () => {
       let flyTomlContent: string | undefined;
 
       const flyctl = makeMockFlyctl({
@@ -727,12 +772,20 @@ describe("FlyDeployAdapter", () => {
       );
 
       expect(flyTomlContent).toBeDefined();
-      // release_command で node スクリプトがプレースホルダを展開
-      expect(flyTomlContent).toContain("release_command");
+      // app process 起動時に node スクリプトがプレースホルダを展開
+      expect(flyTomlContent).toContain("[processes]");
+      expect(flyTomlContent).toContain("app = \"sh -lc 'mkdir -p /data && node");
       expect(flyTomlContent).toContain("node /app/render-openclaw-config.js");
       expect(flyTomlContent).toContain("/app/openclaw.json.template");
       expect(flyTomlContent).toContain("/data/openclaw.json");
+      expect(flyTomlContent).toContain("exec /entrypoint.sh");
+      expect(flyTomlContent).toContain('OPENCLAW_STATE_DIR = "/data"');
+      expect(flyTomlContent).toContain('OPENCLAW_NO_RESPAWN = "1"');
+      expect(flyTomlContent).toContain('path = "/health"');
+      expect(flyTomlContent).toContain('size = "shared-cpu-4x"');
+      expect(flyTomlContent).toContain('memory = "8192mb"');
       expect(flyTomlContent).not.toContain("[build]");
+      expect(flyTomlContent).not.toContain("release_command");
       expect(flyTomlContent).not.toContain("ghcr.io/openclaw/openclaw:latest");
     });
   });

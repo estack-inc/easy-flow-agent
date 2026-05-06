@@ -32,8 +32,9 @@ describe("buildOpenclawConfig", () => {
 
     expect(config.gateway.auth.mode).toBe("token");
     expect(config.gateway.auth.token).toBe(placeholder("GATEWAY_TOKEN"));
-    expect(config.session.storage).toMatchObject({ type: "file", path: "/data/sessions" });
-    expect(config.plugins.allow).toContain("easyflow-gateway");
+    expect(config.session).toBeUndefined();
+    expect(config.agents).toBeUndefined();
+    expect(config.plugins.allow).not.toContain("easyflow-gateway");
     expect(config.plugins.allow).toContain("lossless-claw");
     expect(config.plugins.allow).not.toContain("file-serve");
     expect(config.plugins.allow).not.toContain("model-router");
@@ -131,7 +132,7 @@ describe("buildOpenclawConfig", () => {
       secrets: { SLACK_BOT_TOKEN: "xoxb-token" },
     });
 
-    // 実値ではなくプレースホルダが設定される（release_command で展開）
+    // 実値ではなくプレースホルダが設定される（app process 起動時に展開）
     expect(config.channels.slack).toMatchObject({
       enabled: true,
       botToken: placeholder("SLACK_BOT_TOKEN"),
@@ -185,7 +186,7 @@ describe("buildOpenclawConfig", () => {
       },
     });
 
-    // 実値ではなくプレースホルダが設定される（release_command で展開）
+    // 実値ではなくプレースホルダが設定される（app process 起動時に展開）
     expect(config.channels.line).toMatchObject({
       enabled: true,
       accessToken: placeholder("LINE_ACCESS_TOKEN"),
@@ -228,7 +229,7 @@ describe("buildOpenclawConfig", () => {
     });
   });
 
-  it("Webchat チャンネルが有効: plugins.allow に easy-flow-webchat を含める", () => {
+  it("Webchat チャンネルが有効でも OpenClaw schema 外の webchat channel/plugin は生成しない", () => {
     const agentfile = makeMinimalAgentfile({
       channels: { webchat: { enabled: true, invite_codes: ["ABC123"] } },
     });
@@ -238,12 +239,9 @@ describe("buildOpenclawConfig", () => {
       secrets: {},
     });
 
-    expect(config.plugins.allow).toContain("easy-flow-webchat");
-    expect(config.webchat).toBeDefined();
-    expect(config.channels.webchat).toMatchObject({
-      enabled: true,
-      invite_codes: ["ABC123"],
-    });
+    expect(config.plugins.allow).not.toContain("easy-flow-webchat");
+    expect("webchat" in config).toBe(false);
+    expect(config.channels.webchat).toBeUndefined();
   });
 
   it("RAG が有効: pinecone-memory エントリが enabled=true かつ config.ragEnabled=true", () => {
@@ -278,7 +276,7 @@ describe("buildOpenclawConfig", () => {
     expect(config.plugins.slots?.contextEngine).toBe("lossless-claw");
   });
 
-  it("モデル設定が Agentfile に含まれる場合は agents に反映する", () => {
+  it("モデル設定が Agentfile に含まれる場合も現行 OpenClaw schema 外の agents.default は生成しない", () => {
     const agentfile = makeMinimalAgentfile({
       config: { model: { default: "claude-opus-4-5" } },
     });
@@ -288,7 +286,7 @@ describe("buildOpenclawConfig", () => {
       secrets: {},
     });
 
-    expect((config.agents.default as Record<string, unknown>).model).toBe("claude-opus-4-5");
+    expect(config.agents).toBeUndefined();
   });
 
   it("Agentfile の config.env が env に含まれる", () => {

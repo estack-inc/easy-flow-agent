@@ -17,17 +17,25 @@ const DEFAULT_ORG = "personal";
 const LAYER_NAMES = ["identity", "knowledge", "tools", "config"] as const;
 const DEFAULT_MODEL = "claude-sonnet-4-5";
 const PROVIDER_SECRET_KEYS = ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY"] as const;
+const FLY_DEPLOY_TIMEOUT_MS = 900_000;
 
 /**
  * fly.toml テンプレートを生成する。
- * [build].image は使用せず Dockerfile ベースのリモートビルドに切り替える。
- * release_command で node スクリプトがプレースホルダを展開し /data に配置する。
+ * [build].image は使用せず Dockerfile ベースの local-only ビルドに切り替える。
+ * app process 起動時に node スクリプトがプレースホルダを展開し /data に配置する。
  */
 function buildFlyToml(appName: string, region: string): string {
   return `app = "${appName}"
 primary_region = "${region}"
 
-release_command = "node /app/render-openclaw-config.js /app/openclaw.json.template /data/openclaw.json"
+[env]
+  NODE_ENV = "production"
+  OPENCLAW_STATE_DIR = "/data"
+  NODE_OPTIONS = "--max-old-space-size=6144"
+  OPENCLAW_NO_RESPAWN = "1"
+
+[processes]
+  app = "sh -lc 'mkdir -p /data && node /app/render-openclaw-config.js /app/openclaw.json.template /data/openclaw.json && exec /entrypoint.sh'"
 
 [[mounts]]
   source = "data"
@@ -36,22 +44,31 @@ release_command = "node /app/render-openclaw-config.js /app/openclaw.json.templa
 [http_service]
   internal_port = 3000
   force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
   [[http_service.checks]]
-    grace_period = "30s"
-    interval = "15s"
+    grace_period = "120s"
+    interval = "30s"
     method = "GET"
-    path = "/gateway/status"
-    timeout = "10s"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-4x"
+  memory = "8192mb"
 `;
 }
 
 /**
  * エージェントレイヤーを焼き込む Dockerfile を生成する。
  * openclaw.json.template と render スクリプトを /app に配置し、
- * release_command で node スクリプトがプレースホルダを展開して /data に書き出す。
+ * app process 起動時に node スクリプトがプレースホルダを展開して /data に書き出す。
  */
 function buildDockerfile(): string {
-  return `FROM ${BASE_IMAGE}
+  return `FROM --platform=linux/amd64 ${BASE_IMAGE}
 COPY layers/identity/ /app/easyflow/identity/
 COPY layers/knowledge/ /app/easyflow/knowledge/
 COPY layers/tools/ /app/easyflow/tools/
@@ -167,6 +184,7 @@ export class FlyDeployAdapter implements DeployAdapter {
         "1",
         "--app",
         app,
+        "--yes",
       ]);
     }
 
@@ -193,10 +211,10 @@ export class FlyDeployAdapter implements DeployAdapter {
       // Dockerfile を生成（レイヤー + openclaw.json.template + render スクリプトを焼き込む）
       await fs.writeFile(path.join(tmpDir, "Dockerfile"), buildDockerfile(), "utf-8");
 
-      // fly.toml を生成（release_command で node スクリプトがプレースホルダを展開）
+      // fly.toml を生成（app process 起動時に node スクリプトがプレースホルダを展開）
       await fs.writeFile(path.join(tmpDir, "fly.toml"), buildFlyToml(app, region), "utf-8");
 
-      // openclaw.json.template を生成（チャネル認証情報はプレースホルダ、release_command で展開）
+      // openclaw.json.template を生成（チャネル認証情報はプレースホルダ、app process 起動時に展開）
       const openclawConfig = buildOpenclawConfig({
         agentfile,
         secrets,
@@ -209,7 +227,7 @@ export class FlyDeployAdapter implements DeployAdapter {
         "utf-8",
       );
 
-      // render-openclaw-config.js を生成（release_command から呼ばれる）
+      // render-openclaw-config.js を生成（app process 起動時に呼ばれる）
       const renderScript = await fs.readFile(
         new URL("../render-openclaw-config.js", import.meta.url),
         "utf-8",
@@ -228,10 +246,14 @@ export class FlyDeployAdapter implements DeployAdapter {
 
       // Step 6: デプロイ（tmpDir をビルドコンテキストとして flyctl に渡す）
       this.log(`[fly] デプロイ開始: ${app}`);
-      await this.flyctl.deploy(app, ["--config", path.join(tmpDir, "fly.toml")], {
-        cwd: tmpDir,
-        timeoutMs: 300_000,
-      });
+      await this.flyctl.deploy(
+        app,
+        ["--config", path.join(tmpDir, "fly.toml"), "--yes", "--local-only"],
+        {
+          cwd: tmpDir,
+          timeoutMs: FLY_DEPLOY_TIMEOUT_MS,
+        },
+      );
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
@@ -272,10 +294,11 @@ export class FlyDeployAdapter implements DeployAdapter {
           "/dev/null",
           "-w",
           "%{http_code}",
-          "http://localhost:3000/gateway/status",
+          "http://localhost:3000/health",
         ]);
         const latencyMs = Date.now() - start;
-        const statusCode = parseInt(output.trim(), 10);
+        const statusMatch = output.match(/(\d{3})\s*$/);
+        const statusCode = statusMatch ? Number(statusMatch[1]) : Number.NaN;
 
         if (statusCode >= 200 && statusCode < 300) {
           return { ok: true, statusCode, latencyMs };
