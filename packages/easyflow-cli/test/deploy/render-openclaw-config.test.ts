@@ -101,6 +101,71 @@ describe("render-openclaw-config.js", () => {
     expect(parsed.gateway.auth.token).toBe("fixed-token");
   });
 
+  it("env セクションのプレースホルダを process.env から展開する", async () => {
+    const templatePath = path.join(tmpDir, "config.template");
+    const outputPath = path.join(tmpDir, "config.json");
+
+    const template = JSON.stringify({
+      env: {
+        CUSTOM_SECRET: placeholder("CUSTOM_SECRET"),
+        OPENCLAW_AGENT_ID: "my-agent",
+      },
+      gateway: { auth: { token: placeholder("GATEWAY_TOKEN") } },
+    });
+    await fs.writeFile(templatePath, template);
+
+    execSync(`node "${scriptPath}" "${templatePath}" "${outputPath}"`, {
+      env: {
+        ...process.env,
+        GATEWAY_TOKEN: "gw-token",
+        CUSTOM_SECRET: "my-actual-secret",
+      },
+    });
+
+    const output = await fs.readFile(outputPath, "utf-8");
+    const parsed = JSON.parse(output);
+
+    // env プレースホルダが展開される
+    expect(parsed.env.CUSTOM_SECRET).toBe("my-actual-secret");
+    // リテラル値はそのまま通過する
+    expect(parsed.env.OPENCLAW_AGENT_ID).toBe("my-agent");
+    expect(parsed.gateway.auth.token).toBe("gw-token");
+  });
+
+  it("env セクションのプレースホルダが process.env に未設定の場合はそのエントリをスキップして fail しない", async () => {
+    const templatePath = path.join(tmpDir, "config.template");
+    const outputPath = path.join(tmpDir, "config.json");
+
+    const template = JSON.stringify({
+      env: {
+        SET_KEY: placeholder("SET_KEY"),
+        UNSET_KEY: placeholder("UNSET_KEY"),
+        OPENCLAW_AGENT_ID: "my-agent",
+      },
+      gateway: { auth: { token: placeholder("GATEWAY_TOKEN") } },
+    });
+    await fs.writeFile(templatePath, template);
+
+    execSync(`node "${scriptPath}" "${templatePath}" "${outputPath}"`, {
+      env: {
+        ...process.env,
+        GATEWAY_TOKEN: "gw-token",
+        SET_KEY: "set-value",
+        UNSET_KEY: undefined,
+      },
+    });
+
+    const output = await fs.readFile(outputPath, "utf-8");
+    const parsed = JSON.parse(output);
+
+    // 設定済みキーは展開される
+    expect(parsed.env.SET_KEY).toBe("set-value");
+    // 未設定キーはスキップ（fail せず、エントリが除外される）
+    expect(parsed.env.UNSET_KEY).toBeUndefined();
+    // リテラル値は通過する
+    expect(parsed.env.OPENCLAW_AGENT_ID).toBe("my-agent");
+  });
+
   it("許可されていないプレースホルダは展開せず missing 扱いにしない", async () => {
     const templatePath = path.join(tmpDir, "config.template");
     const outputPath = path.join(tmpDir, "config.json");

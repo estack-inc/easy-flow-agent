@@ -5,31 +5,21 @@ import type { LayerData } from "../types.js";
 /**
  * config レイヤー（openclaw.json / channels.json / Agentfile.resolved.json）を生成する。
  *
- * - openclaw.json: `{ model, rag, env }` の最小スキーマ（Phase 1）。シークレット env キーは除外済み
+ * - openclaw.json: `{ model, rag, env }` の最小スキーマ（Phase 1）。env 値はすべて ${KEY} プレースホルダ
  * - channels.json: Agentfile の channels セクションをそのまま保存
- * - Agentfile.resolved.json: base 継承を解決したビルド時点の Agentfile（シークレット env キーはマスク済み）
+ * - Agentfile.resolved.json: base 継承を解決したビルド時点の Agentfile（env 値はすべて ${KEY} プレースホルダ）
  *
  * NOTE: 生の Agentfile YAML は含めない。config layer は Fly イメージに丸ごと COPY されるため、
  * シークレット env 値を含む可能性があるファイルをイメージに焼き込まないよう sanitize 済みファイルのみ収録する。
+ * env 値はホワイトリスト方式ではなく全キーをプレースホルダに変換することで、
+ * 任意のシークレットが平文でイメージに混入するリスクを排除する。
  */
-
-// Fly イメージに焼き込む Agentfile から除外するシークレット env キー
-const SECRET_ENV_KEYS = new Set([
-  "ANTHROPIC_API_KEY",
-  "GEMINI_API_KEY",
-  "OPENAI_API_KEY",
-  "PINECONE_API_KEY",
-  "SLACK_BOT_TOKEN",
-  "SLACK_SIGNING_SECRET",
-  "LINE_ACCESS_TOKEN",
-  "LINE_CHANNEL_SECRET",
-  "GATEWAY_TOKEN",
-]);
 
 function sanitizeAgentfileEnv(agentfile: Agentfile): Agentfile {
   if (!agentfile.config?.env) return agentfile;
+  // 全 env 値を ${KEY} プレースホルダに置換（実値をイメージに焼き込まない）
   const sanitizedEnv = Object.fromEntries(
-    Object.entries(agentfile.config.env).filter(([key]) => !SECRET_ENV_KEYS.has(key)),
+    Object.keys(agentfile.config.env).map((key) => [key, `\${${key}}`]),
   );
   return {
     ...agentfile,
@@ -41,11 +31,9 @@ function sanitizeAgentfileEnv(agentfile: Agentfile): Agentfile {
 }
 
 export async function buildConfigLayer(agentfile: Agentfile): Promise<LayerData> {
-  // openclaw.json の env もシークレットキーを除外してイメージに焼き込まない
+  // openclaw.json の env も全値を ${KEY} プレースホルダに変換してイメージに実値を焼き込まない
   const sanitizedEnv = agentfile.config?.env
-    ? Object.fromEntries(
-        Object.entries(agentfile.config.env).filter(([key]) => !SECRET_ENV_KEYS.has(key)),
-      )
+    ? Object.fromEntries(Object.keys(agentfile.config.env).map((key) => [key, `\${${key}}`]))
     : {};
 
   const openclawConfig = {

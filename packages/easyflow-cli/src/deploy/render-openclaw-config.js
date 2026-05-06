@@ -3,6 +3,8 @@ import * as fs from "node:fs";
 const src = process.argv[2] || "/app/openclaw.json.template";
 const dst = process.argv[3] || "/data/openclaw.json";
 const PLACEHOLDER_PATTERN = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+
+// 非 env セクション用: EXPANDABLE_PLACEHOLDER_KEYS に含まれるキーのみ展開する
 const EXPANDABLE_PLACEHOLDER_KEYS = new Set([
   "GATEWAY_TOKEN",
   "SLACK_BOT_TOKEN",
@@ -11,10 +13,7 @@ const EXPANDABLE_PLACEHOLDER_KEYS = new Set([
   "LINE_CHANNEL_SECRET",
 ]);
 
-// env セクションはユーザー定義値（Agentfile の config.env）を含むため展開対象外とする。
-// その他のセクションでも、意図的に生成した secret placeholder だけを展開する。
-const NON_EXPANDABLE_TOP_LEVEL_KEYS = new Set(["env"]);
-
+// 非 env セクション用レンダリング: EXPANDABLE_PLACEHOLDER_KEYS のみ展開、未設定は fail-fast
 function renderValue(value, missingKeys, expandable) {
   if (typeof value === "string") {
     if (!expandable) return value;
@@ -44,14 +43,43 @@ function renderValue(value, missingKeys, expandable) {
   return value;
 }
 
+// env セクション用レンダリング: 任意の ${KEY} を process.env から展開する
+// 未設定のキーは展開せず該当エントリをスキップ（fail-fast しない）
+function renderEnvEntry(entryValue) {
+  if (typeof entryValue !== "string") return { ok: true, value: entryValue };
+  const missing = new Set();
+  const rendered = entryValue.replace(PLACEHOLDER_PATTERN, (placeholder, key) => {
+    const envValue = process.env[key];
+    if (envValue == null) {
+      missing.add(key);
+      return placeholder;
+    }
+    return envValue;
+  });
+  return { ok: missing.size === 0, value: rendered };
+}
+
 const template = JSON.parse(fs.readFileSync(src, "utf8"));
 const missingKeys = new Set();
-const rendered = Object.fromEntries(
-  Object.entries(template).map(([key, value]) => [
-    key,
-    renderValue(value, missingKeys, !NON_EXPANDABLE_TOP_LEVEL_KEYS.has(key)),
-  ]),
-);
+
+const rendered = {};
+for (const [key, value] of Object.entries(template)) {
+  if (key === "env") {
+    // env セクション: 任意 ${KEY} を展開し、未設定エントリはスキップして warn
+    const renderedEnv = {};
+    for (const [envKey, envValue] of Object.entries(value ?? {})) {
+      const result = renderEnvEntry(envValue);
+      if (result.ok) {
+        renderedEnv[envKey] = result.value;
+      } else {
+        console.warn(`render-openclaw-config: env.${envKey} not in process.env, skipped`);
+      }
+    }
+    rendered[key] = renderedEnv;
+  } else {
+    rendered[key] = renderValue(value, missingKeys, true);
+  }
+}
 
 if (missingKeys.size > 0) {
   console.error(`render-openclaw-config: missing env: ${Array.from(missingKeys).join(", ")}`);

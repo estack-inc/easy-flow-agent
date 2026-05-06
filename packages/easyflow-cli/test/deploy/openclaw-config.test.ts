@@ -333,6 +333,22 @@ describe("buildOpenclawConfig", () => {
     expect(config.env.NODE_ENV).toBe("production");
   });
 
+  it("config.env の値がプレースホルダでもそのまま env に含まれる（buildConfigLayer 経由の実フロー）", () => {
+    // buildConfigLayer は env 値を ${KEY} プレースホルダに変換して Agentfile.resolved.json に保存する。
+    // deployer はそのプレースホルダ値を持つ agentfile を buildOpenclawConfig に渡すため、
+    // プレースホルダが変換されずにテンプレートに含まれることを確認する。
+    const agentfile = makeMinimalAgentfile({
+      config: {
+        env: { LOG_LEVEL: placeholder("LOG_LEVEL"), CUSTOM_VAR: placeholder("CUSTOM_VAR") },
+      },
+    });
+
+    const config = buildOpenclawConfig({ agentfile, secrets: {} });
+
+    expect(config.env.LOG_LEVEL).toBe(placeholder("LOG_LEVEL"));
+    expect(config.env.CUSTOM_VAR).toBe(placeholder("CUSTOM_VAR"));
+  });
+
   it("Agentfile の env にシークレットキーがあっても env には含めない", () => {
     const agentfile = makeMinimalAgentfile({
       config: { env: { ANTHROPIC_API_KEY: "from-agentfile", LOG_LEVEL: "debug" } },

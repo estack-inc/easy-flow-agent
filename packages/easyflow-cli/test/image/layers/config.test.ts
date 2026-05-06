@@ -3,6 +3,9 @@ import type { Agentfile } from "../../../src/agentfile/types.js";
 import { buildConfigLayer } from "../../../src/image/layers/config.js";
 import { extractTarGz, readText } from "../helpers.js";
 
+// biome-ignore lint/style/useTemplate: 意図的に文字列連結（template literal の lint 警告回避）
+const placeholder = (name: string): string => "$" + "{" + name + "}";
+
 function baseAgentfile(overrides: Partial<Agentfile> = {}): Agentfile {
   return {
     apiVersion: "easyflow/v1",
@@ -46,18 +49,20 @@ describe("buildConfigLayer", () => {
     const openclaw = JSON.parse(readText(files, "openclaw.json"));
     expect(openclaw.model).toEqual({ default: "claude-sonnet-4-6" });
     expect(openclaw.rag).toEqual({ enabled: true });
-    expect(openclaw.env).toEqual({ LOG_LEVEL: "debug" });
+    // env 値は ${KEY} プレースホルダに変換される（実値をイメージに焼き込まない）
+    expect(openclaw.env).toEqual({ LOG_LEVEL: placeholder("LOG_LEVEL") });
 
     const channels = JSON.parse(readText(files, "channels.json"));
     expect(channels.slack).toEqual({ enabled: true });
     expect(channels.webchat).toEqual({ enabled: true, invite_codes: ["ABC"] });
 
     const resolvedAgentfile = JSON.parse(readText(files, "Agentfile.resolved.json"));
-    expect(resolvedAgentfile.config.env.LOG_LEVEL).toBe("debug");
+    // env 値は ${KEY} プレースホルダに変換される（deploy 時に Fly secrets/env で展開）
+    expect(resolvedAgentfile.config.env.LOG_LEVEL).toBe(placeholder("LOG_LEVEL"));
     expect(resolvedAgentfile.channels.webchat.invite_codes).toEqual(["ABC"]);
   });
 
-  it("シークレット env キーは openclaw.json と Agentfile.resolved.json の両方から除外される", async () => {
+  it("env 値はすべてプレースホルダに変換される（シークレットキーも含む）", async () => {
     const agentfile = baseAgentfile({
       config: {
         env: {
@@ -72,16 +77,17 @@ describe("buildConfigLayer", () => {
     const files = await extractTarGz(layer.content);
 
     const openclaw = JSON.parse(readText(files, "openclaw.json"));
-    expect(openclaw.env.LOG_LEVEL).toBe("debug");
-    expect(openclaw.env.ANTHROPIC_API_KEY).toBeUndefined();
-    expect(openclaw.env.PINECONE_API_KEY).toBeUndefined();
-    expect(openclaw.env.GEMINI_API_KEY).toBeUndefined();
+    // 全 env 値がプレースホルダになる（実値はイメージに含まれない）
+    expect(openclaw.env.LOG_LEVEL).toBe(placeholder("LOG_LEVEL"));
+    expect(openclaw.env.ANTHROPIC_API_KEY).toBe(placeholder("ANTHROPIC_API_KEY"));
+    expect(openclaw.env.PINECONE_API_KEY).toBe(placeholder("PINECONE_API_KEY"));
+    expect(openclaw.env.GEMINI_API_KEY).toBe(placeholder("GEMINI_API_KEY"));
 
     const resolvedAgentfile = JSON.parse(readText(files, "Agentfile.resolved.json"));
-    expect(resolvedAgentfile.config.env.LOG_LEVEL).toBe("debug");
-    expect(resolvedAgentfile.config.env.ANTHROPIC_API_KEY).toBeUndefined();
-    expect(resolvedAgentfile.config.env.PINECONE_API_KEY).toBeUndefined();
-    expect(resolvedAgentfile.config.env.GEMINI_API_KEY).toBeUndefined();
+    expect(resolvedAgentfile.config.env.LOG_LEVEL).toBe(placeholder("LOG_LEVEL"));
+    expect(resolvedAgentfile.config.env.ANTHROPIC_API_KEY).toBe(placeholder("ANTHROPIC_API_KEY"));
+    expect(resolvedAgentfile.config.env.PINECONE_API_KEY).toBe(placeholder("PINECONE_API_KEY"));
+    expect(resolvedAgentfile.config.env.GEMINI_API_KEY).toBe(placeholder("GEMINI_API_KEY"));
   });
 
   it("config/channels 未指定時は空の openclaw.json / channels.json を出力する", async () => {
