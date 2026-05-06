@@ -5,6 +5,7 @@ import type { Agentfile } from "../../../src/agentfile/types.js";
 import { FlyDeployAdapter } from "../../../src/deploy/adapters/fly.js";
 import type { FlyctlRunner } from "../../../src/deploy/adapters/flyctl.js";
 import type { DeployOptions } from "../../../src/deploy/types.js";
+import { packLayer } from "../../../src/image/tar-pack.js";
 import type { StoredImage } from "../../../src/store/types.js";
 
 function makeMockFlyctl(
@@ -717,7 +718,7 @@ describe("FlyDeployAdapter", () => {
       );
       expect(dockerfileContent).not.toContain("ghcr.io/openclaw/openclaw:latest");
       expect(dockerfileContent).not.toMatch(/\b(?:CMD|ENTRYPOINT)\b/);
-      expect(dockerfileContent).toContain("COPY layers/config/ /app/easyflow/config/");
+      expect(dockerfileContent).not.toContain("COPY layers/config/");
       expect(dockerfileContent).toContain(
         "COPY openclaw.json.template /app/openclaw.json.template",
       );
@@ -738,6 +739,62 @@ describe("FlyDeployAdapter", () => {
       expect(renderScriptContent).toContain("PLACEHOLDER_PATTERN");
       expect(renderScriptContent).toContain("JSON.stringify(rendered, null, 2)");
       expect(renderScriptContent).toContain("process.exit(1)");
+    });
+
+    it("config レイヤーの Agentfile 系ファイルは最終イメージに同梱しない", async () => {
+      let dockerfileContent: string | undefined;
+      let configLayerFileExists = false;
+
+      const configLayer = await packLayer([
+        {
+          kind: "file",
+          name: "Agentfile.resolved.json",
+          content: JSON.stringify({
+            config: {
+              env: {
+                ANTHROPIC_API_KEY: "agentfile-secret",
+              },
+            },
+          }),
+        },
+      ]);
+
+      const flyctl = makeMockFlyctl({
+        apps: vi.fn().mockResolvedValue("[]"),
+        volumes: vi.fn().mockResolvedValue("[]"),
+        deploy: vi
+          .fn()
+          .mockImplementation(
+            async (
+              _appName: string,
+              _args: string[],
+              opts?: { cwd?: string; timeoutMs?: number },
+            ) => {
+              if (!opts?.cwd) return;
+
+              dockerfileContent = await fs.readFile(path.join(opts.cwd, "Dockerfile"), "utf-8");
+              try {
+                await fs.access(path.join(opts.cwd, "layers", "config", "Agentfile.resolved.json"));
+                configLayerFileExists = true;
+              } catch {
+                configLayerFileExists = false;
+              }
+            },
+          ),
+        ssh: vi.fn().mockResolvedValue("200"),
+      });
+      const adapter = new FlyDeployAdapter(flyctl, () => {});
+
+      await adapter.deploy(
+        { manifest: {}, config: {}, layers: new Map([["config", configLayer.content]]) },
+        makeStoredImage(),
+        makeAgentfile(),
+        makeDeployOptions(),
+        makeProviderSecrets(),
+      );
+
+      expect(dockerfileContent).not.toContain("COPY layers/config/");
+      expect(configLayerFileExists).toBe(false);
     });
 
     it("fly.toml に node render スクリプトを呼ぶ app process が含まれ [build].image が含まれない", async () => {

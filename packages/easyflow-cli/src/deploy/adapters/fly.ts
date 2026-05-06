@@ -14,7 +14,7 @@ const BASE_IMAGE =
   "ghcr.io/estack-inc/easy-flow-base@sha256:da7f2b41080943c65bbcd1e4448c69a10b80f82a179bd4beba3c298b07a12248";
 const DEFAULT_REGION = "nrt";
 const DEFAULT_ORG = "personal";
-const LAYER_NAMES = ["identity", "knowledge", "tools", "config"] as const;
+const DEPLOY_LAYER_NAMES = ["identity", "knowledge", "tools"] as const;
 const DEFAULT_MODEL = "claude-sonnet-4-5";
 const PROVIDER_SECRET_KEYS = ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY"] as const;
 const FLY_DEPLOY_TIMEOUT_MS = 900_000;
@@ -72,7 +72,6 @@ function buildDockerfile(): string {
 COPY layers/identity/ /app/easyflow/identity/
 COPY layers/knowledge/ /app/easyflow/knowledge/
 COPY layers/tools/ /app/easyflow/tools/
-COPY layers/config/ /app/easyflow/config/
 COPY openclaw.json.template /app/openclaw.json.template
 COPY render-openclaw-config.js /app/render-openclaw-config.js
 `;
@@ -193,8 +192,9 @@ export class FlyDeployAdapter implements DeployAdapter {
     // Step 4: ビルドコンテキストを一時ディレクトリに構築
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyflow-deploy-"));
     try {
-      // 各レイヤーを展開して layers/<name>/ に配置
-      for (const layerName of LAYER_NAMES) {
+      // runtime に必要なレイヤーだけを展開して layers/<name>/ に配置する。
+      // config レイヤーの Agentfile 系ファイルは secret を含み得るため、最終イメージへ同梱しない。
+      for (const layerName of DEPLOY_LAYER_NAMES) {
         const layerBuf = image.layers.get(layerName);
         const layerDir = path.join(tmpDir, "layers", layerName);
         await fs.mkdir(layerDir, { recursive: true });
