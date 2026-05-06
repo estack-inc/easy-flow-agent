@@ -49,20 +49,20 @@ describe("buildConfigLayer", () => {
     const openclaw = JSON.parse(readText(files, "openclaw.json"));
     expect(openclaw.model).toEqual({ default: "claude-sonnet-4-6" });
     expect(openclaw.rag).toEqual({ enabled: true });
-    // env 値は ${KEY} プレースホルダに変換される（実値をイメージに焼き込まない）
-    expect(openclaw.env).toEqual({ LOG_LEVEL: placeholder("LOG_LEVEL") });
+    // 非シークレット env 値はリテラルのまま保持される（プレースホルダに変換しない）
+    expect(openclaw.env).toEqual({ LOG_LEVEL: "debug" });
 
     const channels = JSON.parse(readText(files, "channels.json"));
     expect(channels.slack).toEqual({ enabled: true });
     expect(channels.webchat).toEqual({ enabled: true, invite_codes: ["ABC"] });
 
     const resolvedAgentfile = JSON.parse(readText(files, "Agentfile.resolved.json"));
-    // env 値は ${KEY} プレースホルダに変換される（deploy 時に Fly secrets/env で展開）
-    expect(resolvedAgentfile.config.env.LOG_LEVEL).toBe(placeholder("LOG_LEVEL"));
+    // 非シークレット env 値はリテラルのまま保持される（deploy 時に render-openclaw-config が誤ってドロップしない）
+    expect(resolvedAgentfile.config.env.LOG_LEVEL).toBe("debug");
     expect(resolvedAgentfile.channels.webchat.invite_codes).toEqual(["ABC"]);
   });
 
-  it("env 値はすべてプレースホルダに変換される（シークレットキーも含む）", async () => {
+  it("既知シークレットキーはプレースホルダに変換され、非シークレット値はリテラルのまま保持される", async () => {
     const agentfile = baseAgentfile({
       config: {
         env: {
@@ -77,14 +77,15 @@ describe("buildConfigLayer", () => {
     const files = await extractTarGz(layer.content);
 
     const openclaw = JSON.parse(readText(files, "openclaw.json"));
-    // 全 env 値がプレースホルダになる（実値はイメージに含まれない）
-    expect(openclaw.env.LOG_LEVEL).toBe(placeholder("LOG_LEVEL"));
+    // 非シークレット値はリテラルのまま保持（render-openclaw-config が誤ってドロップしない）
+    expect(openclaw.env.LOG_LEVEL).toBe("debug");
+    // 既知シークレットキーはプレースホルダに変換（実値はイメージに含まれない）
     expect(openclaw.env.ANTHROPIC_API_KEY).toBe(placeholder("ANTHROPIC_API_KEY"));
     expect(openclaw.env.PINECONE_API_KEY).toBe(placeholder("PINECONE_API_KEY"));
     expect(openclaw.env.GEMINI_API_KEY).toBe(placeholder("GEMINI_API_KEY"));
 
     const resolvedAgentfile = JSON.parse(readText(files, "Agentfile.resolved.json"));
-    expect(resolvedAgentfile.config.env.LOG_LEVEL).toBe(placeholder("LOG_LEVEL"));
+    expect(resolvedAgentfile.config.env.LOG_LEVEL).toBe("debug");
     expect(resolvedAgentfile.config.env.ANTHROPIC_API_KEY).toBe(placeholder("ANTHROPIC_API_KEY"));
     expect(resolvedAgentfile.config.env.PINECONE_API_KEY).toBe(placeholder("PINECONE_API_KEY"));
     expect(resolvedAgentfile.config.env.GEMINI_API_KEY).toBe(placeholder("GEMINI_API_KEY"));

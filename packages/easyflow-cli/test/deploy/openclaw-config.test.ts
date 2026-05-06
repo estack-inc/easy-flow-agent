@@ -333,20 +333,21 @@ describe("buildOpenclawConfig", () => {
     expect(config.env.NODE_ENV).toBe("production");
   });
 
-  it("config.env の値がプレースホルダでもそのまま env に含まれる（buildConfigLayer 経由の実フロー）", () => {
-    // buildConfigLayer は env 値を ${KEY} プレースホルダに変換して Agentfile.resolved.json に保存する。
-    // deployer はそのプレースホルダ値を持つ agentfile を buildOpenclawConfig に渡すため、
-    // プレースホルダが変換されずにテンプレートに含まれることを確認する。
+  it("config.env の非シークレット値はリテラルのまま env に含まれる（buildConfigLayer 経由の実フロー）", () => {
+    // buildConfigLayer は非シークレット env 値をリテラルのまま Agentfile.resolved.json に保存する（config.ts の修正後）。
+    // deployer はそのリテラル値を持つ agentfile を buildOpenclawConfig に渡すため、
+    // リテラル値がそのまま openclaw.json.template に含まれることを確認する。
+    // これにより render-openclaw-config.js が process.env 未設定でも非シークレット値を保持できる。
     const agentfile = makeMinimalAgentfile({
       config: {
-        env: { LOG_LEVEL: placeholder("LOG_LEVEL"), CUSTOM_VAR: placeholder("CUSTOM_VAR") },
+        env: { LOG_LEVEL: "debug", CUSTOM_VAR: "my-value" },
       },
     });
 
     const config = buildOpenclawConfig({ agentfile, secrets: {} });
 
-    expect(config.env.LOG_LEVEL).toBe(placeholder("LOG_LEVEL"));
-    expect(config.env.CUSTOM_VAR).toBe(placeholder("CUSTOM_VAR"));
+    expect(config.env.LOG_LEVEL).toBe("debug");
+    expect(config.env.CUSTOM_VAR).toBe("my-value");
   });
 
   it("Agentfile の env にシークレットキーがある場合は実値ではなく runtime プレースホルダにする", () => {
