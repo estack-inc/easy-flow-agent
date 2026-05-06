@@ -14,7 +14,6 @@ function makeMockFlyctl(
   return {
     apps: vi.fn().mockResolvedValue("[]"),
     volumes: vi.fn().mockResolvedValue("[]"),
-    secrets: vi.fn().mockResolvedValue(undefined),
     secretsImport: vi.fn().mockResolvedValue(undefined),
     secretsList: vi.fn().mockResolvedValue("[]"),
     deploy: vi.fn().mockResolvedValue(undefined),
@@ -408,7 +407,7 @@ describe("FlyDeployAdapter", () => {
       expect(volumesFn).toHaveBeenCalledTimes(1);
     });
 
-    it("既存アプリで追加シークレットが不要な場合は flyctl secrets を呼ばない", async () => {
+    it("既存アプリで追加シークレットが不要な場合は flyctl secrets import を呼ばない", async () => {
       const secretsImportFn = vi.fn().mockResolvedValue(undefined);
       const flyctl = makeMockFlyctl({
         apps: vi.fn().mockResolvedValue(JSON.stringify([{ Name: "my-test-app" }])),
@@ -435,7 +434,7 @@ describe("FlyDeployAdapter", () => {
       expect(secretsImportFn).not.toHaveBeenCalled();
     });
 
-    it("初回デプロイでは GATEWAY_TOKEN を生成して secretsImport に含める", async () => {
+    it("初回デプロイでは GATEWAY_TOKEN を生成して secrets import の stdin に含める", async () => {
       const secretsImportFn = vi.fn().mockResolvedValue(undefined);
       const flyctl = makeMockFlyctl({
         apps: vi.fn().mockResolvedValue("[]"),
@@ -456,8 +455,8 @@ describe("FlyDeployAdapter", () => {
 
       expect(secretsImportFn).toHaveBeenCalledWith(
         "my-test-app",
-        expect.arrayContaining([expect.stringMatching(/^GATEWAY_TOKEN=/)]),
-        true,
+        expect.stringMatching(/^ANTHROPIC_API_KEY=test-anthropic-key\nGATEWAY_TOKEN=.+\n$/s),
+        { stage: true },
       );
     });
 

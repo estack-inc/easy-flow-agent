@@ -15,16 +15,20 @@ export class FlyctlRunner {
     return this.run(["volumes", ...args]);
   }
 
-  async secrets(args: string[]): Promise<void> {
-    await this.run(["secrets", ...args]);
-  }
+  async secretsImport(
+    appName: string,
+    content: string,
+    options?: { stage?: boolean },
+  ): Promise<void> {
+    const args = ["secrets", "import", "--app", appName];
+    if (options?.stage) {
+      args.push("--stage");
+    }
 
-  async secretsImport(app: string, secretPairs: string[], stage: boolean): Promise<void> {
-    const input = secretPairs.join("\n");
-    await this.runWithInput(
-      ["secrets", "import", "--app", app, ...(stage ? ["--stage"] : [])],
-      input,
-    );
+    await this.run(args, {
+      input: content,
+      redactValues: parseSecretImportValues(content),
+    });
   }
 
   async secretsList(appName: string): Promise<string> {
@@ -50,35 +54,9 @@ export class FlyctlRunner {
     return this.run(["machines", ...args]);
   }
 
-  private async runWithInput(args: string[], input: string): Promise<void> {
-    try {
-      const result = await execa("flyctl", args, {
-        reject: true,
-        all: true,
-        input,
-      });
-      const output = result.all ?? result.stdout ?? "";
-      for (const line of output.split("\n")) {
-        if (line.trim()) {
-          this.log(line);
-        }
-      }
-    } catch (err) {
-      const nodeErr = err as NodeJS.ErrnoException;
-      if (nodeErr.code === "ENOENT") {
-        throw new EasyflowError(
-          "flyctl が見つかりません",
-          "flyctl がインストールされていないか、PATH に含まれていません",
-          "https://fly.io/docs/hands-on/install-flyctl/ からインストールしてください",
-        );
-      }
-      throw new EasyflowError(`flyctl コマンドが失敗しました: flyctl ${args[0]}`);
-    }
-  }
-
   private async run(
     args: string[],
-    options?: { timeoutMs?: number; cwd?: string },
+    options?: { timeoutMs?: number; cwd?: string; input?: string; redactValues?: string[] },
   ): Promise<string> {
     try {
       const result = await execa("flyctl", args, {
@@ -86,10 +64,12 @@ export class FlyctlRunner {
         all: true,
         cwd: options?.cwd,
         timeout: options?.timeoutMs,
+        input: options?.input,
       });
 
       const output = result.all ?? result.stdout ?? "";
-      for (const line of output.split("\n")) {
+      const redactedOutput = redactValues(output, options?.redactValues);
+      for (const line of redactedOutput.split("\n")) {
         if (line.trim()) {
           this.log(line);
         }
@@ -107,8 +87,32 @@ export class FlyctlRunner {
 
       // execa error — stderr を含めて再スロー
       const execaErr = err as { stderr?: string; all?: string; message?: string };
-      const detail = execaErr.stderr ?? execaErr.all ?? execaErr.message ?? String(err);
+      const detail = redactValues(
+        execaErr.stderr ?? execaErr.all ?? execaErr.message ?? String(err),
+        options?.redactValues,
+      );
       throw new EasyflowError(`flyctl コマンドが失敗しました: flyctl ${args[0]}`, detail);
     }
   }
+}
+
+function parseSecretImportValues(content: string): string[] {
+  return content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .map((line) => {
+      const separatorIndex = line.indexOf("=");
+      return separatorIndex >= 0 ? line.slice(separatorIndex + 1) : "";
+    })
+    .filter(Boolean);
+}
+
+function redactValues(value: string, values?: string[]): string {
+  let redacted = value;
+  for (const secret of values ?? []) {
+    if (!secret) continue;
+    redacted = redacted.split(secret).join("[REDACTED]");
+  }
+  return redacted;
 }

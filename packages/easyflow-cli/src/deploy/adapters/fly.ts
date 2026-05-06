@@ -242,7 +242,7 @@ export class FlyDeployAdapter implements DeployAdapter {
       }
       if (secretPairs.length > 0) {
         this.log(`[fly] シークレット設定 (${secretPairs.length} 件)`);
-        await this.flyctl.secretsImport(app, secretPairs, true);
+        await this.flyctl.secretsImport(app, `${secretPairs.join("\n")}\n`, { stage: true });
       }
 
       // Step 6: デプロイ（tmpDir をビルドコンテキストとして flyctl に渡す）

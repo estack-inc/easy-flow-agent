@@ -82,6 +82,13 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
     Object.entries(agentfile.config?.env ?? {}).filter(([key]) => !SECRET_ENV_KEYS.has(key)),
   );
   env.OPENCLAW_AGENT_ID = agentId;
+  const webchatConfig = agentfile.channels?.webchat;
+  if (webchatConfig?.enabled === true) {
+    env.EASYFLOW_WEBCHAT_ENABLED = "true";
+    if (webchatConfig.invite_codes && webchatConfig.invite_codes.length > 0) {
+      env.EASYFLOW_WEBCHAT_INVITE_CODES = JSON.stringify(webchatConfig.invite_codes);
+    }
+  }
 
   // ---- channels ----
   const channels: Record<string, unknown> = {};
@@ -114,16 +121,6 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
       accessToken: lineAccessTokenPlaceholder,
       channelSecret: lineChannelSecretPlaceholder,
     };
-  }
-
-  const webchatEnabled = agentfile.channels?.webchat?.enabled === true;
-  if (webchatEnabled) {
-    const webchatConfig: Record<string, unknown> = { enabled: true };
-    const inviteCodes = agentfile.channels?.webchat?.invite_codes;
-    if (inviteCodes && inviteCodes.length > 0) {
-      webchatConfig.invite_codes = inviteCodes;
-    }
-    channels.webchat = webchatConfig;
   }
 
   // ---- plugins ----
