@@ -349,7 +349,7 @@ describe("buildOpenclawConfig", () => {
     expect(config.env.CUSTOM_VAR).toBe(placeholder("CUSTOM_VAR"));
   });
 
-  it("Agentfile の env にシークレットキーがあっても env には含めない", () => {
+  it("Agentfile の env にシークレットキーがある場合は実値ではなく runtime プレースホルダにする", () => {
     const agentfile = makeMinimalAgentfile({
       config: { env: { ANTHROPIC_API_KEY: "from-agentfile", LOG_LEVEL: "debug" } },
     });
@@ -359,8 +359,49 @@ describe("buildOpenclawConfig", () => {
       secrets: { ANTHROPIC_API_KEY: "from-secret" },
     });
 
-    expect(config.env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(config.env.ANTHROPIC_API_KEY).toBe(placeholder("ANTHROPIC_API_KEY"));
     expect(config.env.LOG_LEVEL).toBe("debug");
+  });
+
+  it("任意の secret-like env キーは実値を openclaw.json.template に焼き込まない", () => {
+    const agentfile = makeMinimalAgentfile({
+      config: {
+        env: {
+          CUSTOM_API_TOKEN: "agentfile-token",
+          SERVICE_PRIVATE_KEY: "agentfile-private-key",
+          LOG_LEVEL: "debug",
+        },
+      },
+    });
+
+    const config = buildOpenclawConfig({
+      agentfile,
+      secrets: {},
+    });
+
+    expect(config.env.CUSTOM_API_TOKEN).toBe(placeholder("CUSTOM_API_TOKEN"));
+    expect(config.env.SERVICE_PRIVATE_KEY).toBe(placeholder("SERVICE_PRIVATE_KEY"));
+    expect(config.env.LOG_LEVEL).toBe("debug");
+  });
+
+  it("local/Fly secrets に存在する任意 env キーは runtime プレースホルダにする", () => {
+    const agentfile = makeMinimalAgentfile({
+      config: {
+        env: {
+          INTERNAL_ENDPOINT: "agentfile-value",
+          LOG_LEVEL: "info",
+        },
+      },
+    });
+
+    const config = buildOpenclawConfig({
+      agentfile,
+      secrets: {},
+      availableSecretKeys: ["INTERNAL_ENDPOINT"],
+    });
+
+    expect(config.env.INTERNAL_ENDPOINT).toBe(placeholder("INTERNAL_ENDPOINT"));
+    expect(config.env.LOG_LEVEL).toBe("info");
   });
 
   it("tools.builtin に model-router がある場合 plugins.entries に model-router が含まれる", () => {

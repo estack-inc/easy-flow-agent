@@ -38,6 +38,9 @@ const SECRET_ENV_KEYS = new Set([
   "LINE_CHANNEL_SECRET",
   "GATEWAY_TOKEN",
 ]);
+const SECRET_ENV_KEY_PATTERN =
+  /(^|_)(API_?KEY|SECRET|TOKEN|PASSWORD|PASS|CREDENTIAL|PRIVATE_?KEY|AUTH)(_|$)/i;
+const FULL_PLACEHOLDER_PATTERN = /^\$\{([A-Z_][A-Z0-9_]*)\}$/;
 
 function normalizeOpenclawModel(model: string): string {
   const normalized = model.trim();
@@ -63,6 +66,38 @@ function normalizeOpenclawModel(model: string): string {
   return normalized;
 }
 
+function isSecretEnvKey(key: string): boolean {
+  return SECRET_ENV_KEYS.has(key) || SECRET_ENV_KEY_PATTERN.test(key);
+}
+
+function toRuntimePlaceholder(key: string): string {
+  return `\${${key}}`;
+}
+
+function buildRuntimeEnv(
+  agentfileEnv: Record<string, string> | undefined,
+  availableSecretKeys: Set<string>,
+): Record<string, string> {
+  const env: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(agentfileEnv ?? {})) {
+    const placeholderMatch = value.match(FULL_PLACEHOLDER_PATTERN);
+    if (placeholderMatch) {
+      env[key] = value;
+      continue;
+    }
+
+    if (availableSecretKeys.has(key) || isSecretEnvKey(key)) {
+      env[key] = toRuntimePlaceholder(key);
+      continue;
+    }
+
+    env[key] = value;
+  }
+
+  return env;
+}
+
 /**
  * Agentfile とシークレットから openclaw.json 相当の設定を生成する。
  */
@@ -76,11 +111,9 @@ export function buildOpenclawConfig(input: OpenclawConfigInput): OpenclawConfig 
 
   // ---- env ----
   // Agentfile の config.env のみを含める。
-  // シークレット（ANTHROPIC_API_KEY 等）は Fly secrets 経由で process.env に注入され、
-  // 各プラグインが process.env から参照するため、ここには埋め込まない。
-  const env = Object.fromEntries(
-    Object.entries(agentfile.config?.env ?? {}).filter(([key]) => !SECRET_ENV_KEYS.has(key)),
-  );
+  // secret-like なキー、または local/Fly secrets で利用可能なキーは値を焼き込まず、
+  // render-openclaw-config.js が app process 起動時に process.env から展開する。
+  const env = buildRuntimeEnv(agentfile.config?.env, availableSecretKeys);
   env.OPENCLAW_AGENT_ID = agentId;
   const webchatConfig = agentfile.channels?.webchat;
   if (webchatConfig?.enabled === true) {
