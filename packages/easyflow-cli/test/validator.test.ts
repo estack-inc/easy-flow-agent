@@ -273,6 +273,26 @@ describe("validateSemantic", () => {
     const errors = validateSemantic(agentfile, { basedir: fixturesDir });
     expect(errors.some((e) => e.keyword === "channelEnabled")).toBe(true);
   });
+
+  it("skipFileExistenceCheck=true でファイル存在チェックがスキップされる", () => {
+    const agentfile = createValidAgentfile({
+      knowledge: {
+        sources: [{ path: "./nonexistent-dir", type: "agents_rule", description: "test" }],
+      },
+      agents_core: { file: "./nonexistent.md" },
+      tools: {
+        custom: [{ name: "tool", path: "./nonexistent.js" }],
+      },
+    });
+
+    const errors = validateSemantic(agentfile, {
+      basedir: fixturesDir,
+      skipFileExistenceCheck: true,
+    });
+
+    // fileExists エラーがないことを確認
+    expect(errors.filter((e) => e.keyword === "fileExists")).toHaveLength(0);
+  });
 });
 
 describe("parseAgentfile (バリデーションエラー)", () => {

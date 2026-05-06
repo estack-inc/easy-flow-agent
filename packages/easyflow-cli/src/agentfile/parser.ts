@@ -21,6 +21,8 @@ export interface ParseOptions {
   basedir: string;
   /** ベーステンプレートの検索パス（デフォルト: 組み込みテンプレート） */
   templatePaths?: string[];
+  /** ファイル存在チェックをスキップ（deploy 時など、レイヤーに焼き込み済みの場合） */
+  skipFileExistenceCheck?: boolean;
 }
 
 export interface ParseResult {
