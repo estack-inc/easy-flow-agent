@@ -62,7 +62,7 @@ describe("buildConfigLayer", () => {
     expect(resolvedAgentfile.channels.webchat.invite_codes).toEqual(["ABC"]);
   });
 
-  it("既知シークレットキーはプレースホルダに変換され、非シークレット値はリテラルのまま保持される", async () => {
+  it("secret-like env 値のみプレースホルダに変換し、通常 env 値は保持する", async () => {
     const agentfile = baseAgentfile({
       config: {
         env: {
@@ -70,6 +70,8 @@ describe("buildConfigLayer", () => {
           ANTHROPIC_API_KEY: "sk-secret-value",
           PINECONE_API_KEY: "pc-secret",
           GEMINI_API_KEY: "gm-secret",
+          CUSTOM_API_TOKEN: "custom-secret",
+          ALREADY_PLACEHOLDER: placeholder("EXTERNAL_VALUE"),
         },
       },
     });
@@ -77,18 +79,20 @@ describe("buildConfigLayer", () => {
     const files = await extractTarGz(layer.content);
 
     const openclaw = JSON.parse(readText(files, "openclaw.json"));
-    // 非シークレット値はリテラルのまま保持（render-openclaw-config が誤ってドロップしない）
     expect(openclaw.env.LOG_LEVEL).toBe("debug");
-    // 既知シークレットキーはプレースホルダに変換（実値はイメージに含まれない）
     expect(openclaw.env.ANTHROPIC_API_KEY).toBe(placeholder("ANTHROPIC_API_KEY"));
     expect(openclaw.env.PINECONE_API_KEY).toBe(placeholder("PINECONE_API_KEY"));
     expect(openclaw.env.GEMINI_API_KEY).toBe(placeholder("GEMINI_API_KEY"));
+    expect(openclaw.env.CUSTOM_API_TOKEN).toBe(placeholder("CUSTOM_API_TOKEN"));
+    expect(openclaw.env.ALREADY_PLACEHOLDER).toBe(placeholder("EXTERNAL_VALUE"));
 
     const resolvedAgentfile = JSON.parse(readText(files, "Agentfile.resolved.json"));
     expect(resolvedAgentfile.config.env.LOG_LEVEL).toBe("debug");
     expect(resolvedAgentfile.config.env.ANTHROPIC_API_KEY).toBe(placeholder("ANTHROPIC_API_KEY"));
     expect(resolvedAgentfile.config.env.PINECONE_API_KEY).toBe(placeholder("PINECONE_API_KEY"));
     expect(resolvedAgentfile.config.env.GEMINI_API_KEY).toBe(placeholder("GEMINI_API_KEY"));
+    expect(resolvedAgentfile.config.env.CUSTOM_API_TOKEN).toBe(placeholder("CUSTOM_API_TOKEN"));
+    expect(resolvedAgentfile.config.env.ALREADY_PLACEHOLDER).toBe(placeholder("EXTERNAL_VALUE"));
   });
 
   it("config/channels 未指定時は空の openclaw.json / channels.json を出力する", async () => {
