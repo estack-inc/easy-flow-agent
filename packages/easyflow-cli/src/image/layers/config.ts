@@ -3,12 +3,14 @@ import { type PackEntry, packLayer } from "../tar-pack.js";
 import type { LayerData } from "../types.js";
 
 /**
- * config レイヤー（openclaw.json / channels.json / Agentfile）を生成する。
+ * config レイヤー（openclaw.json / channels.json / Agentfile.resolved.json）を生成する。
  *
- * - openclaw.json: `{ model, rag, env }` の最小スキーマ（Phase 1）
+ * - openclaw.json: `{ model, rag, env }` の最小スキーマ（Phase 1）。シークレット env キーは除外済み
  * - channels.json: Agentfile の channels セクションをそのまま保存
- * - Agentfile: 元 YAML テキストを再現用に保存
  * - Agentfile.resolved.json: base 継承を解決したビルド時点の Agentfile（シークレット env キーはマスク済み）
+ *
+ * NOTE: 生の Agentfile YAML は含めない。config layer は Fly イメージに丸ごと COPY されるため、
+ * シークレット env 値を含む可能性があるファイルをイメージに焼き込まないよう sanitize 済みファイルのみ収録する。
  */
 
 // Fly イメージに焼き込む Agentfile から除外するシークレット env キー
@@ -38,18 +40,25 @@ function sanitizeAgentfileEnv(agentfile: Agentfile): Agentfile {
   };
 }
 
-export async function buildConfigLayer(
-  agentfile: Agentfile,
-  agentfileRawContent: string,
-): Promise<LayerData> {
+export async function buildConfigLayer(agentfile: Agentfile): Promise<LayerData> {
+  // openclaw.json の env もシークレットキーを除外してイメージに焼き込まない
+  const sanitizedEnv = agentfile.config?.env
+    ? Object.fromEntries(
+        Object.entries(agentfile.config.env).filter(([key]) => !SECRET_ENV_KEYS.has(key)),
+      )
+    : {};
+
   const openclawConfig = {
     model: agentfile.config?.model ?? {},
     rag: agentfile.config?.rag ?? { enabled: false },
-    env: agentfile.config?.env ?? {},
+    env: sanitizedEnv,
   };
 
   const channels = agentfile.channels ?? {};
 
+  // 生の Agentfile YAML は含めない:
+  // config layer は Fly イメージに丸ごと COPY されるため、シークレット env 値を安全に除去できない
+  // sanitize 済みの Agentfile.resolved.json のみを収録する
   const entries: PackEntry[] = [
     {
       kind: "file",
@@ -60,11 +69,6 @@ export async function buildConfigLayer(
       kind: "file",
       name: "channels.json",
       content: `${JSON.stringify(channels, null, 2)}\n`,
-    },
-    {
-      kind: "file",
-      name: "Agentfile",
-      content: agentfileRawContent,
     },
     {
       kind: "file",

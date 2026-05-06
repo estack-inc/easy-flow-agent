@@ -76,7 +76,7 @@ export class ImageBuilder {
       buildIdentityLayer(agentfile, basedir),
       buildKnowledgeLayer(agentfile),
       buildToolsLayer(agentfile, basedir),
-      buildConfigLayer(agentfile, rawContent),
+      buildConfigLayer(agentfile),
     ]);
     const layerMap: Record<LayerName, LayerData> = {
       identity,
