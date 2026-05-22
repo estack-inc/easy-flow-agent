@@ -16,7 +16,11 @@ type PluginApi = {
   /** OpenClaw がホスト設定（publicUrl 等）を公開する場合に利用 */
   config?: Record<string, unknown>;
   logger: PluginLogger;
-  registerHook: (event: string, handler: unknown) => void;
+  registerHook: (
+    event: string,
+    handler: unknown,
+    opts?: { name?: string; description?: string },
+  ) => void;
   registerHttpRoute: (opts: {
     path: string;
     match: string;
@@ -45,8 +49,9 @@ const fileServePlugin = {
 
     // 2. before_tool_call フック
     const beforeToolCallHook = createBeforeToolCallHook(config, api.logger);
-    Object.defineProperty(beforeToolCallHook, "name", { value: "file-serve:before_tool_call" });
-    api.registerHook("before_tool_call", beforeToolCallHook);
+    api.registerHook("before_tool_call", beforeToolCallHook, {
+      name: "file-serve:before_tool_call",
+    });
 
     // 3. クリーンアップサービス
     api.registerService(createCleanupService(config, api.logger));
