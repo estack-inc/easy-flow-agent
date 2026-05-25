@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import register from "./index.js";
+import register, { findBlockMatch } from "./index.js";
 
 type HookHandler = (event: unknown, ctx: unknown) => unknown;
 
@@ -208,5 +208,128 @@ describe("before_agent_run handler", () => {
     const result = handler!({ prompt: "", messages: [] }, {});
     expect(result).toEqual({ outcome: "pass" });
     expect(api.logger.info).not.toHaveBeenCalled();
+  });
+});
+
+describe("findBlockMatch (path block 判定)", () => {
+  it("string プロパティに blockPaths が含まれていたら match を返す", () => {
+    const r = findBlockMatch({ path: "/data/workspace/zoom_transcribe/transcript_0415.txt" }, [
+      "/data/workspace/zoom_transcribe/",
+    ]);
+    expect(r).not.toBeNull();
+    expect(r?.matched).toBe("/data/workspace/zoom_transcribe/");
+    expect(r?.field).toBe("path");
+  });
+
+  it("blockPaths にマッチしない path は null を返す", () => {
+    const r = findBlockMatch({ path: "/data/workspace/note.md" }, [
+      "/data/workspace/zoom_transcribe/",
+    ]);
+    expect(r).toBeNull();
+  });
+
+  it("blockPaths が空配列なら常に null を返す", () => {
+    const r = findBlockMatch({ path: "/data/workspace/zoom_transcribe/x.txt" }, []);
+    expect(r).toBeNull();
+  });
+
+  it("exec tool の command 文字列に blockPaths が含まれていたら検出する", () => {
+    const r = findBlockMatch({ command: "cat /data/workspace/zoom_transcribe/transcript.txt" }, [
+      "/data/workspace/zoom_transcribe/",
+    ]);
+    expect(r).not.toBeNull();
+    expect(r?.field).toBe("command");
+  });
+
+  it("`../` を含む相対 path 混在でも canonical 化で検出する", () => {
+    const r = findBlockMatch(
+      { path: "/data/workspace/../workspace/zoom_transcribe/transcript.txt" },
+      ["/data/workspace/zoom_transcribe/"],
+    );
+    expect(r).not.toBeNull();
+    expect(r?.matched).toBe("/data/workspace/zoom_transcribe/");
+  });
+
+  it("ネストした object/array の中の string も検査する", () => {
+    const r = findBlockMatch({ args: ["-c", "cat /data/workspace/zoom_transcribe/x.txt"] }, [
+      "/data/workspace/zoom_transcribe/",
+    ]);
+    expect(r).not.toBeNull();
+    expect(r?.field).toBe("args[1]");
+  });
+
+  it("循環参照を含む object でも無限ループしない", () => {
+    const obj: Record<string, unknown> = { a: { path: "/data/workspace/note.md" } };
+    (obj.a as Record<string, unknown>).self = obj;
+    expect(() => findBlockMatch(obj, ["/no-match/"])).not.toThrow();
+  });
+});
+
+describe("before_tool_call の block mode", () => {
+  it("blockMode=observe（既定）では blockPaths に match しても block しない", () => {
+    const api = makeApi({ blockPaths: ["/data/workspace/zoom_transcribe/"] });
+    register(api as any);
+    const handler = api.hooks.get("before_tool_call");
+    const result = handler!(
+      { toolName: "read", params: { path: "/data/workspace/zoom_transcribe/x.txt" } },
+      {},
+    );
+    expect(result).toEqual({});
+  });
+
+  it("blockMode=block で blockPaths に match したら block: true を返す", () => {
+    const api = makeApi({
+      blockMode: "block",
+      blockPaths: ["/data/workspace/zoom_transcribe/"],
+    });
+    register(api as any);
+    const handler = api.hooks.get("before_tool_call");
+    const result = handler!(
+      { toolName: "read", params: { path: "/data/workspace/zoom_transcribe/x.txt" } },
+      {},
+    ) as { block?: boolean; blockReason?: string };
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("/data/workspace/zoom_transcribe/");
+  });
+
+  it("blockMode=block でも blockPaths が空なら block しない", () => {
+    const api = makeApi({ blockMode: "block", blockPaths: [] });
+    register(api as any);
+    const handler = api.hooks.get("before_tool_call");
+    const result = handler!(
+      { toolName: "read", params: { path: "/data/workspace/zoom_transcribe/x.txt" } },
+      {},
+    );
+    expect(result).toEqual({});
+  });
+
+  it("blockMode=block でも非マッチ path は block しない", () => {
+    const api = makeApi({
+      blockMode: "block",
+      blockPaths: ["/data/workspace/zoom_transcribe/"],
+    });
+    register(api as any);
+    const handler = api.hooks.get("before_tool_call");
+    const result = handler!({ toolName: "read", params: { path: "/data/workspace/note.md" } }, {});
+    expect(result).toEqual({});
+  });
+
+  it("block 時に warn または info で BLOCKED log を出す", () => {
+    const api = makeApi({
+      blockMode: "block",
+      blockPaths: ["/data/workspace/zoom_transcribe/"],
+    });
+    register(api as any);
+    const handler = api.hooks.get("before_tool_call");
+    api.logger.info.mockClear();
+    api.logger.warn.mockClear();
+    handler!(
+      { toolName: "exec", params: { command: "cat /data/workspace/zoom_transcribe/x.txt" } },
+      {},
+    );
+    const warnCalls = api.logger.warn.mock.calls.map((c: unknown[]) => c[0] as string);
+    const infoCalls = api.logger.info.mock.calls.map((c: unknown[]) => c[0] as string);
+    const allCalls = [...warnCalls, ...infoCalls];
+    expect(allCalls.some((m) => m.includes("BLOCKED"))).toBe(true);
   });
 });
