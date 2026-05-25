@@ -15,7 +15,7 @@
       "verbose": {
         "type": "boolean",
         "default": false,
-        "description": "tool params の概略（先頭 200 文字）も log に含める"
+        "description": "tool params の概略（最大 200 byte）も log に含める"
       }
     }
   }

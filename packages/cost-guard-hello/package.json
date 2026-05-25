@@ -13,7 +13,7 @@
   "main": "./cost-guard-hello/index.js",
   "types": "./cost-guard-hello/index.d.ts",
   "openclaw": {
-    "extensions": ["./src/index.ts"]
+    "extensions": ["./cost-guard-hello/index.js"]
   },
   "files": [
     "cost-guard-hello",

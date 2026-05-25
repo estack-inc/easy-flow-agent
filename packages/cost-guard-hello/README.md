@@ -50,7 +50,7 @@ openclaw plugins inspect cost-guard-hello --runtime --json
 | キー | 型 | デフォルト | 説明 |
 |---|---|---|---|
 | `logging` | boolean | `true` | hook 発火時に observation log を出力する |
-| `verbose` | boolean | `false` | tool params の冒頭 200 byte も log に含める（transcript 本体・プロンプト全文は吐かない）|
+| `verbose` | boolean | `false` | tool params の概略を最大 200 byte まで log に含める（transcript 本体・プロンプト全文は吐かない）|
 
 ## 観測 log の形式
 

@@ -5,9 +5,14 @@
  * - register(api) で 3 つの hook が登録される
  * - logging=false のとき log が出ない
  * - block / rewrite / outcome を変更しない（observe-only 性質）
- * - safePreview が長文を切り詰める
+ * - safePreview が長文を byte 上限で切り詰める
+ * - npm pack 対象に OpenClaw extension が含まれる
  */
 
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import register from "./index.js";
 
@@ -35,6 +40,12 @@ function makeApi(config: Record<string, unknown> = {}): MockApi {
     }),
     hooks,
   };
+}
+
+function extractParamsHead(logLine: string): string {
+  const match = logLine.match(/params_head="(.*)"/);
+  expect(match).not.toBeNull();
+  return match![1];
 }
 
 describe("cost-guard-hello register", () => {
@@ -102,8 +113,48 @@ describe("before_tool_call handler", () => {
     const hugeParams = { content: "x".repeat(1000) };
     handler!({ toolName: "write", params: hugeParams }, {});
     const call = api.logger.info.mock.calls[0][0] as string;
-    // params_head="..." の中身は 200 文字 + "..." で切れている
-    expect(call).toMatch(/params_head=".{200,}\.\.\."/);
+    const paramsHead = extractParamsHead(call);
+    expect(Buffer.byteLength(paramsHead, "utf8")).toBeLessThanOrEqual(200);
+    expect(paramsHead.endsWith("...")).toBe(true);
+  });
+
+  it("verbose=true でマルチバイト params も 200 byte 以内に切り詰める", () => {
+    const api = makeApi({ verbose: true });
+    register(api as any);
+    const handler = api.hooks.get("before_tool_call");
+    api.logger.info.mockClear();
+    const multibyteParams = { content: "日本語".repeat(100) };
+    handler!({ toolName: "write", params: multibyteParams }, {});
+    const call = api.logger.info.mock.calls[0][0] as string;
+    const paramsHead = extractParamsHead(call);
+    expect(Buffer.byteLength(paramsHead, "utf8")).toBeLessThanOrEqual(200);
+    expect(paramsHead.endsWith("...")).toBe(true);
+    expect(paramsHead).not.toContain("\uFFFD");
+  });
+});
+
+describe("npm package metadata", () => {
+  it("npm pack に OpenClaw extension の参照先ファイルを含める", () => {
+    const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const packageJson = JSON.parse(
+      readFileSync(resolve(packageDir, "package.json"), "utf8"),
+    ) as {
+      openclaw: { extensions: string[] };
+    };
+    execFileSync("npm", ["run", "build"], { cwd: packageDir, stdio: "pipe" });
+    const output = execFileSync("npm", ["pack", "--dry-run", "--json"], {
+      cwd: packageDir,
+      encoding: "utf8",
+    });
+    const [pack] = JSON.parse(output) as Array<{
+      files: Array<{ path: string }>;
+    }>;
+    const files = new Set(pack.files.map((file) => file.path));
+
+    expect(files.has("package.json")).toBe(true);
+    for (const extension of packageJson.openclaw.extensions) {
+      expect(files.has(extension.replace(/^\.\//, ""))).toBe(true);
+    }
   });
 });
 

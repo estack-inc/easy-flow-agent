@@ -9,7 +9,7 @@
  * 動作：
  * - block / rewrite / outcome を変更しない（pure observer）
  * - すべての hook 発火を api.logger.info で記録
- * - verbose=true のとき tool params の冒頭 200 文字を log に含める
+ * - verbose=true のとき tool params の概略を最大 200 byte まで log に含める
  *
  * 詳細は easy-flow/docs/operations/transcript-cost-prevention-phase0.md 参照。
  */
@@ -88,9 +88,9 @@ export default function register(api: OpenClawPluginApi): void {
  * - 失敗時 → "(unserializable)"
  *
  * Phase 0 観測ログ専用。プロンプト本体や transcript 全文を吐かないため
- * VERBOSE_PARAM_HEAD_BYTES（200 byte）で切る。
+ * VERBOSE_PARAM_HEAD_BYTES（最大 200 byte）で切る。
  */
-function safePreview(v: unknown, maxLen: number): string {
+function safePreview(v: unknown, maxBytes: number): string {
   if (v === undefined || v === null) return "(empty)";
   let s: string;
   try {
@@ -99,5 +99,24 @@ function safePreview(v: unknown, maxLen: number): string {
     return "(unserializable)";
   }
   s = s.replace(/\s+/g, " ").trim();
-  return s.length > maxLen ? `${s.slice(0, maxLen)}...` : s;
+  return truncateUtf8(s, maxBytes);
+}
+
+function truncateUtf8(s: string, maxBytes: number): string {
+  if (Buffer.byteLength(s, "utf8") <= maxBytes) return s;
+
+  const suffix = "...";
+  const suffixBytes = Buffer.byteLength(suffix, "utf8");
+  const headLimit = Math.max(0, maxBytes - suffixBytes);
+  let head = "";
+  let headBytes = 0;
+
+  for (const char of s) {
+    const charBytes = Buffer.byteLength(char, "utf8");
+    if (headBytes + charBytes > headLimit) break;
+    head += char;
+    headBytes += charBytes;
+  }
+
+  return `${head}${suffix}`;
 }
