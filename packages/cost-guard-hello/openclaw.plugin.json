@@ -1,0 +1,22 @@
+{
+  "id": "cost-guard-hello",
+  "kind": "plugin",
+  "name": "Cost Guard Hello",
+  "description": "Phase 0 実証用 observe-only plugin。before_tool_call / tool_result_persist / before_agent_run の発火を log するのみ。block / rewrite はしない。本格的な cost-guard plugin の deployment / hook order / lossless-claw との競合を Phase 0 で検証するための土台。",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "logging": {
+        "type": "boolean",
+        "default": true,
+        "description": "hook 発火時に api.logger.info で観測情報を出力するか"
+      },
+      "verbose": {
+        "type": "boolean",
+        "default": false,
+        "description": "tool params の概略（最大 200 byte）も log に含める"
+      }
+    }
+  }
+}

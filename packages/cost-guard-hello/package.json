@@ -1,0 +1,39 @@
+{
+  "name": "cost-guard-hello",
+  "version": "0.1.0",
+  "description": "Phase 0 実証用 observe-only plugin（before_tool_call / tool_result_persist / before_agent_run を log するのみ。block / rewrite しない）",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./cost-guard-hello/index.js",
+      "types": "./cost-guard-hello/index.d.ts",
+      "default": "./cost-guard-hello/index.js"
+    }
+  },
+  "main": "./cost-guard-hello/index.js",
+  "types": "./cost-guard-hello/index.d.ts",
+  "openclaw": {
+    "extensions": ["./cost-guard-hello/index.js"]
+  },
+  "files": [
+    "cost-guard-hello",
+    "openclaw.plugin.json"
+  ],
+  "scripts": {
+    "build": "tsc && cp openclaw.plugin.json cost-guard-hello/openclaw.plugin.json",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.5.12"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  }
+}
