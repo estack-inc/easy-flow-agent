@@ -14,11 +14,17 @@
  * 詳細は easy-flow/docs/operations/transcript-cost-prevention-phase0.md 参照。
  */
 
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-
 interface CostGuardHelloConfig {
   logging?: boolean;
   verbose?: boolean;
+}
+
+interface OpenClawPluginApi {
+  pluginConfig?: Record<string, unknown>;
+  logger: {
+    info(message: string): void;
+  };
+  on(event: string, handler: (event: unknown, ctx: unknown) => unknown): void;
 }
 
 const TAG = "[cost-guard-hello]";
