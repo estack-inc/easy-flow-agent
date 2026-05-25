@@ -11,7 +11,7 @@
  * - blockMode=observe（既定）：すべての hook 発火を api.logger.info で記録、block / rewrite はしない
  * - blockMode=block：blockPaths にマッチした path を含む tool params の呼び出しを block
  *   - tool params 内の文字列フィールドを再帰的に走査し、各 path 候補を path.resolve で canonical 化
- *   - canonical 化した path 文字列または元の文字列に blockPaths の各プレフィックスが含まれていたら block
+ *   - canonical 化した path 文字列または元の文字列が blockPaths の各 directory と同一または配下なら block
  *   - `../` や絶対 path 混在で `/data/workspace/zoom_transcribe/` を含まないアクセス経路も block 対象に正規化
  *   - 注意：symlink 解決（realpath）や inode / device 比較は本 plugin では実施しない（B-4 の漏れパターン
  *     として Phase 1 設計に引き継ぐ）
@@ -128,7 +128,7 @@ export default function register(api: OpenClawPluginApi): void {
  *
  * 判定ロジック：
  * 1. 文字列フィールド v ごとに、元の文字列 v と canonical 化した resolved の両方で
- *    blockPaths のいずれかのプレフィックスが includes されたら block
+ *    blockPaths のいずれかと同一、またはその配下にあれば block
  * 2. canonical 化は path.resolve（`/` 起点、および params 内の cwd / workdir 等）で実施
  *    → `../`、相対 path、絶対 path 混在を吸収
  *
@@ -143,6 +143,10 @@ export function findBlockMatch(
   blockPaths: string[],
 ): { matched: string; field: string } | null {
   const visited = new WeakSet<object>();
+  const blockedMatchers = blockPaths.map((blocked) => ({
+    original: blocked,
+    normalized: normalizePathForMatch(blocked),
+  }));
 
   function walk(
     value: unknown,
@@ -150,11 +154,11 @@ export function findBlockMatch(
     baseDirs: string[],
   ): { matched: string; field: string } | null {
     if (typeof value === "string") {
-      const candidates = expandPathCandidates(value, baseDirs);
+      const candidates = expandPathCandidates(value, baseDirs, isCommandLikeField(fieldPath));
       for (const candidate of candidates) {
-        for (const blocked of blockPaths) {
-          if (candidate.includes(blocked)) {
-            return { matched: blocked, field: fieldPath };
+        for (const blocked of blockedMatchers) {
+          if (isBlockedPathCandidate(candidate, blocked.normalized)) {
+            return { matched: blocked.original, field: fieldPath };
           }
         }
       }
@@ -190,20 +194,25 @@ export function findBlockMatch(
  * 候補：
  * - 元の文字列そのまま（コマンド文字列に path が含まれている場合のため）
  * - 文字列内の path-like token（コマンド文字列中の相対 path 検出のため）
+ * - command-like field では bare filename token（baseDir 起点の相対 file 検出のため）
  * - path.resolve("/", s)（絶対パスとして resolve）
  * - path.resolve(s)（current working directory 起点で resolve）
  * - path.resolve(baseDir, s)（tool params の cwd / workdir 等を起点に resolve）
  *
  * これで `../`、`./`、相対 path 混在のケースをカバーする。`/proc/self/fd/...`
- * のような特殊 path は元の文字列のままで blockPaths プレフィックスマッチで検出する想定。
+ * のような特殊 path は token 化した文字列で blockPaths の directory-prefix として検出する想定。
  */
-function expandPathCandidates(s: string, baseDirs: string[]): string[] {
+function expandPathCandidates(
+  s: string,
+  baseDirs: string[],
+  includeBareTokens: boolean,
+): string[] {
   const trimmed = s.trim();
   if (trimmed === "") return [s];
   const candidates = new Set<string>();
   candidates.add(s);
   addResolvedPathCandidates(candidates, trimmed, baseDirs);
-  for (const token of extractPathLikeTokens(trimmed)) {
+  for (const token of extractPathLikeTokens(trimmed, includeBareTokens && baseDirs.length > 0)) {
     addResolvedPathCandidates(candidates, token, baseDirs);
   }
   return [...candidates];
@@ -229,11 +238,36 @@ function addResolvedPathCandidates(candidates: Set<string>, value: string, baseD
   }
 }
 
-function extractPathLikeTokens(s: string): string[] {
+function extractPathLikeTokens(s: string, includeBareTokens: boolean): string[] {
   return s
     .split(/\s+/)
     .map((token) => token.replace(/^[`"'([{<]+|[`"',;:)\]}<>]+$/g, ""))
-    .filter((token) => token.includes("/") || token.startsWith("."));
+    .filter((token) => token !== "")
+    .filter((token) => includeBareTokens || token.includes("/") || token.startsWith("."));
+}
+
+function isCommandLikeField(fieldPath: string): boolean {
+  const leaf =
+    fieldPath
+      .split(".")
+      .at(-1)
+      ?.replace(/\[\d+\]$/g, "")
+      .toLowerCase() ?? "";
+  return leaf === "command" || leaf === "cmd" || leaf === "script" || leaf === "shell";
+}
+
+function isBlockedPathCandidate(candidate: string, normalizedBlocked: string): boolean {
+  const normalizedCandidate = normalizePathForMatch(candidate);
+  if (normalizedCandidate === normalizedBlocked) return true;
+  if (normalizedBlocked === path.sep) return normalizedCandidate.startsWith(path.sep);
+  return normalizedCandidate.startsWith(`${normalizedBlocked}${path.sep}`);
+}
+
+function normalizePathForMatch(value: string): string {
+  const trimmed = value.trim();
+  const resolved = path.resolve("/", trimmed === "" ? value : trimmed);
+  if (resolved === path.sep) return resolved;
+  return resolved.replace(/\/+$/g, "");
 }
 
 const BASE_DIR_FIELD_NAMES = new Set([
