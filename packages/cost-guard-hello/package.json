@@ -13,10 +13,11 @@
   "main": "./cost-guard-hello/index.js",
   "types": "./cost-guard-hello/index.d.ts",
   "openclaw": {
-    "extensions": ["./cost-guard-hello/index.js"]
+    "extensions": ["./src/index.ts"]
   },
   "files": [
     "cost-guard-hello",
+    "src",
     "openclaw.plugin.json"
   ],
   "scripts": {
