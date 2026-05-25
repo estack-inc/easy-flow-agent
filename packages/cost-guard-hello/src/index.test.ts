@@ -134,6 +134,25 @@ describe("before_tool_call handler", () => {
 });
 
 describe("npm package metadata", () => {
+  it("configSchema の blockPaths description は未実装の symlink 解決を保証しない", () => {
+    const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const pluginJson = JSON.parse(
+      readFileSync(resolve(packageDir, "openclaw.plugin.json"), "utf8"),
+    ) as {
+      configSchema: {
+        properties: {
+          blockPaths: { description: string };
+        };
+      };
+    };
+    const description = pluginJson.configSchema.properties.blockPaths.description;
+
+    expect(description).toContain("path.resolve");
+    expect(description).toContain("symlink / realpath 解決は未対応");
+    expect(description).not.toContain("readlink");
+    expect(description).not.toContain("symlink 経由でも検出");
+  });
+
   it("npm pack に OpenClaw extension の参照先ファイルを含める", () => {
     const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const packageJson = JSON.parse(readFileSync(resolve(packageDir, "package.json"), "utf8")) as {

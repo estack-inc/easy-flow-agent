@@ -27,7 +27,7 @@
         "type": "array",
         "items": { "type": "string" },
         "default": [],
-        "description": "block 対象 path のプレフィックス文字列。tool params 内のいずれかの文字列フィールドに含まれていたら block する。canonical 化（resolve / readlink / 相対 path 展開）も内部で行うため、`../` や symlink 経由でも検出される。"
+        "description": "block 対象 path のプレフィックス文字列。tool params 内のいずれかの文字列フィールドに含まれていたら block する。canonical 化は path.resolve による `../` と相対 path の正規化のみ行う。symlink / realpath 解決は未対応。"
       }
     }
   }
