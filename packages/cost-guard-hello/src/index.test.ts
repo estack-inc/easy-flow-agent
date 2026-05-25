@@ -279,6 +279,16 @@ describe("findBlockMatch (path block 判定)", () => {
     expect(r?.field).toBe("path");
   });
 
+  it("cwd 基準の command 内相対 path も canonical 化で検出する", () => {
+    const r = findBlockMatch(
+      { cwd: "/data/workspace", command: "cat zoom_transcribe/transcript.txt" },
+      ["/data/workspace/zoom_transcribe/"],
+    );
+    expect(r).not.toBeNull();
+    expect(r?.matched).toBe("/data/workspace/zoom_transcribe/");
+    expect(r?.field).toBe("command");
+  });
+
   it("workdir 基準の相対 path も canonical 化で検出する", () => {
     const r = findBlockMatch(
       { workdir: "/data/workspace", path: "zoom_transcribe/transcript.txt" },
@@ -342,6 +352,24 @@ describe("before_tool_call の block mode", () => {
       {
         toolName: "read",
         params: { cwd: "/data/workspace", path: "zoom_transcribe/transcript.txt" },
+      },
+      {},
+    ) as { block?: boolean; blockReason?: string };
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("/data/workspace/zoom_transcribe/");
+  });
+
+  it("blockMode=block で cwd 基準の command 内相対 path に match したら block: true を返す", () => {
+    const api = makeApi({
+      blockMode: "block",
+      blockPaths: ["/data/workspace/zoom_transcribe/"],
+    });
+    register(api as any);
+    const handler = api.hooks.get("before_tool_call");
+    const result = handler!(
+      {
+        toolName: "exec",
+        params: { cwd: "/data/workspace", command: "cat zoom_transcribe/transcript.txt" },
       },
       {},
     ) as { block?: boolean; blockReason?: string };

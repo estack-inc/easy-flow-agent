@@ -189,6 +189,7 @@ export function findBlockMatch(
  *
  * 候補：
  * - 元の文字列そのまま（コマンド文字列に path が含まれている場合のため）
+ * - 文字列内の path-like token（コマンド文字列中の相対 path 検出のため）
  * - path.resolve("/", s)（絶対パスとして resolve）
  * - path.resolve(s)（current working directory 起点で resolve）
  * - path.resolve(baseDir, s)（tool params の cwd / workdir 等を起点に resolve）
@@ -201,24 +202,38 @@ function expandPathCandidates(s: string, baseDirs: string[]): string[] {
   if (trimmed === "") return [s];
   const candidates = new Set<string>();
   candidates.add(s);
+  addResolvedPathCandidates(candidates, trimmed, baseDirs);
+  for (const token of extractPathLikeTokens(trimmed)) {
+    addResolvedPathCandidates(candidates, token, baseDirs);
+  }
+  return [...candidates];
+}
+
+function addResolvedPathCandidates(candidates: Set<string>, value: string, baseDirs: string[]): void {
   try {
-    candidates.add(path.resolve("/", trimmed));
+    candidates.add(path.resolve("/", value));
   } catch {
     // ignore
   }
   try {
-    candidates.add(path.resolve(trimmed));
+    candidates.add(path.resolve(value));
   } catch {
     // ignore
   }
   for (const baseDir of baseDirs) {
     try {
-      candidates.add(path.resolve(baseDir, trimmed));
+      candidates.add(path.resolve(baseDir, value));
     } catch {
       // ignore
     }
   }
-  return [...candidates];
+}
+
+function extractPathLikeTokens(s: string): string[] {
+  return s
+    .split(/\s+/)
+    .map((token) => token.replace(/^[`"'([{<]+|[`"',;:)\]}<>]+$/g, ""))
+    .filter((token) => token.includes("/") || token.startsWith("."));
 }
 
 const BASE_DIR_FIELD_NAMES = new Set([
