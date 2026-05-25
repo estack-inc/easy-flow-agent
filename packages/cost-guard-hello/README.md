@@ -80,7 +80,7 @@ openclaw plugins inspect cost-guard-hello --runtime --json
 | `logging` | boolean | `true` | hook 発火時に observation log を出力する |
 | `verbose` | boolean | `false` | tool params の概略を最大 200 byte まで log に含める（transcript 本体・プロンプト全文は吐かない）|
 | `blockMode` | `"observe"` / `"block"` | `"observe"` | observe=log のみ / block=`blockPaths` にマッチした tool 呼び出しを block する |
-| `blockPaths` | string[] | `[]` | block 対象 path のプレフィックス。tool params 内の文字列フィールド（`path` / `command` / nested array 等）を再帰走査し、canonical 化（`path.resolve` で `../` を解決）した結果と元文字列の両方でマッチを判定 |
+| `blockPaths` | string[] | `[]` | block 対象 path のプレフィックス。tool params 内の文字列フィールド（`path` / `command` / nested array 等）を再帰走査し、canonical 化（`path.resolve` で `../` を解決、`cwd` / `workdir` 等があれば相対 path の基準に使用）した結果と元文字列の両方でマッチを判定 |
 
 ### block ロジックの限界（Phase 1 で対処）
 

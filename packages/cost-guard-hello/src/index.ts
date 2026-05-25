@@ -129,7 +129,7 @@ export default function register(api: OpenClawPluginApi): void {
  * 判定ロジック：
  * 1. 文字列フィールド v ごとに、元の文字列 v と canonical 化した resolved の両方で
  *    blockPaths のいずれかのプレフィックスが includes されたら block
- * 2. canonical 化は path.resolve（CWD は無視して `/` 起点として絶対化）で実施
+ * 2. canonical 化は path.resolve（`/` 起点、および params 内の cwd / workdir 等）で実施
  *    → `../`、相対 path、絶対 path 混在を吸収
  *
  * 限界（Phase 1 で対処）：
@@ -144,9 +144,13 @@ export function findBlockMatch(
 ): { matched: string; field: string } | null {
   const visited = new WeakSet<object>();
 
-  function walk(value: unknown, fieldPath: string): { matched: string; field: string } | null {
+  function walk(
+    value: unknown,
+    fieldPath: string,
+    baseDirs: string[],
+  ): { matched: string; field: string } | null {
     if (typeof value === "string") {
-      const candidates = expandPathCandidates(value);
+      const candidates = expandPathCandidates(value, baseDirs);
       for (const candidate of candidates) {
         for (const blocked of blockPaths) {
           if (candidate.includes(blocked)) {
@@ -162,20 +166,22 @@ export function findBlockMatch(
 
     if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
-        const r = walk(value[i], `${fieldPath}[${i}]`);
+        const r = walk(value[i], `${fieldPath}[${i}]`, baseDirs);
         if (r) return r;
       }
       return null;
     }
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const entries = Object.entries(value as Record<string, unknown>);
+    const scopedBaseDirs = collectScopedBaseDirs(entries, baseDirs);
+    for (const [k, v] of entries) {
       const childField = fieldPath === "" ? k : `${fieldPath}.${k}`;
-      const r = walk(v, childField);
+      const r = walk(v, childField, scopedBaseDirs);
       if (r) return r;
     }
     return null;
   }
 
-  return walk(params, "");
+  return walk(params, "", []);
 }
 
 /**
@@ -185,11 +191,12 @@ export function findBlockMatch(
  * - 元の文字列そのまま（コマンド文字列に path が含まれている場合のため）
  * - path.resolve("/", s)（絶対パスとして resolve）
  * - path.resolve(s)（current working directory 起点で resolve）
+ * - path.resolve(baseDir, s)（tool params の cwd / workdir 等を起点に resolve）
  *
  * これで `../`、`./`、相対 path 混在のケースをカバーする。`/proc/self/fd/...`
  * のような特殊 path は元の文字列のままで blockPaths プレフィックスマッチで検出する想定。
  */
-function expandPathCandidates(s: string): string[] {
+function expandPathCandidates(s: string, baseDirs: string[]): string[] {
   const trimmed = s.trim();
   if (trimmed === "") return [s];
   const candidates = new Set<string>();
@@ -204,7 +211,47 @@ function expandPathCandidates(s: string): string[] {
   } catch {
     // ignore
   }
+  for (const baseDir of baseDirs) {
+    try {
+      candidates.add(path.resolve(baseDir, trimmed));
+    } catch {
+      // ignore
+    }
+  }
   return [...candidates];
+}
+
+const BASE_DIR_FIELD_NAMES = new Set([
+  "cwd",
+  "workdir",
+  "workingdir",
+  "workingdirectory",
+  "working_directory",
+  "dir",
+]);
+
+function collectScopedBaseDirs(
+  entries: [string, unknown][],
+  inheritedBaseDirs: string[],
+): string[] {
+  const baseDirs = new Set(inheritedBaseDirs);
+  for (const [key, value] of entries) {
+    if (typeof value !== "string") continue;
+    if (!BASE_DIR_FIELD_NAMES.has(key.toLowerCase())) continue;
+    const trimmed = value.trim();
+    if (trimmed === "") continue;
+    try {
+      baseDirs.add(path.resolve("/", trimmed));
+    } catch {
+      // ignore
+    }
+    try {
+      baseDirs.add(path.resolve(trimmed));
+    } catch {
+      // ignore
+    }
+  }
+  return [...baseDirs];
 }
 
 /**
