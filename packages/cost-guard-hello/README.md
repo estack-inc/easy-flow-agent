@@ -31,19 +31,24 @@ openclaw plugins inspect cost-guard-hello --runtime --json
 ```json
 {
   "plugins": {
-    "cost-guard-hello": {
-      "enabled": true,
-      "allowConversationAccess": true,
-      "config": {
-        "logging": true,
-        "verbose": false
+    "allow": ["cost-guard-hello"],
+    "entries": {
+      "cost-guard-hello": {
+        "enabled": true,
+        "hooks": {
+          "allowConversationAccess": true
+        },
+        "config": {
+          "logging": true,
+          "verbose": false
+        }
       }
     }
   }
 }
 ```
 
-`before_agent_run` を外部 plugin から使うため `allowConversationAccess: true` が必須（公式ドキュメント [/plugins/hooks](https://docs.openclaw.ai/plugins/hooks)）。
+`before_agent_run` を外部 plugin から使うため `allowConversationAccess: true` が必須。**正しいパスは `plugins.entries.<id>.hooks.allowConversationAccess`**（`hooks.` を間に挟む）。`plugins.entries.<id>.allowConversationAccess` 直下に書くと `Unrecognized key` で reload に失敗する。2026-05-25 の dev-and-test-agent 実機検証で確定（公式ドキュメント [/plugins/hooks](https://docs.openclaw.ai/plugins/hooks) には明記されていない）。
 
 ## 設定項目
 
