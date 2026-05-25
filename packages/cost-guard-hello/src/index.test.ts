@@ -136,9 +136,7 @@ describe("before_tool_call handler", () => {
 describe("npm package metadata", () => {
   it("npm pack に OpenClaw extension の参照先ファイルを含める", () => {
     const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-    const packageJson = JSON.parse(
-      readFileSync(resolve(packageDir, "package.json"), "utf8"),
-    ) as {
+    const packageJson = JSON.parse(readFileSync(resolve(packageDir, "package.json"), "utf8")) as {
       openclaw: { extensions: string[] };
     };
     execFileSync("npm", ["run", "build"], { cwd: packageDir, stdio: "pipe" });
