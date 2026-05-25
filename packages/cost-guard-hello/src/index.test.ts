@@ -260,6 +260,24 @@ describe("findBlockMatch (path block 判定)", () => {
     expect(r?.field).toBe("command");
   });
 
+  it("command 文字列内の redirection に隣接した absolute path も検出する", () => {
+    const r = findBlockMatch(
+      { command: "cat</data/workspace/zoom_transcribe/transcript.txt" },
+      ["/data/workspace/zoom_transcribe/"],
+    );
+    expect(r).not.toBeNull();
+    expect(r?.field).toBe("command");
+  });
+
+  it("command 文字列内の option value に隣接した absolute path も検出する", () => {
+    const r = findBlockMatch(
+      { command: "cat --file=/data/workspace/zoom_transcribe/transcript.txt" },
+      ["/data/workspace/zoom_transcribe/"],
+    );
+    expect(r).not.toBeNull();
+    expect(r?.field).toBe("command");
+  });
+
   it("`../` を含む相対 path 混在でも canonical 化で検出する", () => {
     const r = findBlockMatch(
       { path: "/data/workspace/../workspace/zoom_transcribe/transcript.txt" },
@@ -387,6 +405,42 @@ describe("before_tool_call の block mode", () => {
       {
         toolName: "exec",
         params: { cwd: "/data/workspace", command: "cat zoom_transcribe/transcript.txt" },
+      },
+      {},
+    ) as { block?: boolean; blockReason?: string };
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("/data/workspace/zoom_transcribe/");
+  });
+
+  it("blockMode=block で redirection に隣接した command 内 absolute path を block する", () => {
+    const api = makeApi({
+      blockMode: "block",
+      blockPaths: ["/data/workspace/zoom_transcribe/"],
+    });
+    register(api as any);
+    const handler = api.hooks.get("before_tool_call");
+    const result = handler!(
+      {
+        toolName: "exec",
+        params: { command: "cat</data/workspace/zoom_transcribe/transcript.txt" },
+      },
+      {},
+    ) as { block?: boolean; blockReason?: string };
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("/data/workspace/zoom_transcribe/");
+  });
+
+  it("blockMode=block で option value に隣接した command 内 absolute path を block する", () => {
+    const api = makeApi({
+      blockMode: "block",
+      blockPaths: ["/data/workspace/zoom_transcribe/"],
+    });
+    register(api as any);
+    const handler = api.hooks.get("before_tool_call");
+    const result = handler!(
+      {
+        toolName: "exec",
+        params: { command: "cat --file=/data/workspace/zoom_transcribe/transcript.txt" },
       },
       {},
     ) as { block?: boolean; blockReason?: string };
