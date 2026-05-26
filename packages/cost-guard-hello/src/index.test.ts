@@ -261,10 +261,9 @@ describe("findBlockMatch (path block 判定)", () => {
   });
 
   it("command 文字列内の redirection に隣接した absolute path も検出する", () => {
-    const r = findBlockMatch(
-      { command: "cat</data/workspace/zoom_transcribe/transcript.txt" },
-      ["/data/workspace/zoom_transcribe/"],
-    );
+    const r = findBlockMatch({ command: "cat</data/workspace/zoom_transcribe/transcript.txt" }, [
+      "/data/workspace/zoom_transcribe/",
+    ]);
     expect(r).not.toBeNull();
     expect(r?.field).toBe("command");
   });
@@ -288,10 +287,9 @@ describe("findBlockMatch (path block 判定)", () => {
   });
 
   it("cwd 基準の相対 path も canonical 化で検出する", () => {
-    const r = findBlockMatch(
-      { cwd: "/data/workspace", path: "zoom_transcribe/transcript.txt" },
-      ["/data/workspace/zoom_transcribe/"],
-    );
+    const r = findBlockMatch({ cwd: "/data/workspace", path: "zoom_transcribe/transcript.txt" }, [
+      "/data/workspace/zoom_transcribe/",
+    ]);
     expect(r).not.toBeNull();
     expect(r?.matched).toBe("/data/workspace/zoom_transcribe/");
     expect(r?.field).toBe("path");
@@ -316,10 +314,9 @@ describe("findBlockMatch (path block 判定)", () => {
   });
 
   it("blockPaths の末尾 slash がなくても directory 配下として検出する", () => {
-    const r = findBlockMatch(
-      { path: "/data/workspace/zoom_transcribe/transcript.txt" },
-      ["/data/workspace/zoom_transcribe"],
-    );
+    const r = findBlockMatch({ path: "/data/workspace/zoom_transcribe/transcript.txt" }, [
+      "/data/workspace/zoom_transcribe",
+    ]);
     expect(r).not.toBeNull();
     expect(r?.matched).toBe("/data/workspace/zoom_transcribe");
   });

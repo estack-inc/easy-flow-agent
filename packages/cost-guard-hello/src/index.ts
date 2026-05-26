@@ -203,11 +203,7 @@ export function findBlockMatch(
  * これで `../`、`./`、相対 path 混在のケースをカバーする。`/proc/self/fd/...`
  * のような特殊 path は token 化した文字列で blockPaths の directory-prefix として検出する想定。
  */
-function expandPathCandidates(
-  s: string,
-  baseDirs: string[],
-  includeBareTokens: boolean,
-): string[] {
+function expandPathCandidates(s: string, baseDirs: string[], includeBareTokens: boolean): string[] {
   const trimmed = s.trim();
   if (trimmed === "") return [s];
   const candidates = new Set<string>();
@@ -224,7 +220,11 @@ function expandPathCandidates(
   return [...candidates];
 }
 
-function addResolvedPathCandidates(candidates: Set<string>, value: string, baseDirs: string[]): void {
+function addResolvedPathCandidates(
+  candidates: Set<string>,
+  value: string,
+  baseDirs: string[],
+): void {
   try {
     candidates.add(path.resolve("/", value));
   } catch {
