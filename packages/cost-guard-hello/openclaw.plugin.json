@@ -2,7 +2,7 @@
   "id": "cost-guard-hello",
   "kind": "plugin",
   "name": "Cost Guard Hello",
-  "description": "Phase 0 実証用 observe-only plugin。before_tool_call / tool_result_persist / before_agent_run の発火を log するのみ。block / rewrite はしない。本格的な cost-guard plugin の deployment / hook order / lossless-claw との競合を Phase 0 で検証するための土台。",
+  "description": "Phase 0 実証用 plugin。before_tool_call / tool_result_persist / before_agent_run の発火を log するほか、blockMode=block かつ blockPaths にマッチした tool 呼び出しを block する。本格的な cost-guard plugin の deployment / hook order / lossless-claw との競合 / path-based deny を Phase 0 で検証するための土台。",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -16,6 +16,18 @@
         "type": "boolean",
         "default": false,
         "description": "tool params の概略（最大 200 byte）も log に含める"
+      },
+      "blockMode": {
+        "type": "string",
+        "enum": ["observe", "block"],
+        "default": "observe",
+        "description": "observe=log のみ（block しない） / block=blockPaths にマッチした tool 呼び出しを block する"
+      },
+      "blockPaths": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [],
+        "description": "block 対象 path のプレフィックス文字列。tool params 内のいずれかの文字列フィールドに含まれていたら block する。canonical 化は path.resolve による `../` と相対 path の正規化を行い、cwd / workdir 等があれば相対 path の基準に使用する。symlink / realpath 解決は未対応。"
       }
     }
   }

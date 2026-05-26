@@ -1,28 +1,39 @@
 /**
- * cost-guard-hello: Phase 0 実証用 observe-only plugin
+ * cost-guard-hello: Phase 0 実証用 plugin
  *
  * 目的：
- * - OpenClaw 2026.5.12 の plugin deployment path を実機で検証
- * - before_tool_call / tool_result_persist / before_agent_run の発火順序・タイミングを観測
+ * - OpenClaw 2026.5.12 の plugin deployment path を実機で検証（B-0/B-1 完了）
+ * - before_tool_call / tool_result_persist / before_agent_run の発火順序・タイミングを観測（実証 A 完了）
+ * - blockMode=block かつ blockPaths にマッチした tool 呼び出しを block する（実証 B B-3 以降）
  * - lossless-claw など bundled plugin との hook 評価順序を実測（Phase 0 実証 A）
  *
  * 動作：
- * - block / rewrite / outcome を変更しない（pure observer）
- * - すべての hook 発火を api.logger.info で記録
+ * - blockMode=observe（既定）：すべての hook 発火を api.logger.info で記録、block / rewrite はしない
+ * - blockMode=block：blockPaths にマッチした path を含む tool params の呼び出しを block
+ *   - tool params 内の文字列フィールドを再帰的に走査し、各 path 候補を path.resolve で canonical 化
+ *   - canonical 化した path 文字列または元の文字列が blockPaths の各 directory と同一または配下なら block
+ *   - `../` や絶対 path 混在で `/data/workspace/zoom_transcribe/` を含まないアクセス経路も block 対象に正規化
+ *   - 注意：symlink 解決（realpath）や inode / device 比較は本 plugin では実施しない（B-4 の漏れパターン
+ *     として Phase 1 設計に引き継ぐ）
  * - verbose=true のとき tool params の概略を最大 200 byte まで log に含める
  *
  * 詳細は easy-flow/docs/operations/transcript-cost-prevention-phase0.md 参照。
  */
 
+import path from "node:path";
+
 interface CostGuardHelloConfig {
   logging?: boolean;
   verbose?: boolean;
+  blockMode?: "observe" | "block";
+  blockPaths?: string[];
 }
 
 interface OpenClawPluginApi {
   pluginConfig?: Record<string, unknown>;
   logger: {
     info(message: string): void;
+    warn?(message: string): void;
   };
   on(event: string, handler: (event: unknown, ctx: unknown) => unknown): void;
 }
@@ -34,22 +45,48 @@ export default function register(api: OpenClawPluginApi): void {
   const cfg = (api.pluginConfig ?? {}) as CostGuardHelloConfig;
   const logging = cfg.logging ?? true;
   const verbose = cfg.verbose ?? false;
+  const blockMode = cfg.blockMode ?? "observe";
+  const blockPaths = Array.isArray(cfg.blockPaths)
+    ? cfg.blockPaths.filter((s) => typeof s === "string" && s.length > 0)
+    : [];
   const log = api.logger;
+  const warn = (message: string) => (log.warn ? log.warn(message) : log.info(message));
 
-  log.info(`${TAG} registered (logging=${logging}, verbose=${verbose})`);
+  log.info(
+    `${TAG} registered (logging=${logging}, verbose=${verbose}, ` +
+      `blockMode=${blockMode}, blockPaths=${JSON.stringify(blockPaths)})`,
+  );
 
   // before_tool_call: tool 実行直前。params 検査・block / requireApproval が可能
   api.on("before_tool_call", (event: unknown, _ctx: unknown) => {
-    if (!logging) return {};
     const e = event as { toolName?: string; params?: unknown };
     const toolName = e.toolName ?? "(unknown)";
-    if (verbose) {
-      const paramsPreview = safePreview(e.params, VERBOSE_PARAM_HEAD_BYTES);
-      log.info(`${TAG} before_tool_call: tool=${toolName} params_head="${paramsPreview}"`);
-    } else {
-      log.info(`${TAG} before_tool_call: tool=${toolName}`);
+
+    // block 判定（blockMode=block かつ blockPaths が空でない場合のみ）
+    if (blockMode === "block" && blockPaths.length > 0) {
+      const matched = findBlockMatch(e.params, blockPaths);
+      if (matched) {
+        warn(
+          `${TAG} BLOCKED tool=${toolName} matched_path="${matched.matched}" ` +
+            `via_field="${matched.field}" (blockMode=block)`,
+        );
+        return {
+          block: true,
+          blockReason: `[cost-guard-hello] path "${matched.matched}" is denied by cost-guard (matched in field "${matched.field}")`,
+        };
+      }
     }
-    return {}; // block しない
+
+    // 観測 log（block されなかった場合）
+    if (logging) {
+      if (verbose) {
+        const paramsPreview = safePreview(e.params, VERBOSE_PARAM_HEAD_BYTES);
+        log.info(`${TAG} before_tool_call: tool=${toolName} params_head="${paramsPreview}"`);
+      } else {
+        log.info(`${TAG} before_tool_call: tool=${toolName}`);
+      }
+    }
+    return {};
   });
 
   // tool_result_persist: tool 結果を AgentMessage として保存する直前
@@ -65,7 +102,7 @@ export default function register(api: OpenClawPluginApi): void {
   });
 
   // before_agent_run: agent loop が走る直前。session 単位の breaker 用
-  // 外部 plugin の場合 openclaw.json で allowConversationAccess: true が必要
+  // 外部 plugin の場合 openclaw.json で plugins.entries.<id>.hooks.allowConversationAccess: true が必要
   api.on("before_agent_run", (event: unknown, _ctx: unknown) => {
     if (!logging) return { outcome: "pass" as const };
     const e = event as {
@@ -84,6 +121,196 @@ export default function register(api: OpenClawPluginApi): void {
     );
     return { outcome: "pass" as const };
   });
+}
+
+/**
+ * tool params を再帰的に走査し、文字列フィールドの中で blockPaths にマッチするものを探す。
+ *
+ * 判定ロジック：
+ * 1. 文字列フィールド v ごとに、元の文字列 v と canonical 化した resolved の両方で
+ *    blockPaths のいずれかと同一、またはその配下にあれば block
+ * 2. canonical 化は path.resolve（`/` 起点、および params 内の cwd / workdir 等）で実施
+ *    → `../`、相対 path、絶対 path 混在を吸収
+ *
+ * 限界（Phase 1 で対処）：
+ * - symlink 解決（realpath）は実施しない：本 plugin は agent 動作前 hook なので実 FS 触らない
+ * - inode / device 比較もしない
+ * - `/proc/self/fd` 経由は文字列に proc が含まれている場合のみ捕捉
+ * - shell injection（`$(...)` 経由）は元文字列に path が出ない場合 block 不可
+ */
+export function findBlockMatch(
+  params: unknown,
+  blockPaths: string[],
+): { matched: string; field: string } | null {
+  const visited = new WeakSet<object>();
+  const blockedMatchers = blockPaths.map((blocked) => ({
+    original: blocked,
+    normalized: normalizePathForMatch(blocked),
+  }));
+
+  function walk(
+    value: unknown,
+    fieldPath: string,
+    baseDirs: string[],
+  ): { matched: string; field: string } | null {
+    if (typeof value === "string") {
+      const candidates = expandPathCandidates(value, baseDirs, isCommandLikeField(fieldPath));
+      for (const candidate of candidates) {
+        for (const blocked of blockedMatchers) {
+          if (isBlockedPathCandidate(candidate, blocked.normalized)) {
+            return { matched: blocked.original, field: fieldPath };
+          }
+        }
+      }
+      return null;
+    }
+    if (typeof value !== "object" || value === null) return null;
+    if (visited.has(value as object)) return null;
+    visited.add(value as object);
+
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        const r = walk(value[i], `${fieldPath}[${i}]`, baseDirs);
+        if (r) return r;
+      }
+      return null;
+    }
+    const entries = Object.entries(value as Record<string, unknown>);
+    const scopedBaseDirs = collectScopedBaseDirs(entries, baseDirs);
+    for (const [k, v] of entries) {
+      const childField = fieldPath === "" ? k : `${fieldPath}.${k}`;
+      const r = walk(v, childField, scopedBaseDirs);
+      if (r) return r;
+    }
+    return null;
+  }
+
+  return walk(params, "", []);
+}
+
+/**
+ * 文字列を path-like 解釈して canonical 化候補を返す。
+ *
+ * 候補：
+ * - 元の文字列そのまま（コマンド文字列に path が含まれている場合のため）
+ * - 文字列内の path-like token（コマンド文字列中の相対 path 検出のため）
+ * - token 内に埋まった絶対 path 断片
+ * - command-like field では bare filename token（baseDir 起点の相対 file 検出のため）
+ * - path.resolve("/", s)（絶対パスとして resolve）
+ * - path.resolve(s)（current working directory 起点で resolve）
+ * - path.resolve(baseDir, s)（tool params の cwd / workdir 等を起点に resolve）
+ *
+ * これで `../`、`./`、相対 path 混在のケースをカバーする。`/proc/self/fd/...`
+ * のような特殊 path は token 化した文字列で blockPaths の directory-prefix として検出する想定。
+ */
+function expandPathCandidates(s: string, baseDirs: string[], includeBareTokens: boolean): string[] {
+  const trimmed = s.trim();
+  if (trimmed === "") return [s];
+  const candidates = new Set<string>();
+  candidates.add(s);
+  addResolvedPathCandidates(candidates, trimmed, baseDirs);
+  for (const token of extractPathLikeTokens(trimmed, includeBareTokens && baseDirs.length > 0)) {
+    addResolvedPathCandidates(candidates, token, baseDirs);
+    for (const absolutePath of extractEmbeddedAbsolutePaths(token)) {
+      addResolvedPathCandidates(candidates, absolutePath, baseDirs);
+    }
+  }
+  return [...candidates];
+}
+
+function addResolvedPathCandidates(
+  candidates: Set<string>,
+  value: string,
+  baseDirs: string[],
+): void {
+  try {
+    candidates.add(path.resolve("/", value));
+  } catch {
+    // ignore
+  }
+  try {
+    candidates.add(path.resolve(value));
+  } catch {
+    // ignore
+  }
+  for (const baseDir of baseDirs) {
+    try {
+      candidates.add(path.resolve(baseDir, value));
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function extractPathLikeTokens(s: string, includeBareTokens: boolean): string[] {
+  return s
+    .split(/\s+/)
+    .map((token) => token.replace(/^[`"'([{<]+|[`"',;:)\]}<>]+$/g, ""))
+    .filter((token) => token !== "")
+    .filter((token) => includeBareTokens || token.includes("/") || token.startsWith("."));
+}
+
+function extractEmbeddedAbsolutePaths(token: string): string[] {
+  return [...token.matchAll(/\/[^\s`"'|&;(){}[\]<>]*/g)]
+    .map((match) => match[0].replace(/[`"',;:)\]}<>]+$/g, ""))
+    .filter((pathFragment) => pathFragment !== "" && pathFragment !== path.sep);
+}
+
+function isCommandLikeField(fieldPath: string): boolean {
+  const leaf =
+    fieldPath
+      .split(".")
+      .at(-1)
+      ?.replace(/\[\d+\]$/g, "")
+      .toLowerCase() ?? "";
+  return leaf === "command" || leaf === "cmd" || leaf === "script" || leaf === "shell";
+}
+
+function isBlockedPathCandidate(candidate: string, normalizedBlocked: string): boolean {
+  const normalizedCandidate = normalizePathForMatch(candidate);
+  if (normalizedCandidate === normalizedBlocked) return true;
+  if (normalizedBlocked === path.sep) return normalizedCandidate.startsWith(path.sep);
+  return normalizedCandidate.startsWith(`${normalizedBlocked}${path.sep}`);
+}
+
+function normalizePathForMatch(value: string): string {
+  const trimmed = value.trim();
+  const resolved = path.resolve("/", trimmed === "" ? value : trimmed);
+  if (resolved === path.sep) return resolved;
+  return resolved.replace(/\/+$/g, "");
+}
+
+const BASE_DIR_FIELD_NAMES = new Set([
+  "cwd",
+  "workdir",
+  "workingdir",
+  "workingdirectory",
+  "working_directory",
+  "dir",
+]);
+
+function collectScopedBaseDirs(
+  entries: [string, unknown][],
+  inheritedBaseDirs: string[],
+): string[] {
+  const baseDirs = new Set(inheritedBaseDirs);
+  for (const [key, value] of entries) {
+    if (typeof value !== "string") continue;
+    if (!BASE_DIR_FIELD_NAMES.has(key.toLowerCase())) continue;
+    const trimmed = value.trim();
+    if (trimmed === "") continue;
+    try {
+      baseDirs.add(path.resolve("/", trimmed));
+    } catch {
+      // ignore
+    }
+    try {
+      baseDirs.add(path.resolve(trimmed));
+    } catch {
+      // ignore
+    }
+  }
+  return [...baseDirs];
 }
 
 /**
