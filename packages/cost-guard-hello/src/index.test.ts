@@ -277,6 +277,24 @@ describe("findBlockMatch (path block 判定)", () => {
     expect(r?.field).toBe("command");
   });
 
+  it("args 内の redirection に隣接した absolute path も検出する", () => {
+    const r = findBlockMatch(
+      { args: ["cat</data/workspace/zoom_transcribe/transcript.txt"] },
+      ["/data/workspace/zoom_transcribe/"],
+    );
+    expect(r).not.toBeNull();
+    expect(r?.field).toBe("args[0]");
+  });
+
+  it("args 内の option value に隣接した absolute path も検出する", () => {
+    const r = findBlockMatch(
+      { args: ["--file=/data/workspace/zoom_transcribe/transcript.txt"] },
+      ["/data/workspace/zoom_transcribe/"],
+    );
+    expect(r).not.toBeNull();
+    expect(r?.field).toBe("args[0]");
+  });
+
   it("`../` を含む相対 path 混在でも canonical 化で検出する", () => {
     const r = findBlockMatch(
       { path: "/data/workspace/../workspace/zoom_transcribe/transcript.txt" },
@@ -438,6 +456,42 @@ describe("before_tool_call の block mode", () => {
       {
         toolName: "exec",
         params: { command: "cat --file=/data/workspace/zoom_transcribe/transcript.txt" },
+      },
+      {},
+    ) as { block?: boolean; blockReason?: string };
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("/data/workspace/zoom_transcribe/");
+  });
+
+  it("blockMode=block で args 内の redirection に隣接した absolute path を block する", () => {
+    const api = makeApi({
+      blockMode: "block",
+      blockPaths: ["/data/workspace/zoom_transcribe/"],
+    });
+    register(api as any);
+    const handler = api.hooks.get("before_tool_call");
+    const result = handler!(
+      {
+        toolName: "exec",
+        params: { args: ["cat</data/workspace/zoom_transcribe/transcript.txt"] },
+      },
+      {},
+    ) as { block?: boolean; blockReason?: string };
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("/data/workspace/zoom_transcribe/");
+  });
+
+  it("blockMode=block で args 内の option value に隣接した absolute path を block する", () => {
+    const api = makeApi({
+      blockMode: "block",
+      blockPaths: ["/data/workspace/zoom_transcribe/"],
+    });
+    register(api as any);
+    const handler = api.hooks.get("before_tool_call");
+    const result = handler!(
+      {
+        toolName: "exec",
+        params: { args: ["--file=/data/workspace/zoom_transcribe/transcript.txt"] },
       },
       {},
     ) as { block?: boolean; blockReason?: string };

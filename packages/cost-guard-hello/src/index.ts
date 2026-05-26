@@ -194,7 +194,7 @@ export function findBlockMatch(
  * 候補：
  * - 元の文字列そのまま（コマンド文字列に path が含まれている場合のため）
  * - 文字列内の path-like token（コマンド文字列中の相対 path 検出のため）
- * - command-like field では token 内に埋まった絶対 path 断片
+ * - token 内に埋まった絶対 path 断片
  * - command-like field では bare filename token（baseDir 起点の相対 file 検出のため）
  * - path.resolve("/", s)（絶対パスとして resolve）
  * - path.resolve(s)（current working directory 起点で resolve）
@@ -211,10 +211,8 @@ function expandPathCandidates(s: string, baseDirs: string[], includeBareTokens: 
   addResolvedPathCandidates(candidates, trimmed, baseDirs);
   for (const token of extractPathLikeTokens(trimmed, includeBareTokens && baseDirs.length > 0)) {
     addResolvedPathCandidates(candidates, token, baseDirs);
-    if (includeBareTokens) {
-      for (const absolutePath of extractEmbeddedAbsolutePaths(token)) {
-        addResolvedPathCandidates(candidates, absolutePath, baseDirs);
-      }
+    for (const absolutePath of extractEmbeddedAbsolutePaths(token)) {
+      addResolvedPathCandidates(candidates, absolutePath, baseDirs);
     }
   }
   return [...candidates];
