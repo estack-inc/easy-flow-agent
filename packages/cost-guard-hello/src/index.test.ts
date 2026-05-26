@@ -278,19 +278,17 @@ describe("findBlockMatch (path block 判定)", () => {
   });
 
   it("args 内の redirection に隣接した absolute path も検出する", () => {
-    const r = findBlockMatch(
-      { args: ["cat</data/workspace/zoom_transcribe/transcript.txt"] },
-      ["/data/workspace/zoom_transcribe/"],
-    );
+    const r = findBlockMatch({ args: ["cat</data/workspace/zoom_transcribe/transcript.txt"] }, [
+      "/data/workspace/zoom_transcribe/",
+    ]);
     expect(r).not.toBeNull();
     expect(r?.field).toBe("args[0]");
   });
 
   it("args 内の option value に隣接した absolute path も検出する", () => {
-    const r = findBlockMatch(
-      { args: ["--file=/data/workspace/zoom_transcribe/transcript.txt"] },
-      ["/data/workspace/zoom_transcribe/"],
-    );
+    const r = findBlockMatch({ args: ["--file=/data/workspace/zoom_transcribe/transcript.txt"] }, [
+      "/data/workspace/zoom_transcribe/",
+    ]);
     expect(r).not.toBeNull();
     expect(r?.field).toBe("args[0]");
   });
