@@ -347,9 +347,9 @@ export default function register(api: OpenClawPluginApi): void {
 
     // 2. 段 2: session cumulative breaker
     const sessionState = getOrCreateSessionState(sessionStateMap, sessionId);
-    // cumulative の更新は messages から推定（current turn の messages 全合計を累積扱い）
-    const cumulativeTokens = estimateMessagesTokenCount(e.messages);
-    sessionState.cumulativeTokens = Math.max(sessionState.cumulativeTokens, cumulativeTokens);
+    // current turn の messages token を session 単位で加算する。
+    const turnTokens = estimateMessagesTokenCount(e.messages);
+    sessionState.cumulativeTokens += turnTokens;
     if (sessionState.cumulativeTokens > cfg.sessionTokenBudget) {
       warn(
         `${TAG} session_token_budget_exceeded: session=${sessionId} cumulative_tokens=${sessionState.cumulativeTokens} budget=${cfg.sessionTokenBudget}`,

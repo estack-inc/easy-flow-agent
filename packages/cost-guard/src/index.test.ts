@@ -744,6 +744,20 @@ describe("before_agent_run - 段 2 session token budget", () => {
     expect((result as any).reason).toBe("session_token_budget_exceeded");
   });
 
+  it("同一 sessionId の複数 turn 合計が sessionTokenBudget を超えた時点で block", () => {
+    const api = makeApi({ perTurnPromptInputThreshold: 10_000, sessionTokenBudget: 90 });
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+    const messages = [{ role: "user" as const, content: "x".repeat(180) }]; // 50 tokens
+
+    const first = handler({ sessionId: "s1", prompt: "", messages }, {}) as BeforeAgentRunResult;
+    const second = handler({ sessionId: "s1", prompt: "", messages }, {}) as BeforeAgentRunResult;
+
+    expect(first.outcome).toBe("pass");
+    expect(second.outcome).toBe("block");
+    expect((second as any).reason).toBe("session_token_budget_exceeded");
+  });
+
   it("block 時に metric `cost_guard.session_budget_exceeded` を発行", () => {
     const api = makeApi({ perTurnPromptInputThreshold: 10_000_000 });
     register(api as any);

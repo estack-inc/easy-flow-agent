@@ -68,8 +68,6 @@ const BASE_DIR_FIELD_NAMES = new Set([
   "dir",
 ]);
 
-const MAX_DENY_INODE_ENTRIES = 10_000;
-
 /**
  * tool params を再帰走査し、denyPaths にマッチする path 候補を探す。
  *
@@ -185,16 +183,14 @@ export function findDenyPathMatch(
 
 /**
  * denyPaths 各 entry の inode を収集する。
- * denyPaths が directory の場合は、運用上限 MAX_DENY_INODE_ENTRIES まで
- * 配下も収集する。
+ * denyPaths が directory の場合は、配下も再帰的に収集する。
  * 実 FS に存在しない deny path はスキップ（test 環境で /data/workspace 等が無いケース対応）。
  */
 function collectDenyInodes(denyPaths: string[]): Map<string, string> {
   const map = new Map<string, string>();
-  const budget = { remaining: MAX_DENY_INODE_ENTRIES };
+  const visitedDirs = new Set<string>();
   for (const p of denyPaths) {
-    collectDenyPathInodes(p, p, map, budget);
-    if (budget.remaining <= 0) break;
+    collectDenyPathInodes(p, p, map, visitedDirs);
   }
   return map;
 }
@@ -203,25 +199,24 @@ function collectDenyPathInodes(
   denyRoot: string,
   currentPath: string,
   map: Map<string, string>,
-  budget: { remaining: number },
+  visitedDirs: Set<string>,
 ): void {
-  if (budget.remaining <= 0) return;
-  budget.remaining -= 1;
   const stat = tryStat(currentPath);
   if (!stat) return;
-  map.set(`${stat.dev}:${stat.ino}`, denyRoot);
+  const inodeKey = `${stat.dev}:${stat.ino}`;
+  map.set(inodeKey, denyRoot);
   if (!stat.isDirectory()) return;
+  if (visitedDirs.has(inodeKey)) return;
+  visitedDirs.add(inodeKey);
 
   const entries = tryReadDir(currentPath);
   if (!entries) return;
   for (const entry of entries) {
-    if (budget.remaining <= 0) return;
     const entryPath = path.join(currentPath, entry.name);
     if (entry.isDirectory()) {
-      collectDenyPathInodes(denyRoot, entryPath, map, budget);
+      collectDenyPathInodes(denyRoot, entryPath, map, visitedDirs);
       continue;
     }
-    budget.remaining -= 1;
     const entryStat = tryStat(entryPath);
     if (entryStat) {
       map.set(`${entryStat.dev}:${entryStat.ino}`, denyRoot);

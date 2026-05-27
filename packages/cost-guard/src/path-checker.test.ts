@@ -437,6 +437,37 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
     },
   );
 
+  it("deny directory 配下が 10,000 件を超えても hardlink を inode 一致で検出", () => {
+    const largeTmpRoot = mkdtempSync(path.join(tmpdir(), "cost-guard-hardlink-large-"));
+    try {
+      const largeDenyDir = path.join(largeTmpRoot, "deny");
+      const largeAllowedDir = path.join(largeTmpRoot, "allowed");
+      mkdirSync(largeDenyDir);
+      mkdirSync(largeAllowedDir);
+      for (let i = 0; i < 10_001; i++) {
+        writeFileSync(path.join(largeDenyDir, `f-${i}.txt`), "x");
+      }
+      const targetDenyFile = path.join(largeDenyDir, "target-after-limit.txt");
+      writeFileSync(targetDenyFile, "secret");
+      const largeHardlinkPath = path.join(largeAllowedDir, "target-link.txt");
+      linkSync(targetDenyFile, largeHardlinkPath);
+
+      const r = findDenyPathMatch(
+        { path: largeHardlinkPath },
+        {
+          denyPaths: [largeDenyDir],
+          denyHardlinkTraversal: true,
+          resolveSymlinks: false,
+        },
+      );
+      expect(r).not.toBeNull();
+      expect(r?.matched).toBe(largeDenyDir);
+      expect(r?.reason).toBe("deny_path_match_inode");
+    } finally {
+      rmSync(largeTmpRoot, { recursive: true, force: true });
+    }
+  });
+
   it("denyHardlinkTraversal=false なら inode 一致を検査せず通過", () => {
     const denyFile = path.join(denyDir, "secret.txt");
     const r = findDenyPathMatch(
