@@ -60,16 +60,20 @@ export function findCommandDenylistMatch(
     if (Array.isArray(value)) {
       const leaf = leafKey(fieldPath);
       const isCommandArray = COMMAND_LIKE_FIELDS.has(leaf) || leaf.startsWith("args");
+      // 個別要素を先に検査（具体的 index を優先報告）。
+      // 単一要素内に pattern が完全に含まれる場合は `args[N]` 形式で field を返す。
+      for (let i = 0; i < value.length; i++) {
+        const r = walk(value[i], `${fieldPath}[${i}]`);
+        if (r) return r;
+      }
+      // 個別要素では見つからなかった場合のみ、結合スキャンで要素を跨ぐ pattern を捕捉。
+      // 例: args: ["bash", "-c", "$VAR"] → joined "bash -c $VAR" → "bash -c $" にマッチ → field: "args"
       if (isCommandArray && value.every((item): item is string => typeof item === "string")) {
         for (const pattern of patterns) {
           if (containsCommandPatternInArgs(value, pattern)) {
             return { field: fieldPath, matchedPattern: pattern };
           }
         }
-      }
-      for (let i = 0; i < value.length; i++) {
-        const r = walk(value[i], `${fieldPath}[${i}]`);
-        if (r) return r;
       }
       return null;
     }
