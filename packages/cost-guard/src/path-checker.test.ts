@@ -420,22 +420,19 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
     expect(r?.reason).toBe("deny_path_match_inode");
   });
 
-  it(
-    "denyPaths に directory を含めて denyHardlinkTraversal=true 時、配下 file の hardlink を inode 一致で検出",
-    () => {
-      const r = findDenyPathMatch(
-        { path: hardlinkPath },
-        {
-          denyPaths: [denyDir],
-          denyHardlinkTraversal: true,
-          resolveSymlinks: false,
-        },
-      );
-      expect(r).not.toBeNull();
-      expect(r?.matched).toBe(denyDir);
-      expect(r?.reason).toBe("deny_path_match_inode");
-    },
-  );
+  it("denyPaths に directory を含めて denyHardlinkTraversal=true 時、配下 file の hardlink を inode 一致で検出", () => {
+    const r = findDenyPathMatch(
+      { path: hardlinkPath },
+      {
+        denyPaths: [denyDir],
+        denyHardlinkTraversal: true,
+        resolveSymlinks: false,
+      },
+    );
+    expect(r).not.toBeNull();
+    expect(r?.matched).toBe(denyDir);
+    expect(r?.reason).toBe("deny_path_match_inode");
+  });
 
   it("deny directory の初回走査後に追加された file の hardlink も inode 一致で検出", () => {
     const freshTmpRoot = mkdtempSync(path.join(tmpdir(), "cost-guard-hardlink-fresh-"));
