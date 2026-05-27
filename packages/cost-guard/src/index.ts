@@ -281,8 +281,11 @@ export default function register(api: OpenClawPluginApi): void {
 
     if (contentBytes > cfg.rewriteThresholdBytes) {
       const sentinel = buildSentinelMessage(contentBytes);
+      // observe では実際の rewrite を行わないため、log 文言で観測モードを明示する
+      const action =
+        cfg.blockMode === "observe" ? "tool_result_would_be_rewritten" : "tool_result_rewritten";
       log.info(
-        `${TAG} tool_result_rewritten: tool=${toolId} call_id=${toolCallId} bytes=${contentBytes} threshold=${cfg.rewriteThresholdBytes}`,
+        `${TAG} ${action}: tool=${toolId} call_id=${toolCallId} bytes=${contentBytes} threshold=${cfg.rewriteThresholdBytes}`,
       );
       incCounter("cost_guard.tool_result_rewritten", { toolId });
       if (cfg.blockMode === "observe") return {};
@@ -311,9 +314,11 @@ export default function register(api: OpenClawPluginApi): void {
     const sessionId = e.sessionId ?? e.channelId ?? e.accountId ?? "default";
 
     // 0. rollback Mode A: suspendAgent
+    //    本 case は contracts.md §10.1 の 5 metric とは独立した運用イベントのため、
+    //    `cost_guard.session_budget_exceeded` には混ぜず、専用 metric を別途発行する。
     if (cfg.suspendAgent) {
       warn(`${TAG} agent_suspended: session=${sessionId} (suspendAgent=true)`);
-      incCounter("cost_guard.session_budget_exceeded", { reason: "agent_suspended" });
+      incCounter("cost_guard.agent_suspended_block", { sessionId });
       if (cfg.blockMode === "observe") return { outcome: "pass" };
       return {
         outcome: "block",

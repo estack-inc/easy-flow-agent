@@ -348,6 +348,33 @@ describe("tool_result_persist - sentinel boundary", () => {
     );
   });
 
+  it("blockMode=observe では log 文言が `tool_result_would_be_rewritten`（実 rewrite との混同回避）", () => {
+    const api = makeApi({ blockMode: "observe" });
+    register(api as any);
+    const handler = api.hooks.get("tool_result_persist")!;
+    api.logger.info.mockClear();
+    handler(
+      { toolId: "read", toolCallId: "tcid_obs_log", result: { content: "x".repeat(60_000) } },
+      {},
+    );
+    const infoCalls = api.logger.info.mock.calls.map((c: unknown[]) => c[0] as string);
+    expect(infoCalls.some((m) => m.includes("tool_result_would_be_rewritten"))).toBe(true);
+    expect(infoCalls.some((m) => m.includes("tool_result_rewritten:"))).toBe(false);
+  });
+
+  it("blockMode=block では log 文言が `tool_result_rewritten`", () => {
+    const api = makeApi();
+    register(api as any);
+    const handler = api.hooks.get("tool_result_persist")!;
+    api.logger.info.mockClear();
+    handler(
+      { toolId: "read", toolCallId: "tcid_block_log", result: { content: "x".repeat(60_000) } },
+      {},
+    );
+    const infoCalls = api.logger.info.mock.calls.map((c: unknown[]) => c[0] as string);
+    expect(infoCalls.some((m) => m.includes("tool_result_rewritten:"))).toBe(true);
+  });
+
   it("result.content が配列（[{text: '...'}, ...]）形式でも byte 数を合算", () => {
     const api = makeApi();
     register(api as any);
@@ -608,6 +635,37 @@ describe("before_agent_run - suspendAgent (rollback Mode A)", () => {
       {},
     ) as BeforeAgentRunResult;
     expect(result.outcome).toBe("pass");
+  });
+
+  it("suspendAgent block 時に専用 metric `cost_guard.agent_suspended_block` を発行（session_budget_exceeded には混ぜない）", () => {
+    const api = makeApi({ suspendAgent: true });
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+    handler({ sessionId: "s1", prompt: "hi", messages: [] }, {});
+    expect(api.metrics.incrementCounter).toHaveBeenCalledWith(
+      "cost_guard.agent_suspended_block",
+      expect.objectContaining({ sessionId: "s1" }),
+    );
+    // session_budget_exceeded は発行しない（混ぜない）
+    expect(api.metrics.incrementCounter).not.toHaveBeenCalledWith(
+      "cost_guard.session_budget_exceeded",
+      expect.anything(),
+    );
+  });
+
+  it("suspendAgent + blockMode=observe では log と metric は発行するが pass を返す", () => {
+    const api = makeApi({ suspendAgent: true, blockMode: "observe" });
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+    const result = handler(
+      { sessionId: "s_obs", prompt: "hi", messages: [] },
+      {},
+    ) as BeforeAgentRunResult;
+    expect(result.outcome).toBe("pass");
+    expect(api.metrics.incrementCounter).toHaveBeenCalledWith(
+      "cost_guard.agent_suspended_block",
+      expect.anything(),
+    );
   });
 });
 
