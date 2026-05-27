@@ -27,7 +27,12 @@
 import { findCommandDenylistMatch } from "./command-checker.js";
 import { findDenyPathMatch } from "./path-checker.js";
 import { buildSentinelMessage, computeContentBytes, isSentinelMessage } from "./sentinel.js";
-import { estimatePromptInputTokens, type SessionMessage } from "./token-estimator.js";
+import {
+  estimateMessagesTokenCount,
+  estimatePromptInputTokens,
+  estimateTokenCount,
+  type SessionMessage,
+} from "./token-estimator.js";
 
 const TAG = "[cost-guard]";
 const VERBOSE_PARAM_HEAD_BYTES = 200;
@@ -155,6 +160,7 @@ const SUSPENDED_BLOCK_MESSAGE =
 
 interface SessionState {
   cumulativeTokens: number;
+  observedMessagesTokens: number;
 }
 
 // ============================================================================
@@ -343,9 +349,13 @@ export default function register(api: OpenClawPluginApi): void {
 
     // 2. 段 2: session cumulative breaker
     const sessionState = getOrCreateSessionState(sessionStateMap, sessionId);
-    // current turn の prompt + messages token を session 単位で加算する。
-    const turnTokens = perTurnTokens;
+    const promptTokens = estimateTokenCount(e.prompt ?? "");
+    const messagesTokens = estimateMessagesTokenCount(e.messages);
+    const messagesDeltaTokens = Math.max(0, messagesTokens - sessionState.observedMessagesTokens);
+    // prompt は current turn 入力として毎回加算し、messages 履歴は前回観測からの増分だけ加算する。
+    const turnTokens = promptTokens + messagesDeltaTokens;
     sessionState.cumulativeTokens += turnTokens;
+    sessionState.observedMessagesTokens = messagesTokens;
     if (sessionState.cumulativeTokens > cfg.sessionTokenBudget) {
       warn(
         `${TAG} session_token_budget_exceeded: session=${sessionId} cumulative_tokens=${sessionState.cumulativeTokens} budget=${cfg.sessionTokenBudget}`,
@@ -477,13 +487,7 @@ function extractResultContentBytes(result: unknown): number {
     if (Array.isArray(r.content)) {
       let total = 0;
       for (const item of r.content) {
-        if (item && typeof item === "object") {
-          const text = (item as Record<string, unknown>).text;
-          if (typeof text === "string") total += computeContentBytes(text);
-          else total += computeContentBytes(item);
-        } else {
-          total += computeContentBytes(item);
-        }
+        total += computeContentBytes(item);
       }
       return total;
     }
@@ -495,7 +499,7 @@ function extractResultContentBytes(result: unknown): number {
 function getOrCreateSessionState(map: Map<string, SessionState>, sessionId: string): SessionState {
   let s = map.get(sessionId);
   if (!s) {
-    s = { cumulativeTokens: 0 };
+    s = { cumulativeTokens: 0, observedMessagesTokens: 0 };
     map.set(sessionId, s);
   }
   return s;

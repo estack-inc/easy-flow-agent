@@ -406,6 +406,24 @@ describe("tool_result_persist - sentinel boundary", () => {
     expect((result as any).message.content).toContain(SENTINEL_PREFIX);
   });
 
+  it("result.content 配列内の object は text 以外の巨大 field も byte 数に含める", () => {
+    const api = makeApi();
+    register(api as any);
+    const handler = api.hooks.get("tool_result_persist")!;
+    const result = handler(
+      {
+        toolId: "read",
+        toolCallId: "tcid_arr_raw",
+        result: {
+          content: [{ text: "ok", raw: "x".repeat(60_000) }],
+        },
+      },
+      {},
+    ) as ToolResultPersistResult;
+    expect((result as any).message).toBeDefined();
+    expect((result as any).message.content).toContain(SENTINEL_PREFIX);
+  });
+
   it("result.content 配列内の object に text が無い場合は JSON 化 byte 数で計算", () => {
     const api = makeApi();
     register(api as any);
@@ -785,7 +803,7 @@ describe("before_agent_run - 段 2 session token budget", () => {
     expect((result as any).reason).toBe("session_token_budget_exceeded");
   });
 
-  it("同一 sessionId の複数 turn 合計が sessionTokenBudget を超えた時点で block", () => {
+  it("同一 sessionId・同一 messages の再評価では履歴分を二重加算しない", () => {
     const api = makeApi({ perTurnPromptInputThreshold: 10_000, sessionTokenBudget: 90 });
     register(api as any);
     const handler = api.hooks.get("before_agent_run")!;
@@ -793,10 +811,40 @@ describe("before_agent_run - 段 2 session token budget", () => {
 
     const first = handler({ sessionId: "s1", prompt: "", messages }, {}) as BeforeAgentRunResult;
     const second = handler({ sessionId: "s1", prompt: "", messages }, {}) as BeforeAgentRunResult;
+    const third = handler({ sessionId: "s1", prompt: "", messages }, {}) as BeforeAgentRunResult;
 
     expect(first.outcome).toBe("pass");
-    expect(second.outcome).toBe("block");
-    expect((second as any).reason).toBe("session_token_budget_exceeded");
+    expect(second.outcome).toBe("pass");
+    expect(third.outcome).toBe("pass");
+  });
+
+  it("同一 sessionId で message が追加された場合だけ増分を sessionTokenBudget に加算", () => {
+    const api = makeApi({ perTurnPromptInputThreshold: 10_000, sessionTokenBudget: 90 });
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+    const firstMessages = [{ role: "user" as const, content: "x".repeat(180) }]; // 50 tokens
+    const secondMessages = [
+      ...firstMessages,
+      { role: "assistant" as const, content: "y".repeat(180) },
+    ];
+
+    const first = handler(
+      { sessionId: "s1", prompt: "", messages: firstMessages },
+      {},
+    ) as BeforeAgentRunResult;
+    const repeated = handler(
+      { sessionId: "s1", prompt: "", messages: firstMessages },
+      {},
+    ) as BeforeAgentRunResult;
+    const appended = handler(
+      { sessionId: "s1", prompt: "", messages: secondMessages },
+      {},
+    ) as BeforeAgentRunResult;
+
+    expect(first.outcome).toBe("pass");
+    expect(repeated.outcome).toBe("pass");
+    expect(appended.outcome).toBe("block");
+    expect((appended as any).reason).toBe("session_token_budget_exceeded");
   });
 
   it("messages が空でも prompt の複数 turn 合計が sessionTokenBudget を超えた時点で block", () => {
