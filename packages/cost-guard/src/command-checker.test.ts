@@ -74,6 +74,34 @@ describe("findCommandDenylistMatch", () => {
       expect(r?.matchedPattern).toBe("sh -c $");
     });
 
+    it("args 配列形式の bash -c $VAR を検出", () => {
+      const r = findCommandDenylistMatch(
+        { args: ["bash", "-c", "$PAYLOAD"] },
+        { commandDenylist: DEFAULT_DENYLIST },
+      );
+      expect(r).not.toBeNull();
+      expect(r?.field).toBe("args");
+      expect(r?.matchedPattern).toBe("bash -c $");
+    });
+
+    it("args 配列形式の /bin/sh -c ${VAR} を検出", () => {
+      const r = findCommandDenylistMatch(
+        { args: ["/bin/sh", "-c", "${PAYLOAD}"] },
+        { commandDenylist: DEFAULT_DENYLIST },
+      );
+      expect(r).not.toBeNull();
+      expect(r?.matchedPattern).toBe("sh -c $");
+    });
+
+    it("args 配列形式の bash -lc $VAR を検出", () => {
+      const r = findCommandDenylistMatch(
+        { args: ["bash", "-lc", "$PAYLOAD"] },
+        { commandDenylist: DEFAULT_DENYLIST },
+      );
+      expect(r).not.toBeNull();
+      expect(r?.matchedPattern).toBe("bash -c $");
+    });
+
     it("process substitution <(", () => {
       const r = findCommandDenylistMatch(
         { command: "diff <(cat a) <(cat b)" },

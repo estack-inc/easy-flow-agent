@@ -58,6 +58,15 @@ export function findCommandDenylistMatch(
     visited.add(value as object);
 
     if (Array.isArray(value)) {
+      const leaf = leafKey(fieldPath);
+      const isCommandArray = COMMAND_LIKE_FIELDS.has(leaf) || leaf.startsWith("args");
+      if (isCommandArray && value.every((item): item is string => typeof item === "string")) {
+        for (const pattern of patterns) {
+          if (containsCommandPatternInArgs(value, pattern)) {
+            return { field: fieldPath, matchedPattern: pattern };
+          }
+        }
+      }
       for (let i = 0; i < value.length; i++) {
         const r = walk(value[i], `${fieldPath}[${i}]`);
         if (r) return r;
@@ -100,14 +109,28 @@ export function containsCommandPattern(command: string, pattern: string): boolea
   return false;
 }
 
+function containsCommandPatternInArgs(args: string[], pattern: string): boolean {
+  if (args.join(" ").includes(pattern)) return true;
+  if (pattern === "bash -c $" && hasShellCExpansionTokens(args, "bash")) return true;
+  if (pattern === "sh -c $" && hasShellCExpansionTokens(args, "sh")) return true;
+  return false;
+}
+
 function hasShellCExpansion(command: string, shellName: "bash" | "sh"): boolean {
-  const tokens = tokenizeShellCommand(command);
+  return hasShellCExpansionTokens(tokenizeShellCommand(command), shellName);
+}
+
+function hasShellCExpansionTokens(tokens: string[], shellName: "bash" | "sh"): boolean {
   for (let i = 0; i < tokens.length - 2; i++) {
     if (pathBasename(tokens[i]) !== shellName) continue;
-    if (tokens[i + 1] !== "-c") continue;
+    if (!isShellCommandOption(tokens[i + 1])) continue;
     if (containsShellExpansion(tokens[i + 2])) return true;
   }
   return false;
+}
+
+function isShellCommandOption(token: string): boolean {
+  return /^-[A-Za-z]*c[A-Za-z]*$/.test(token);
 }
 
 function tokenizeShellCommand(command: string): string[] {

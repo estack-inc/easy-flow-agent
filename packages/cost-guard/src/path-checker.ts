@@ -76,6 +76,7 @@ interface DenyInodeCacheEntry {
   map: Map<string, string>;
   scannedEntries: number;
   truncated: boolean;
+  truncatedDenyRoot: string | null;
 }
 
 const denyInodeCache = new Map<string, DenyInodeCacheEntry>();
@@ -109,7 +110,7 @@ export function findDenyPathMatch(
         })
         .filter((x): x is { original: string; normalized: string } => x !== null)
     : [];
-  const denyInodeMap = options.denyHardlinkTraversal ? collectDenyInodes(denyPaths) : null;
+  const denyInodes = options.denyHardlinkTraversal ? collectDenyInodes(denyPaths) : null;
 
   function walk(value: unknown, fieldPath: string, baseDirs: string[]): PathMatchResult | null {
     if (typeof value === "string") {
@@ -152,14 +153,21 @@ export function findDenyPathMatch(
           }
         }
         // 3. inode 一致（hardlink 経由）
-        if (denyInodeMap && path.isAbsolute(candidate)) {
+        if (denyInodes && path.isAbsolute(candidate)) {
           const stat = tryStat(candidate);
           if (stat) {
             const key = `${stat.dev}:${stat.ino}`;
-            const denyOriginal = denyInodeMap.get(key);
+            const denyOriginal = denyInodes.map.get(key);
             if (denyOriginal) {
               return {
                 matched: denyOriginal,
+                field: fieldPath,
+                reason: "deny_path_match_inode",
+              };
+            }
+            if (denyInodes.truncated) {
+              return {
+                matched: denyInodes.truncatedDenyRoot ?? denyPaths[0] ?? "(unknown)",
                 field: fieldPath,
                 reason: "deny_path_match_inode",
               };
@@ -198,28 +206,30 @@ export function findDenyPathMatch(
  * denyPaths が directory の場合は、配下も再帰的に収集する。
  * 実 FS に存在しない deny path はスキップ（test 環境で /data/workspace 等が無いケース対応）。
  */
-function collectDenyInodes(denyPaths: string[]): Map<string, string> {
+function collectDenyInodes(denyPaths: string[]): DenyInodeCacheEntry {
   const cacheKey = denyPaths.map((p) => normalizePathForMatch(p)).join("\0");
   const now = Date.now();
   const cached = denyInodeCache.get(cacheKey);
   if (cached && now - cached.createdAt <= DENY_INODE_CACHE_TTL_MS) {
-    return cached.map;
+    return cached;
   }
 
   const map = new Map<string, string>();
   const visitedDirs = new Set<string>();
-  const state = { scannedEntries: 0, truncated: false };
+  const state = { scannedEntries: 0, truncated: false, truncatedDenyRoot: null as string | null };
   for (const p of denyPaths) {
     collectDenyPathInodes(p, p, map, visitedDirs, state);
     if (state.truncated) break;
   }
-  denyInodeCache.set(cacheKey, {
+  const entry = {
     createdAt: now,
     map,
     scannedEntries: state.scannedEntries,
     truncated: state.truncated,
-  });
-  return map;
+    truncatedDenyRoot: state.truncatedDenyRoot,
+  };
+  denyInodeCache.set(cacheKey, entry);
+  return entry;
 }
 
 function collectDenyPathInodes(
@@ -227,11 +237,12 @@ function collectDenyPathInodes(
   currentPath: string,
   map: Map<string, string>,
   visitedDirs: Set<string>,
-  state: { scannedEntries: number; truncated: boolean },
+  state: { scannedEntries: number; truncated: boolean; truncatedDenyRoot: string | null },
 ): void {
   if (state.truncated) return;
   if (state.scannedEntries >= DENY_INODE_SCAN_LIMIT) {
     state.truncated = true;
+    state.truncatedDenyRoot = denyRoot;
     return;
   }
   state.scannedEntries++;
@@ -254,6 +265,7 @@ function collectDenyPathInodes(
     }
     if (state.scannedEntries >= DENY_INODE_SCAN_LIMIT) {
       state.truncated = true;
+      state.truncatedDenyRoot = denyRoot;
       return;
     }
     state.scannedEntries++;

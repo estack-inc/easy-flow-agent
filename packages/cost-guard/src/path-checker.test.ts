@@ -439,7 +439,7 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
     },
   );
 
-  it("large deny directory は 10,000 件上限で打ち切り、同一 denyPaths では cache を再利用", () => {
+  it("large deny directory の走査上限到達時は hardlink 判定を fail closed し、cache を再利用", () => {
     clearDenyInodeCacheForTest();
     const largeTmpRoot = mkdtempSync(path.join(tmpdir(), "cost-guard-hardlink-large-"));
     try {
@@ -448,13 +448,15 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
       mkdirSync(largeDenyDir);
       mkdirSync(largeAllowedDir);
       for (let i = 0; i < 10_050; i++) {
-        writeFileSync(path.join(largeDenyDir, `f-${i}.txt`), "x");
+        writeFileSync(path.join(largeDenyDir, `f-${i.toString().padStart(5, "0")}.txt`), "x");
       }
-      const unrelatedPath = path.join(largeAllowedDir, "unrelated.txt");
-      writeFileSync(unrelatedPath, "safe");
+      const targetAfterLimit = path.join(largeDenyDir, "z-target-after-limit.txt");
+      writeFileSync(targetAfterLimit, "secret");
+      const hardlinkAfterLimit = path.join(largeAllowedDir, "target-link.txt");
+      linkSync(targetAfterLimit, hardlinkAfterLimit);
 
       const first = findDenyPathMatch(
-        { path: unrelatedPath },
+        { path: hardlinkAfterLimit },
         {
           denyPaths: [largeDenyDir],
           denyHardlinkTraversal: true,
@@ -463,7 +465,7 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
       );
       const firstStats = getDenyInodeCacheStatsForTest();
       const second = findDenyPathMatch(
-        { path: unrelatedPath },
+        { path: hardlinkAfterLimit },
         {
           denyPaths: [largeDenyDir],
           denyHardlinkTraversal: true,
@@ -472,8 +474,10 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
       );
       const secondStats = getDenyInodeCacheStatsForTest();
 
-      expect(first).toBeNull();
-      expect(second).toBeNull();
+      expect(first).not.toBeNull();
+      expect(first?.matched).toBe(largeDenyDir);
+      expect(first?.reason).toBe("deny_path_match_inode");
+      expect(second).toEqual(first);
       expect(firstStats.size).toBe(1);
       expect(firstStats.entries[0]?.scannedEntries).toBeLessThanOrEqual(10_000);
       expect(firstStats.entries[0]?.truncated).toBe(true);

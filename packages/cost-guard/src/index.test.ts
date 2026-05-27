@@ -222,6 +222,18 @@ describe("before_tool_call - commandDenylist", () => {
     expect((result as any).blockReason).toBe("command_denylist_match");
   });
 
+  it("args 配列形式の bash -c $VAR を command_denylist_match で block", () => {
+    const api = makeApi();
+    register(api as any);
+    const handler = api.hooks.get("before_tool_call")!;
+    const result = handler(
+      { toolId: "exec", params: { args: ["bash", "-c", "$PAYLOAD"] } },
+      {},
+    ) as BeforeToolCallResult;
+    expect((result as any).block).toBe(true);
+    expect((result as any).blockReason).toBe("command_denylist_match");
+  });
+
   it("空の commandDenylist では何も block しない", () => {
     const api = makeApi({ commandDenylist: [] });
     register(api as any);
