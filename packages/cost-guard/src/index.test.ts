@@ -818,6 +818,23 @@ describe("before_agent_run - 段 2 session token budget", () => {
     expect(third.outcome).toBe("pass");
   });
 
+  it("同一 messages の再評価では prompt 分だけを追加で累積する", () => {
+    const api = makeApi({ perTurnPromptInputThreshold: 10_000, sessionTokenBudget: 100 });
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+    const messages = [{ role: "user" as const, content: "x".repeat(180) }]; // 50 tokens
+    const prompt = "p".repeat(80); // 20 tokens
+
+    const first = handler({ sessionId: "s1", prompt, messages }, {}) as BeforeAgentRunResult;
+    const second = handler({ sessionId: "s1", prompt, messages }, {}) as BeforeAgentRunResult;
+    const third = handler({ sessionId: "s1", prompt, messages }, {}) as BeforeAgentRunResult;
+
+    expect(first.outcome).toBe("pass");
+    expect(second.outcome).toBe("pass");
+    expect(third.outcome).toBe("block");
+    expect((third as any).reason).toBe("session_token_budget_exceeded");
+  });
+
   it("同一 sessionId で message が追加された場合だけ増分を sessionTokenBudget に加算", () => {
     const api = makeApi({ perTurnPromptInputThreshold: 10_000, sessionTokenBudget: 90 });
     register(api as any);
