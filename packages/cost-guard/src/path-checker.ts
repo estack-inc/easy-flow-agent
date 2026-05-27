@@ -72,9 +72,6 @@ interface DenyInodeScanResult {
   map: Map<string, string>;
 }
 
-const DENY_INODE_CACHE_TTL_MS = 1000;
-const denyInodeCache = new Map<string, { expiresAt: number; result: DenyInodeScanResult }>();
-
 /**
  * tool params を再帰走査し、denyPaths にマッチする path 候補を探す。
  *
@@ -150,7 +147,7 @@ export function findDenyPathMatch(
         if (options.denyHardlinkTraversal && path.isAbsolute(candidate)) {
           const stat = tryStat(candidate);
           if (stat && shouldCheckDenyInodes(stat)) {
-            denyInodes ??= collectDenyInodesCached(denyPaths);
+            denyInodes ??= collectDenyInodes(denyPaths);
             const key = `${stat.dev}:${stat.ino}`;
             const denyOriginal = denyInodes.map.get(key);
             if (denyOriginal) {
@@ -192,19 +189,9 @@ export function findDenyPathMatch(
 /**
  * denyPaths 各 entry の inode を収集する。
  * denyPaths が directory の場合は、配下も再帰的に収集する。
- * 呼び出し側は候補 path が hardlink の可能性を持つ場合だけ実行し、結果は短時間 cache する。
+ * 呼び出し側は候補 path が hardlink の可能性を持つ場合だけ実行する。
  * 実 FS に存在しない deny path はスキップ（test 環境で /data/workspace 等が無いケース対応）。
  */
-function collectDenyInodesCached(denyPaths: string[]): DenyInodeScanResult {
-  const cacheKey = denyPaths.join("\0");
-  const now = Date.now();
-  const cached = denyInodeCache.get(cacheKey);
-  if (cached && cached.expiresAt > now) return cached.result;
-  const result = collectDenyInodes(denyPaths);
-  denyInodeCache.set(cacheKey, { expiresAt: now + DENY_INODE_CACHE_TTL_MS, result });
-  return result;
-}
-
 function collectDenyInodes(denyPaths: string[]): DenyInodeScanResult {
   const map = new Map<string, string>();
   const visitedDirs = new Set<string>();

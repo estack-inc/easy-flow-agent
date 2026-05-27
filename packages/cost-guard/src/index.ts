@@ -277,10 +277,11 @@ export default function register(api: OpenClawPluginApi): void {
       toolName?: string;
       toolId?: string;
       toolCallId?: string;
+      tool_call_id?: string;
       result?: unknown;
     };
     const toolId = e.toolId ?? e.toolName ?? "(unknown)";
-    const toolCallId = e.toolCallId ?? "";
+    const toolCallId = e.toolCallId ?? e.tool_call_id ?? "";
     const contentBytes = extractResultContentBytes(e.result);
 
     if (cfg.logging) {

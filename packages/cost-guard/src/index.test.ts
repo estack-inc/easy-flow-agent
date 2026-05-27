@@ -313,6 +313,21 @@ describe("tool_result_persist - sentinel boundary", () => {
     expect((result as any).message.tool_call_id).toBe("tcid_preserve_me");
   });
 
+  it("event.tool_call_id の snake_case 入力も sentinel message に保持", () => {
+    const api = makeApi();
+    register(api as any);
+    const handler = api.hooks.get("tool_result_persist")!;
+    const result = handler(
+      {
+        toolId: "read",
+        tool_call_id: "tcid_x",
+        result: { content: "x".repeat(60_000) },
+      },
+      {},
+    ) as ToolResultPersistResult;
+    expect((result as any).message.tool_call_id).toBe("tcid_x");
+  });
+
   it("string 直結 result でも byte 数計算", () => {
     const api = makeApi();
     register(api as any);

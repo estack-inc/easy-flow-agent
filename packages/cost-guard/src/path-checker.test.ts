@@ -444,16 +444,21 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
       const freshAllowedDir = path.join(freshTmpRoot, "allowed");
       mkdirSync(freshDenyDir);
       mkdirSync(freshAllowedDir);
+      const initialDenyFile = path.join(freshDenyDir, "initial.txt");
+      const initialHardlinkPath = path.join(freshAllowedDir, "initial-link.txt");
+      writeFileSync(initialDenyFile, "initial secret");
+      linkSync(initialDenyFile, initialHardlinkPath);
 
       const first = findDenyPathMatch(
-        { path: path.join(freshAllowedDir, "before-link.txt") },
+        { path: initialHardlinkPath },
         {
           denyPaths: [freshDenyDir],
           denyHardlinkTraversal: true,
           resolveSymlinks: false,
         },
       );
-      expect(first).toBeNull();
+      expect(first).not.toBeNull();
+      expect(first?.reason).toBe("deny_path_match_inode");
 
       const denyFile = path.join(freshDenyDir, "created-after-first-scan.txt");
       const freshHardlinkPath = path.join(freshAllowedDir, "after-link.txt");
