@@ -21,10 +21,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  clearDenyInodeCacheForTest,
   expandPathCandidates,
   findDenyPathMatch,
-  getDenyInodeCacheStatsForTest,
   isWithinDenyPath,
   normalizePathForMatch,
 } from "./path-checker.js";
@@ -439,8 +437,46 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
     },
   );
 
-  it("large deny directory の走査上限到達時は hardlink 判定を fail closed し、cache を再利用", () => {
-    clearDenyInodeCacheForTest();
+  it("deny directory の初回走査後に追加された file の hardlink も inode 一致で検出", () => {
+    const freshTmpRoot = mkdtempSync(path.join(tmpdir(), "cost-guard-hardlink-fresh-"));
+    try {
+      const freshDenyDir = path.join(freshTmpRoot, "deny");
+      const freshAllowedDir = path.join(freshTmpRoot, "allowed");
+      mkdirSync(freshDenyDir);
+      mkdirSync(freshAllowedDir);
+
+      const first = findDenyPathMatch(
+        { path: path.join(freshAllowedDir, "before-link.txt") },
+        {
+          denyPaths: [freshDenyDir],
+          denyHardlinkTraversal: true,
+          resolveSymlinks: false,
+        },
+      );
+      expect(first).toBeNull();
+
+      const denyFile = path.join(freshDenyDir, "created-after-first-scan.txt");
+      const freshHardlinkPath = path.join(freshAllowedDir, "after-link.txt");
+      writeFileSync(denyFile, "secret");
+      linkSync(denyFile, freshHardlinkPath);
+
+      const second = findDenyPathMatch(
+        { path: freshHardlinkPath },
+        {
+          denyPaths: [freshDenyDir],
+          denyHardlinkTraversal: true,
+          resolveSymlinks: false,
+        },
+      );
+      expect(second).not.toBeNull();
+      expect(second?.matched).toBe(freshDenyDir);
+      expect(second?.reason).toBe("deny_path_match_inode");
+    } finally {
+      rmSync(freshTmpRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("large deny directory の走査上限到達時も無関係な既存 absolute path は block しない", () => {
     const largeTmpRoot = mkdtempSync(path.join(tmpdir(), "cost-guard-hardlink-large-"));
     try {
       const largeDenyDir = path.join(largeTmpRoot, "deny");
@@ -450,41 +486,21 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
       for (let i = 0; i < 10_050; i++) {
         writeFileSync(path.join(largeDenyDir, `f-${i.toString().padStart(5, "0")}.txt`), "x");
       }
-      const targetAfterLimit = path.join(largeDenyDir, "z-target-after-limit.txt");
-      writeFileSync(targetAfterLimit, "secret");
-      const hardlinkAfterLimit = path.join(largeAllowedDir, "target-link.txt");
-      linkSync(targetAfterLimit, hardlinkAfterLimit);
+      const unrelatedPath = path.join(largeAllowedDir, "unrelated.txt");
+      writeFileSync(unrelatedPath, "public");
 
-      const first = findDenyPathMatch(
-        { path: hardlinkAfterLimit },
+      const r = findDenyPathMatch(
+        { path: unrelatedPath },
         {
           denyPaths: [largeDenyDir],
           denyHardlinkTraversal: true,
           resolveSymlinks: false,
         },
       );
-      const firstStats = getDenyInodeCacheStatsForTest();
-      const second = findDenyPathMatch(
-        { path: hardlinkAfterLimit },
-        {
-          denyPaths: [largeDenyDir],
-          denyHardlinkTraversal: true,
-          resolveSymlinks: false,
-        },
-      );
-      const secondStats = getDenyInodeCacheStatsForTest();
 
-      expect(first).not.toBeNull();
-      expect(first?.matched).toBe(largeDenyDir);
-      expect(first?.reason).toBe("deny_path_match_inode");
-      expect(second).toEqual(first);
-      expect(firstStats.size).toBe(1);
-      expect(firstStats.entries[0]?.scannedEntries).toBeLessThanOrEqual(10_000);
-      expect(firstStats.entries[0]?.truncated).toBe(true);
-      expect(secondStats).toEqual(firstStats);
+      expect(r).toBeNull();
     } finally {
       rmSync(largeTmpRoot, { recursive: true, force: true });
-      clearDenyInodeCacheForTest();
     }
   });
 

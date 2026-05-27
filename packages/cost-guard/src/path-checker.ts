@@ -68,18 +68,11 @@ const BASE_DIR_FIELD_NAMES = new Set([
   "dir",
 ]);
 
-const DENY_INODE_CACHE_TTL_MS = 60_000;
 const DENY_INODE_SCAN_LIMIT = 10_000;
 
-interface DenyInodeCacheEntry {
-  createdAt: number;
+interface DenyInodeScanResult {
   map: Map<string, string>;
-  scannedEntries: number;
-  truncated: boolean;
-  truncatedDenyRoot: string | null;
 }
-
-const denyInodeCache = new Map<string, DenyInodeCacheEntry>();
 
 /**
  * tool params を再帰走査し、denyPaths にマッチする path 候補を探す。
@@ -165,13 +158,6 @@ export function findDenyPathMatch(
                 reason: "deny_path_match_inode",
               };
             }
-            if (denyInodes.truncated) {
-              return {
-                matched: denyInodes.truncatedDenyRoot ?? denyPaths[0] ?? "(unknown)",
-                field: fieldPath,
-                reason: "deny_path_match_inode",
-              };
-            }
           }
         }
       }
@@ -206,30 +192,15 @@ export function findDenyPathMatch(
  * denyPaths が directory の場合は、配下も再帰的に収集する。
  * 実 FS に存在しない deny path はスキップ（test 環境で /data/workspace 等が無いケース対応）。
  */
-function collectDenyInodes(denyPaths: string[]): DenyInodeCacheEntry {
-  const cacheKey = denyPaths.map((p) => normalizePathForMatch(p)).join("\0");
-  const now = Date.now();
-  const cached = denyInodeCache.get(cacheKey);
-  if (cached && now - cached.createdAt <= DENY_INODE_CACHE_TTL_MS) {
-    return cached;
-  }
-
+function collectDenyInodes(denyPaths: string[]): DenyInodeScanResult {
   const map = new Map<string, string>();
   const visitedDirs = new Set<string>();
-  const state = { scannedEntries: 0, truncated: false, truncatedDenyRoot: null as string | null };
+  const state = { scannedEntries: 0, truncated: false };
   for (const p of denyPaths) {
     collectDenyPathInodes(p, p, map, visitedDirs, state);
     if (state.truncated) break;
   }
-  const entry = {
-    createdAt: now,
-    map,
-    scannedEntries: state.scannedEntries,
-    truncated: state.truncated,
-    truncatedDenyRoot: state.truncatedDenyRoot,
-  };
-  denyInodeCache.set(cacheKey, entry);
-  return entry;
+  return { map };
 }
 
 function collectDenyPathInodes(
@@ -237,12 +208,11 @@ function collectDenyPathInodes(
   currentPath: string,
   map: Map<string, string>,
   visitedDirs: Set<string>,
-  state: { scannedEntries: number; truncated: boolean; truncatedDenyRoot: string | null },
+  state: { scannedEntries: number; truncated: boolean },
 ): void {
   if (state.truncated) return;
   if (state.scannedEntries >= DENY_INODE_SCAN_LIMIT) {
     state.truncated = true;
-    state.truncatedDenyRoot = denyRoot;
     return;
   }
   state.scannedEntries++;
@@ -265,7 +235,6 @@ function collectDenyPathInodes(
     }
     if (state.scannedEntries >= DENY_INODE_SCAN_LIMIT) {
       state.truncated = true;
-      state.truncatedDenyRoot = denyRoot;
       return;
     }
     state.scannedEntries++;
@@ -274,23 +243,6 @@ function collectDenyPathInodes(
       map.set(`${entryStat.dev}:${entryStat.ino}`, denyRoot);
     }
   }
-}
-
-export function clearDenyInodeCacheForTest(): void {
-  denyInodeCache.clear();
-}
-
-export function getDenyInodeCacheStatsForTest(): {
-  size: number;
-  entries: { scannedEntries: number; truncated: boolean }[];
-} {
-  return {
-    size: denyInodeCache.size,
-    entries: [...denyInodeCache.values()].map((entry) => ({
-      scannedEntries: entry.scannedEntries,
-      truncated: entry.truncated,
-    })),
-  };
 }
 
 function tryReadDir(p: string): Dirent[] | null {
