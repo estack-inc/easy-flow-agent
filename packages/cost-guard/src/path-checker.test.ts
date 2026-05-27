@@ -420,6 +420,23 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
     expect(r?.reason).toBe("deny_path_match_inode");
   });
 
+  it(
+    "denyPaths に directory を含めて denyHardlinkTraversal=true 時、配下 file の hardlink を inode 一致で検出",
+    () => {
+      const r = findDenyPathMatch(
+        { path: hardlinkPath },
+        {
+          denyPaths: [denyDir],
+          denyHardlinkTraversal: true,
+          resolveSymlinks: false,
+        },
+      );
+      expect(r).not.toBeNull();
+      expect(r?.matched).toBe(denyDir);
+      expect(r?.reason).toBe("deny_path_match_inode");
+    },
+  );
+
   it("denyHardlinkTraversal=false なら inode 一致を検査せず通過", () => {
     const denyFile = path.join(denyDir, "secret.txt");
     const r = findDenyPathMatch(

@@ -44,7 +44,7 @@
  * 実 FS 不在時（CI / unit test）は realpath / stat エラーを無視し、文字列ベースの canonical 化のみで判定。
  */
 
-import { realpathSync, type Stats, statSync } from "node:fs";
+import { type Dirent, readdirSync, realpathSync, type Stats, statSync } from "node:fs";
 import path from "node:path";
 
 export interface PathCheckOptions {
@@ -67,6 +67,8 @@ const BASE_DIR_FIELD_NAMES = new Set([
   "working_directory",
   "dir",
 ]);
+
+const MAX_DENY_INODE_ENTRIES = 10_000;
 
 /**
  * tool params を再帰走査し、denyPaths にマッチする path 候補を探す。
@@ -183,17 +185,56 @@ export function findDenyPathMatch(
 
 /**
  * denyPaths 各 entry の inode を収集する。
+ * denyPaths が directory の場合は、運用上限 MAX_DENY_INODE_ENTRIES まで
+ * 配下も収集する。
  * 実 FS に存在しない deny path はスキップ（test 環境で /data/workspace 等が無いケース対応）。
  */
 function collectDenyInodes(denyPaths: string[]): Map<string, string> {
   const map = new Map<string, string>();
+  const budget = { remaining: MAX_DENY_INODE_ENTRIES };
   for (const p of denyPaths) {
-    const stat = tryStat(p);
-    if (stat) {
-      map.set(`${stat.dev}:${stat.ino}`, p);
-    }
+    collectDenyPathInodes(p, p, map, budget);
+    if (budget.remaining <= 0) break;
   }
   return map;
+}
+
+function collectDenyPathInodes(
+  denyRoot: string,
+  currentPath: string,
+  map: Map<string, string>,
+  budget: { remaining: number },
+): void {
+  if (budget.remaining <= 0) return;
+  budget.remaining -= 1;
+  const stat = tryStat(currentPath);
+  if (!stat) return;
+  map.set(`${stat.dev}:${stat.ino}`, denyRoot);
+  if (!stat.isDirectory()) return;
+
+  const entries = tryReadDir(currentPath);
+  if (!entries) return;
+  for (const entry of entries) {
+    if (budget.remaining <= 0) return;
+    const entryPath = path.join(currentPath, entry.name);
+    if (entry.isDirectory()) {
+      collectDenyPathInodes(denyRoot, entryPath, map, budget);
+      continue;
+    }
+    budget.remaining -= 1;
+    const entryStat = tryStat(entryPath);
+    if (entryStat) {
+      map.set(`${entryStat.dev}:${entryStat.ino}`, denyRoot);
+    }
+  }
+}
+
+function tryReadDir(p: string): Dirent[] | null {
+  try {
+    return readdirSync(p, { withFileTypes: true });
+  } catch {
+    return null;
+  }
 }
 
 function tryRealpath(p: string): string | null {
