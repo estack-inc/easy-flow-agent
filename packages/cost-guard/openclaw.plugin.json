@@ -1,0 +1,80 @@
+{
+  "id": "cost-guard",
+  "kind": "plugin",
+  "name": "Cost Guard",
+  "description": "Phase 1 cost-guard plugin。default deny + tool allowlist + 2 段 breaker（per-turn input gate + session budget breaker）で transcript コスト爆発を構造的に遮断する。before_tool_call で denyPaths 配下への汎用 file access を遮断（allowlist の tool のみ通過）、tool_result_persist で 50KB 超の result を sentinel 置換、before_agent_run で per-turn / session 単位の token gate を実施する。",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "logging": {
+        "type": "boolean",
+        "default": true,
+        "description": "hook 発火時に api.logger で観測 log を出力するか"
+      },
+      "verbose": {
+        "type": "boolean",
+        "default": false,
+        "description": "tool params の概略（最大 200 byte）も log に含める"
+      },
+      "blockMode": {
+        "type": "string",
+        "enum": ["observe", "block"],
+        "default": "block",
+        "description": "Phase 1 本番既定は block。observe は dev 検証専用（block 判定を log のみで実施し、戻り値は block しない）"
+      },
+      "denyPaths": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": ["/data/workspace/zoom_transcribe/"],
+        "description": "default deny する path のプレフィックス。allowlistedToolsForDenyPaths のみ通過。path.resolve + realpath で canonical 化し、symlink / hardlink / `../` 経由のアクセスも検出する"
+      },
+      "allowlistedToolsForDenyPaths": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [
+          "transcript-analyzer.list_transcripts",
+          "transcript-analyzer.search_transcripts",
+          "transcript-analyzer.analyze_transcript"
+        ],
+        "description": "denyPaths 配下にアクセス可能な tool id allowlist"
+      },
+      "rewriteThresholdBytes": {
+        "type": "number",
+        "default": 50000,
+        "description": "tool_result_persist で sentinel 置換する閾値（byte 数）。result の content 合計 byte が本値を超えた場合 sentinel 置換する"
+      },
+      "sessionTokenBudget": {
+        "type": "number",
+        "default": 500000,
+        "description": "session 単位の cumulative token 上限。超過時に before_agent_run 段 2 で block する"
+      },
+      "perTurnPromptInputThreshold": {
+        "type": "number",
+        "default": 50000,
+        "description": "次ターン prompt input 上限（推論直前 gate）。超過時に before_agent_run 段 1 で block する"
+      },
+      "commandDenylist": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": ["eval", "bash -c $", "sh -c $", "<(", "$(", "`"],
+        "description": "command params に対する AST 検査での deny パターン。shell injection 経由の denyPaths アクセス試行を捕捉する"
+      },
+      "denyHardlinkTraversal": {
+        "type": "boolean",
+        "default": true,
+        "description": "hardlink 経由で denyPaths 配下に到達する path を inode 一致で検出するか"
+      },
+      "cleanupOnSessionStart": {
+        "type": "boolean",
+        "default": true,
+        "description": "before_agent_run で session messages を走査し、過去ターンの tool result で denyPaths 配下の path 参照を sentinel 置換するか"
+      },
+      "suspendAgent": {
+        "type": "boolean",
+        "default": false,
+        "description": "rollback Mode A：agent 一時停止。true のとき before_agent_run で全 agent run を block する"
+      }
+    }
+  }
+}
