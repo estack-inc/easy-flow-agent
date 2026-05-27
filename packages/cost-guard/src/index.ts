@@ -27,11 +27,7 @@
 import { findCommandDenylistMatch } from "./command-checker.js";
 import { findDenyPathMatch } from "./path-checker.js";
 import { buildSentinelMessage, computeContentBytes, isSentinelMessage } from "./sentinel.js";
-import {
-  estimateMessagesTokenCount,
-  estimatePromptInputTokens,
-  type SessionMessage,
-} from "./token-estimator.js";
+import { estimatePromptInputTokens, type SessionMessage } from "./token-estimator.js";
 
 const TAG = "[cost-guard]";
 const VERBOSE_PARAM_HEAD_BYTES = 200;
@@ -347,8 +343,8 @@ export default function register(api: OpenClawPluginApi): void {
 
     // 2. 段 2: session cumulative breaker
     const sessionState = getOrCreateSessionState(sessionStateMap, sessionId);
-    // current turn の messages token を session 単位で加算する。
-    const turnTokens = estimateMessagesTokenCount(e.messages);
+    // current turn の prompt + messages token を session 単位で加算する。
+    const turnTokens = perTurnTokens;
     sessionState.cumulativeTokens += turnTokens;
     if (sessionState.cumulativeTokens > cfg.sessionTokenBudget) {
       warn(

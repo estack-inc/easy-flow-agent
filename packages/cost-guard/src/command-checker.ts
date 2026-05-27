@@ -14,8 +14,8 @@
  * - "`"          : backtick command substitution
  *
  * 検査方針：
- * - command 文字列を空白 / `|` / `;` で粗く split し、各 token とその raw string で contains 判定
- * - 全文 substring match と token-level match の OR を取る（false negative より false positive を許容）
+ * - command 文字列を shell quote を考慮して軽く token 化し、`bash|sh -c` の script 引数を検査
+ * - 全文 substring match と shell token match の OR を取る（false negative より false positive を許容）
  * - false positive を避けるため、deny pattern は文字列単純 contains（正規表現ではない）
  */
 
@@ -95,5 +95,63 @@ function leafKey(fieldPath: string): string {
 export function containsCommandPattern(command: string, pattern: string): boolean {
   // 完全 substring match
   if (command.includes(pattern)) return true;
+  if (pattern === "bash -c $" && hasShellCExpansion(command, "bash")) return true;
+  if (pattern === "sh -c $" && hasShellCExpansion(command, "sh")) return true;
   return false;
+}
+
+function hasShellCExpansion(command: string, shellName: "bash" | "sh"): boolean {
+  const tokens = tokenizeShellCommand(command);
+  for (let i = 0; i < tokens.length - 2; i++) {
+    if (pathBasename(tokens[i]) !== shellName) continue;
+    if (tokens[i + 1] !== "-c") continue;
+    if (containsShellExpansion(tokens[i + 2])) return true;
+  }
+  return false;
+}
+
+function tokenizeShellCommand(command: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  for (const ch of command) {
+    if (escaped) {
+      current += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if ((ch === "'" || ch === '"') && quote === null) {
+      quote = ch;
+      continue;
+    }
+    if (quote === ch) {
+      quote = null;
+      continue;
+    }
+    if (quote === null && /\s|[|;&]/.test(ch)) {
+      if (current !== "") {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += ch;
+  }
+  if (escaped) current += "\\";
+  if (current !== "") tokens.push(current);
+  return tokens;
+}
+
+function pathBasename(value: string): string {
+  return value.split("/").at(-1) ?? value;
+}
+
+function containsShellExpansion(script: string): boolean {
+  return /\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[^}]+\}|\()/.test(script) || script.includes("`");
 }

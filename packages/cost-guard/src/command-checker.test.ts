@@ -2,7 +2,7 @@
  * command-checker の単体テスト
  *
  * 検証点：
- * - containsCommandPattern が substring match で判定
+ * - containsCommandPattern が substring match と shell quote-aware `bash|sh -c` で判定
  * - findCommandDenylistMatch が command-like field のみを検査
  * - command-like field（command / cmd / script / shell / args）の各 alias をカバー
  * - non-command field（path / file / url 等）は検査対象外
@@ -50,6 +50,24 @@ describe("findCommandDenylistMatch", () => {
     it("sh -c $", () => {
       const r = findCommandDenylistMatch(
         { command: "sh -c $PAYLOAD" },
+        { commandDenylist: DEFAULT_DENYLIST },
+      );
+      expect(r).not.toBeNull();
+      expect(r?.matchedPattern).toBe("sh -c $");
+    });
+
+    it("bash -c の二重引用符内 $VAR を検出", () => {
+      const r = findCommandDenylistMatch(
+        { command: 'bash -c "$PAYLOAD"' },
+        { commandDenylist: DEFAULT_DENYLIST },
+      );
+      expect(r).not.toBeNull();
+      expect(r?.matchedPattern).toBe("bash -c $");
+    });
+
+    it("sh -c の一重引用符内 ${VAR} を検出", () => {
+      const r = findCommandDenylistMatch(
+        { command: "sh -c '${PAYLOAD}'" },
         { commandDenylist: DEFAULT_DENYLIST },
       );
       expect(r).not.toBeNull();

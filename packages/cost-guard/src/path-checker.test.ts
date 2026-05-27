@@ -21,8 +21,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  clearDenyInodeCacheForTest,
   expandPathCandidates,
   findDenyPathMatch,
+  getDenyInodeCacheStatsForTest,
   isWithinDenyPath,
   normalizePathForMatch,
 } from "./path-checker.js";
@@ -437,34 +439,48 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
     },
   );
 
-  it("deny directory 配下が 10,000 件を超えても hardlink を inode 一致で検出", () => {
+  it("large deny directory は 10,000 件上限で打ち切り、同一 denyPaths では cache を再利用", () => {
+    clearDenyInodeCacheForTest();
     const largeTmpRoot = mkdtempSync(path.join(tmpdir(), "cost-guard-hardlink-large-"));
     try {
       const largeDenyDir = path.join(largeTmpRoot, "deny");
       const largeAllowedDir = path.join(largeTmpRoot, "allowed");
       mkdirSync(largeDenyDir);
       mkdirSync(largeAllowedDir);
-      for (let i = 0; i < 10_001; i++) {
+      for (let i = 0; i < 10_050; i++) {
         writeFileSync(path.join(largeDenyDir, `f-${i}.txt`), "x");
       }
-      const targetDenyFile = path.join(largeDenyDir, "target-after-limit.txt");
-      writeFileSync(targetDenyFile, "secret");
-      const largeHardlinkPath = path.join(largeAllowedDir, "target-link.txt");
-      linkSync(targetDenyFile, largeHardlinkPath);
+      const unrelatedPath = path.join(largeAllowedDir, "unrelated.txt");
+      writeFileSync(unrelatedPath, "safe");
 
-      const r = findDenyPathMatch(
-        { path: largeHardlinkPath },
+      const first = findDenyPathMatch(
+        { path: unrelatedPath },
         {
           denyPaths: [largeDenyDir],
           denyHardlinkTraversal: true,
           resolveSymlinks: false,
         },
       );
-      expect(r).not.toBeNull();
-      expect(r?.matched).toBe(largeDenyDir);
-      expect(r?.reason).toBe("deny_path_match_inode");
+      const firstStats = getDenyInodeCacheStatsForTest();
+      const second = findDenyPathMatch(
+        { path: unrelatedPath },
+        {
+          denyPaths: [largeDenyDir],
+          denyHardlinkTraversal: true,
+          resolveSymlinks: false,
+        },
+      );
+      const secondStats = getDenyInodeCacheStatsForTest();
+
+      expect(first).toBeNull();
+      expect(second).toBeNull();
+      expect(firstStats.size).toBe(1);
+      expect(firstStats.entries[0]?.scannedEntries).toBeLessThanOrEqual(10_000);
+      expect(firstStats.entries[0]?.truncated).toBe(true);
+      expect(secondStats).toEqual(firstStats);
     } finally {
       rmSync(largeTmpRoot, { recursive: true, force: true });
+      clearDenyInodeCacheForTest();
     }
   });
 
