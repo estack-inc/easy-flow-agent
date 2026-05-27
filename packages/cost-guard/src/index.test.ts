@@ -711,6 +711,20 @@ describe("before_agent_run - 段 1 per-turn input gate", () => {
     expect((result as any).message).toContain("入力サイズ");
   });
 
+  it("配列 content の巨大 message は per_turn_input_too_large で block", () => {
+    const api = makeApi();
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+    const messages = [
+      { role: "user" as const, content: [{ type: "text", text: "x".repeat(200_004) }] },
+    ];
+
+    const result = handler({ sessionId: "s1", prompt: "", messages }, {}) as BeforeAgentRunResult;
+
+    expect(result.outcome).toBe("block");
+    expect((result as any).reason).toBe("per_turn_input_too_large");
+  });
+
   it("block 時に metric `cost_guard.per_turn_input_blocked` を発行", () => {
     const api = makeApi();
     register(api as any);
@@ -752,6 +766,20 @@ describe("before_agent_run - 段 2 session token budget", () => {
     const handler = api.hooks.get("before_agent_run")!;
     const messages = [{ role: "user" as const, content: "x".repeat(2_005_000) }]; // > 500_000 tokens
     const result = handler({ sessionId: "s1", prompt: "", messages }, {}) as BeforeAgentRunResult;
+    expect(result.outcome).toBe("block");
+    expect((result as any).reason).toBe("session_token_budget_exceeded");
+  });
+
+  it("配列 content の巨大 message は session_token_budget_exceeded で block", () => {
+    const api = makeApi({ perTurnPromptInputThreshold: 10_000_000 });
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+    const messages = [
+      { role: "user" as const, content: [{ type: "text", text: "x".repeat(2_005_000) }] },
+    ];
+
+    const result = handler({ sessionId: "s1", prompt: "", messages }, {}) as BeforeAgentRunResult;
+
     expect(result.outcome).toBe("block");
     expect((result as any).reason).toBe("session_token_budget_exceeded");
   });

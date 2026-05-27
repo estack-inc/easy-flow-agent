@@ -81,6 +81,20 @@ describe("estimateMessagesTokenCount", () => {
     expect(r).toBe(9);
   });
 
+  it("配列 content の text payload も token 見積もり対象にする", () => {
+    const r = estimateMessagesTokenCount([
+      { role: "user", content: [{ type: "text", text: "x".repeat(200_004) }] },
+    ]);
+    expect(r).toBeGreaterThan(50_000);
+  });
+
+  it("content 以外の message payload も token 見積もり対象にする", () => {
+    const r = estimateMessagesTokenCount([
+      { role: "user", content: "", metadata: { text: "x".repeat(200_004) } } as any,
+    ]);
+    expect(r).toBeGreaterThan(50_000);
+  });
+
   it("不正な entry はスキップ", () => {
     const r = estimateMessagesTokenCount([
       null as any,

@@ -68,8 +68,6 @@ const BASE_DIR_FIELD_NAMES = new Set([
   "dir",
 ]);
 
-const DENY_INODE_SCAN_LIMIT = 10_000;
-
 interface DenyInodeScanResult {
   map: Map<string, string>;
 }
@@ -195,10 +193,8 @@ export function findDenyPathMatch(
 function collectDenyInodes(denyPaths: string[]): DenyInodeScanResult {
   const map = new Map<string, string>();
   const visitedDirs = new Set<string>();
-  const state = { scannedEntries: 0, truncated: false };
   for (const p of denyPaths) {
-    collectDenyPathInodes(p, p, map, visitedDirs, state);
-    if (state.truncated) break;
+    collectDenyPathInodes(p, p, map, visitedDirs);
   }
   return { map };
 }
@@ -208,14 +204,7 @@ function collectDenyPathInodes(
   currentPath: string,
   map: Map<string, string>,
   visitedDirs: Set<string>,
-  state: { scannedEntries: number; truncated: boolean },
 ): void {
-  if (state.truncated) return;
-  if (state.scannedEntries >= DENY_INODE_SCAN_LIMIT) {
-    state.truncated = true;
-    return;
-  }
-  state.scannedEntries++;
   const stat = tryStat(currentPath);
   if (!stat) return;
   const inodeKey = `${stat.dev}:${stat.ino}`;
@@ -227,17 +216,11 @@ function collectDenyPathInodes(
   const entries = tryReadDir(currentPath);
   if (!entries) return;
   for (const entry of entries) {
-    if (state.truncated) return;
     const entryPath = path.join(currentPath, entry.name);
     if (entry.isDirectory()) {
-      collectDenyPathInodes(denyRoot, entryPath, map, visitedDirs, state);
+      collectDenyPathInodes(denyRoot, entryPath, map, visitedDirs);
       continue;
     }
-    if (state.scannedEntries >= DENY_INODE_SCAN_LIMIT) {
-      state.truncated = true;
-      return;
-    }
-    state.scannedEntries++;
     const entryStat = tryStat(entryPath);
     if (entryStat) {
       map.set(`${entryStat.dev}:${entryStat.ino}`, denyRoot);

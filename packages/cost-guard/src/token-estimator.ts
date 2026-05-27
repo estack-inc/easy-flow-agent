@@ -19,8 +19,9 @@
 
 export interface SessionMessage {
   role: "user" | "assistant" | "tool" | "system";
-  content: string;
+  content: unknown;
   tool_call_id?: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -52,13 +53,48 @@ export function estimateMessagesTokenCount(messages: SessionMessage[] | undefine
   for (const msg of messages) {
     if (!msg || typeof msg !== "object") continue;
     const role = typeof msg.role === "string" ? msg.role : "";
-    const content = typeof msg.content === "string" ? msg.content : "";
+    const content = messageFieldToString(msg.content);
     const toolCallId = typeof msg.tool_call_id === "string" ? msg.tool_call_id : "";
+    const extraPayload = messageExtraPayloadToString(msg);
     // 1 message あたり 4 token のオーバーヘッド（role marker 等）を加味
     total +=
-      estimateTokenCount(role) + estimateTokenCount(content) + estimateTokenCount(toolCallId) + 4;
+      estimateTokenCount(role) +
+      estimateTokenCount(content) +
+      estimateTokenCount(toolCallId) +
+      estimateTokenCount(extraPayload) +
+      4;
   }
   return total;
+}
+
+function messageFieldToString(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === undefined || value === null) return "";
+  return safeJsonStringify(value);
+}
+
+function messageExtraPayloadToString(msg: SessionMessage): string {
+  const extraEntries = Object.entries(msg).filter(
+    ([key]) => key !== "role" && key !== "content" && key !== "tool_call_id",
+  );
+  if (extraEntries.length === 0) return "";
+  return safeJsonStringify(Object.fromEntries(extraEntries));
+}
+
+function safeJsonStringify(value: unknown): string {
+  const seen = new WeakSet<object>();
+  try {
+    return (
+      JSON.stringify(value, (_key, v: unknown) => {
+        if (typeof v !== "object" || v === null) return v;
+        if (seen.has(v)) return "[Circular]";
+        seen.add(v);
+        return v;
+      }) ?? ""
+    );
+  } catch {
+    return String(value);
+  }
 }
 
 /**

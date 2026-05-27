@@ -476,7 +476,7 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
     }
   });
 
-  it("large deny directory の走査上限到達時も無関係な既存 absolute path は block しない", () => {
+  it("large deny directory でも無関係な既存 absolute path は block しない", () => {
     const largeTmpRoot = mkdtempSync(path.join(tmpdir(), "cost-guard-hardlink-large-"));
     try {
       const largeDenyDir = path.join(largeTmpRoot, "deny");
@@ -499,6 +499,38 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
       );
 
       expect(r).toBeNull();
+    } finally {
+      rmSync(largeTmpRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("large deny directory の後続 file への hardlink も inode 一致で検出", () => {
+    const largeTmpRoot = mkdtempSync(path.join(tmpdir(), "cost-guard-hardlink-large-target-"));
+    try {
+      const largeDenyDir = path.join(largeTmpRoot, "deny");
+      const largeAllowedDir = path.join(largeTmpRoot, "allowed");
+      mkdirSync(largeDenyDir);
+      mkdirSync(largeAllowedDir);
+      for (let i = 0; i < 10_050; i++) {
+        writeFileSync(path.join(largeDenyDir, `f-${i.toString().padStart(5, "0")}.txt`), "x");
+      }
+      const lateDenyFile = path.join(largeDenyDir, "z-late-secret.txt");
+      const lateHardlinkPath = path.join(largeAllowedDir, "late-secret-link.txt");
+      writeFileSync(lateDenyFile, "secret");
+      linkSync(lateDenyFile, lateHardlinkPath);
+
+      const r = findDenyPathMatch(
+        { path: lateHardlinkPath },
+        {
+          denyPaths: [largeDenyDir],
+          denyHardlinkTraversal: true,
+          resolveSymlinks: false,
+        },
+      );
+
+      expect(r).not.toBeNull();
+      expect(r?.matched).toBe(largeDenyDir);
+      expect(r?.reason).toBe("deny_path_match_inode");
     } finally {
       rmSync(largeTmpRoot, { recursive: true, force: true });
     }

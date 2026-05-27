@@ -99,7 +99,7 @@ openclaw plugins inspect cost-guard --runtime --json
 | `sessionTokenBudget` | number | `500000` | session 単位の cumulative token 上限 |
 | `perTurnPromptInputThreshold` | number | `50000` | 次ターン prompt input 上限（推論直前 gate） |
 | `commandDenylist` | string[] | `["eval", "bash -c $", "sh -c $", "<(", "$(", "`"]` | command の AST 検査での deny パターン |
-| `denyHardlinkTraversal` | boolean | `true` | hardlink 経由で `denyPaths` に到達する path を inode 一致で検出。directory は配下 10,000 entry まで走査 |
+| `denyHardlinkTraversal` | boolean | `true` | hardlink 経由で `denyPaths` に到達する path を inode 一致で検出。directory は配下を再帰走査 |
 | `cleanupOnSessionStart` | boolean | `true` | 過去 messages の `denyPaths` 参照を sentinel 置換 |
 | `suspendAgent` | boolean | `false` | rollback Mode A：agent 一時停止 |
 
