@@ -504,6 +504,38 @@ describe("findDenyPathMatch - hardlink inode 一致（実 FS）", () => {
     }
   });
 
+  it("large deny directory で非該当 path を複数回検査しても所定時間内に完了", () => {
+    const largeTmpRoot = mkdtempSync(path.join(tmpdir(), "cost-guard-hardlink-large-repeat-"));
+    try {
+      const largeDenyDir = path.join(largeTmpRoot, "deny");
+      const largeAllowedDir = path.join(largeTmpRoot, "allowed");
+      mkdirSync(largeDenyDir);
+      mkdirSync(largeAllowedDir);
+      for (let i = 0; i < 10_050; i++) {
+        writeFileSync(path.join(largeDenyDir, `f-${i.toString().padStart(5, "0")}.txt`), "x");
+      }
+      const unrelatedPath = path.join(largeAllowedDir, "unrelated.txt");
+      writeFileSync(unrelatedPath, "public");
+
+      const start = Date.now();
+      for (let i = 0; i < 20; i++) {
+        const r = findDenyPathMatch(
+          { path: unrelatedPath },
+          {
+            denyPaths: [largeDenyDir],
+            denyHardlinkTraversal: true,
+            resolveSymlinks: false,
+          },
+        );
+        expect(r).toBeNull();
+      }
+      const elapsed = Date.now() - start;
+      expect(elapsed).toBeLessThan(500);
+    } finally {
+      rmSync(largeTmpRoot, { recursive: true, force: true });
+    }
+  });
+
   it("large deny directory の後続 file への hardlink も inode 一致で検出", () => {
     const largeTmpRoot = mkdtempSync(path.join(tmpdir(), "cost-guard-hardlink-large-target-"));
     try {

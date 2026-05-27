@@ -12,8 +12,9 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import register, {
@@ -853,6 +854,31 @@ describe("before_agent_run - cleanup (transcript_pollution_cleanup)", () => {
     expect((result as any).messages[1].tool_call_id).toBe("tcid_p1");
   });
 
+  it("content parts array 内の denyPaths 参照も sentinel 置換", () => {
+    const api = makeApi();
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+    const messages = [
+      {
+        role: "tool" as const,
+        content: [
+          {
+            type: "text",
+            text: `Here is content from ${DENY}x.txt\n... raw transcript body ...`,
+          },
+        ],
+        tool_call_id: "tcid_parts",
+      },
+    ];
+    const result = handler(
+      { sessionId: "s1", prompt: "next turn", messages },
+      {},
+    ) as BeforeAgentRunResult;
+    expect(result.outcome).toBe("rewrite");
+    expect((result as any).messages[0].content).toContain(SENTINEL_PREFIX);
+    expect((result as any).messages[0].tool_call_id).toBe("tcid_parts");
+  });
+
   it("cleanupOnSessionStart=false では rewrite しない", () => {
     const api = makeApi({ cleanupOnSessionStart: false });
     register(api as any);
@@ -990,6 +1016,37 @@ describe("metric 発行（contracts.md §10.1 の 5 metric）", () => {
     expect(() => register(api as any)).not.toThrow();
     const handler = api.hooks.get("before_tool_call")!;
     expect(() => handler({ toolId: "read", params: { path: `${DENY}x.txt` } }, {})).not.toThrow();
+  });
+});
+
+describe("before_tool_call - hardlink traversal performance", () => {
+  it("default denyHardlinkTraversal=true でも無関係な既存 path の反復検査で巨大 deny directory を毎回走査しない", () => {
+    const tmpRoot = mkdtempSync(join(tmpdir(), "cost-guard-register-hardlink-perf-"));
+    try {
+      const denyDir = join(tmpRoot, "deny");
+      const allowedDir = join(tmpRoot, "allowed");
+      mkdirSync(denyDir);
+      mkdirSync(allowedDir);
+      for (let i = 0; i < 5000; i++) {
+        writeFileSync(join(denyDir, `f-${i.toString().padStart(5, "0")}.txt`), "x");
+      }
+      const unrelatedPath = join(allowedDir, "unrelated.txt");
+      writeFileSync(unrelatedPath, "public");
+
+      const api = makeApi({ denyPaths: [denyDir] });
+      register(api as any);
+      const handler = api.hooks.get("before_tool_call")!;
+
+      const start = Date.now();
+      for (let i = 0; i < 20; i++) {
+        const result = handler({ toolId: "read", params: { path: unrelatedPath } }, {});
+        expect(result).toEqual({});
+      }
+      const elapsed = Date.now() - start;
+      expect(elapsed).toBeLessThan(500);
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
   });
 });
 

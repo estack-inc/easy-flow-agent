@@ -514,11 +514,12 @@ function cleanupSessionMessages(
   const rewritten: SessionMessage[] = messages.map((msg) => {
     if (!msg || typeof msg !== "object") return msg;
     if (msg.role !== "tool") return msg;
-    if (isSentinelMessage(msg.content)) return msg;
     const content = msg.content ?? "";
-    if (typeof content !== "string") return msg;
+    const searchableContent = messageContentToSearchText(content);
+    if (searchableContent === "") return msg;
+    if (isSentinelMessage(searchableContent)) return msg;
     // denyPaths のいずれかの prefix が含まれているかを単純 contains で判定
-    const hit = denyPaths.some((p) => content.includes(p));
+    const hit = denyPaths.some((p) => searchableContent.includes(p));
     if (!hit) return msg;
     rewrittenCount++;
     return {
@@ -527,6 +528,46 @@ function cleanupSessionMessages(
     };
   });
   return { messages: rewritten, rewrittenCount };
+}
+
+function messageContentToSearchText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (content === undefined || content === null) return "";
+  if (Array.isArray(content)) {
+    const parts: string[] = [];
+    for (const item of content) {
+      if (typeof item === "string") {
+        parts.push(item);
+        continue;
+      }
+      if (item && typeof item === "object") {
+        const text = (item as Record<string, unknown>).text;
+        if (typeof text === "string") parts.push(text);
+        else parts.push(safeJsonStringify(item));
+        continue;
+      }
+      parts.push(String(item));
+    }
+    return parts.join("\n");
+  }
+  if (typeof content === "object") return safeJsonStringify(content);
+  return String(content);
+}
+
+function safeJsonStringify(value: unknown): string {
+  const seen = new WeakSet<object>();
+  try {
+    return (
+      JSON.stringify(value, (_key, v: unknown) => {
+        if (typeof v !== "object" || v === null) return v;
+        if (seen.has(v)) return "[Circular]";
+        seen.add(v);
+        return v;
+      }) ?? ""
+    );
+  } catch {
+    return String(value);
+  }
 }
 
 function safePreview(v: unknown, maxBytes: number): string {

@@ -3,7 +3,7 @@
  *
  * Phase 0 の cost-guard-hello に対し以下を追加：
  * - realpath（symlink 解決）：fs.realpathSync で実 FS の symlink を解消
- * - inode 一致検査：denyHardlinkTraversal=true 時、stat の (dev, ino) が denyPaths 配下のいずれかと一致するか確認
+ * - inode 一致検査：denyHardlinkTraversal=true 時、hardlink 候補のみ stat の (dev, ino) が denyPaths 配下のいずれかと一致するか確認
  * - 30+ 迂回パターン耐性：相対 path、`../`、cwd 起点、command 内 redirection、option value 隣接、bare filename、
  *   symlink、hardlink、/proc/self/fd 経由、URL-encoded、二重 slash、末尾 slash 有無
  *
@@ -72,6 +72,9 @@ interface DenyInodeScanResult {
   map: Map<string, string>;
 }
 
+const DENY_INODE_CACHE_TTL_MS = 1000;
+const denyInodeCache = new Map<string, { expiresAt: number; result: DenyInodeScanResult }>();
+
 /**
  * tool params を再帰走査し、denyPaths にマッチする path 候補を探す。
  *
@@ -101,7 +104,7 @@ export function findDenyPathMatch(
         })
         .filter((x): x is { original: string; normalized: string } => x !== null)
     : [];
-  const denyInodes = options.denyHardlinkTraversal ? collectDenyInodes(denyPaths) : null;
+  let denyInodes: DenyInodeScanResult | null = null;
 
   function walk(value: unknown, fieldPath: string, baseDirs: string[]): PathMatchResult | null {
     if (typeof value === "string") {
@@ -144,9 +147,10 @@ export function findDenyPathMatch(
           }
         }
         // 3. inode 一致（hardlink 経由）
-        if (denyInodes && path.isAbsolute(candidate)) {
+        if (options.denyHardlinkTraversal && path.isAbsolute(candidate)) {
           const stat = tryStat(candidate);
-          if (stat) {
+          if (stat && shouldCheckDenyInodes(stat)) {
+            denyInodes ??= collectDenyInodesCached(denyPaths);
             const key = `${stat.dev}:${stat.ino}`;
             const denyOriginal = denyInodes.map.get(key);
             if (denyOriginal) {
@@ -188,8 +192,19 @@ export function findDenyPathMatch(
 /**
  * denyPaths 各 entry の inode を収集する。
  * denyPaths が directory の場合は、配下も再帰的に収集する。
+ * 呼び出し側は候補 path が hardlink の可能性を持つ場合だけ実行し、結果は短時間 cache する。
  * 実 FS に存在しない deny path はスキップ（test 環境で /data/workspace 等が無いケース対応）。
  */
+function collectDenyInodesCached(denyPaths: string[]): DenyInodeScanResult {
+  const cacheKey = denyPaths.join("\0");
+  const now = Date.now();
+  const cached = denyInodeCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.result;
+  const result = collectDenyInodes(denyPaths);
+  denyInodeCache.set(cacheKey, { expiresAt: now + DENY_INODE_CACHE_TTL_MS, result });
+  return result;
+}
+
 function collectDenyInodes(denyPaths: string[]): DenyInodeScanResult {
   const map = new Map<string, string>();
   const visitedDirs = new Set<string>();
@@ -226,6 +241,10 @@ function collectDenyPathInodes(
       map.set(`${entryStat.dev}:${entryStat.ino}`, denyRoot);
     }
   }
+}
+
+function shouldCheckDenyInodes(stat: Stats): boolean {
+  return stat.isFile() && stat.nlink > 1;
 }
 
 function tryReadDir(p: string): Dirent[] | null {
