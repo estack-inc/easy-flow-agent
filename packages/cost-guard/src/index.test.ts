@@ -779,6 +779,18 @@ describe("before_agent_run - 段 2 session token budget", () => {
     expect(result.outcome).toBe("pass");
   });
 
+  it("sessionTokenBudget ちょうど（500,000 token）は pass（境界は超過ではない）", () => {
+    const api = makeApi({ perTurnPromptInputThreshold: 10_000_000 });
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+    // user(1) + content(499_995) + tool_call_id(0) + overhead(4) = 500,000 token
+    const messages = [{ role: "user" as const, content: "x".repeat(1_999_980) }];
+
+    const result = handler({ sessionId: "s1", prompt: "", messages }, {}) as BeforeAgentRunResult;
+
+    expect(result.outcome).toBe("pass");
+  });
+
   it("sessionTokenBudget 超過は session_token_budget_exceeded で block", () => {
     const api = makeApi({ perTurnPromptInputThreshold: 10_000_000 }); // per-turn gate を緩めて段 2 を確認
     register(api as any);
