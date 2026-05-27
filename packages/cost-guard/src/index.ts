@@ -163,6 +163,14 @@ interface SessionState {
   observedMessagesTokens: number;
 }
 
+interface SessionBudgetUpdate {
+  promptTokens: number;
+  messagesTokens: number;
+  messagesDeltaTokens: number;
+  turnTokens: number;
+  cumulativeTokens: number;
+}
+
 // ============================================================================
 // register（OpenClaw plugin entry point）
 // ============================================================================
@@ -349,16 +357,10 @@ export default function register(api: OpenClawPluginApi): void {
 
     // 2. 段 2: session cumulative breaker
     const sessionState = getOrCreateSessionState(sessionStateMap, sessionId);
-    const promptTokens = estimateTokenCount(e.prompt ?? "");
-    const messagesTokens = estimateMessagesTokenCount(e.messages);
-    const messagesDeltaTokens = Math.max(0, messagesTokens - sessionState.observedMessagesTokens);
-    // prompt は current turn 入力として毎回加算し、messages 履歴は前回観測からの増分だけ加算する。
-    const turnTokens = promptTokens + messagesDeltaTokens;
-    sessionState.cumulativeTokens += turnTokens;
-    sessionState.observedMessagesTokens = messagesTokens;
-    if (sessionState.cumulativeTokens > cfg.sessionTokenBudget) {
+    const sessionUpdate = updateSessionBudgetState(sessionState, e.prompt, e.messages);
+    if (sessionUpdate.cumulativeTokens > cfg.sessionTokenBudget) {
       warn(
-        `${TAG} session_token_budget_exceeded: session=${sessionId} cumulative_tokens=${sessionState.cumulativeTokens} budget=${cfg.sessionTokenBudget}`,
+        `${TAG} session_token_budget_exceeded: session=${sessionId} cumulative_tokens=${sessionUpdate.cumulativeTokens} budget=${cfg.sessionTokenBudget}`,
       );
       incCounter("cost_guard.session_budget_exceeded", { sessionId });
       if (cfg.blockMode === "observe") {
@@ -398,7 +400,7 @@ export default function register(api: OpenClawPluginApi): void {
       const msgCount = Array.isArray(e.messages) ? e.messages.length : 0;
       log.info(
         `${TAG} before_agent_run: session=${sessionId} prompt_len=${promptLen} messages=${msgCount} ` +
-          `per_turn_tokens=${perTurnTokens} session_tokens=${sessionState.cumulativeTokens}`,
+          `per_turn_tokens=${perTurnTokens} session_tokens=${sessionUpdate.cumulativeTokens}`,
       );
     }
     return { outcome: "pass" };
@@ -503,6 +505,32 @@ function getOrCreateSessionState(map: Map<string, SessionState>, sessionId: stri
     map.set(sessionId, s);
   }
   return s;
+}
+
+function updateSessionBudgetState(
+  sessionState: SessionState,
+  prompt: string | undefined,
+  messages: SessionMessage[] | undefined,
+): SessionBudgetUpdate {
+  const promptTokens = estimateTokenCount(prompt ?? "");
+  const messagesTokens = estimateMessagesTokenCount(messages);
+  const messagesDeltaTokens = Math.max(0, messagesTokens - sessionState.observedMessagesTokens);
+  // prompt は current turn 入力として毎回加算し、messages 履歴は前回観測からの増分だけ加算する。
+  const turnTokens = promptTokens + messagesDeltaTokens;
+
+  sessionState.cumulativeTokens += turnTokens;
+  sessionState.observedMessagesTokens = Math.max(
+    sessionState.observedMessagesTokens,
+    messagesTokens,
+  );
+
+  return {
+    promptTokens,
+    messagesTokens,
+    messagesDeltaTokens,
+    turnTokens,
+    cumulativeTokens: sessionState.cumulativeTokens,
+  };
 }
 
 /**

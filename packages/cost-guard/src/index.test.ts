@@ -765,6 +765,25 @@ describe("before_agent_run - 段 1 per-turn input gate", () => {
     ) as BeforeAgentRunResult;
     expect(result.outcome).toBe("pass");
   });
+
+  it("per-turn gate で block された入力は session 累積に加算しない", () => {
+    const api = makeApi({ perTurnPromptInputThreshold: 10, sessionTokenBudget: 20 });
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+
+    const blocked = handler(
+      { sessionId: "s_per_turn_first", prompt: "x".repeat(44), messages: [] },
+      {},
+    ) as BeforeAgentRunResult;
+    const accepted = handler(
+      { sessionId: "s_per_turn_first", prompt: "y".repeat(40), messages: [] },
+      {},
+    ) as BeforeAgentRunResult;
+
+    expect(blocked.outcome).toBe("block");
+    expect((blocked as any).reason).toBe("per_turn_input_too_large");
+    expect(accepted.outcome).toBe("pass");
+  });
 });
 
 describe("before_agent_run - 段 2 session token budget", () => {
@@ -828,6 +847,32 @@ describe("before_agent_run - 段 2 session token budget", () => {
     expect(first.outcome).toBe("pass");
     expect(second.outcome).toBe("pass");
     expect(third.outcome).toBe("pass");
+  });
+
+  it("messages が一度短くなってから増えても過去に観測済みの履歴分は二重加算しない", () => {
+    const api = makeApi({ perTurnPromptInputThreshold: 10_000, sessionTokenBudget: 60 });
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+    const largeMessages = [{ role: "user" as const, content: "x".repeat(180) }]; // 50 tokens
+    const smallMessages = [{ role: "user" as const, content: "" }]; // 5 tokens
+    const grownMessages = [{ role: "user" as const, content: "y".repeat(100) }]; // 30 tokens
+
+    const first = handler(
+      { sessionId: "s_shrink_grow", prompt: "", messages: largeMessages },
+      {},
+    ) as BeforeAgentRunResult;
+    const shrink = handler(
+      { sessionId: "s_shrink_grow", prompt: "", messages: smallMessages },
+      {},
+    ) as BeforeAgentRunResult;
+    const grown = handler(
+      { sessionId: "s_shrink_grow", prompt: "", messages: grownMessages },
+      {},
+    ) as BeforeAgentRunResult;
+
+    expect(first.outcome).toBe("pass");
+    expect(shrink.outcome).toBe("pass");
+    expect(grown.outcome).toBe("pass");
   });
 
   it("同一 messages の再評価では prompt 分だけを追加で累積する", () => {
