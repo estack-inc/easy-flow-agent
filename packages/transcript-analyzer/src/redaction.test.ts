@@ -37,6 +37,18 @@ describe("redactSensitive", () => {
     expect(redactions.some((r) => r.type === "participant")).toBe(true);
   });
 
+  it("participant ラベル付きの複数参加者をすべて REDACTED_PARTICIPANT に置換", () => {
+    const { text, redactions } = redactSensitive(
+      "参加者: 山田太郎, 佐藤花子、鈴木一郎\n本文",
+    );
+    expect(text).toContain("[REDACTED_PARTICIPANT]");
+    expect(text).not.toContain("山田太郎");
+    expect(text).not.toContain("佐藤花子");
+    expect(text).not.toContain("鈴木一郎");
+    expect(text).toContain("\n本文");
+    expect(redactions.some((r) => r.type === "participant")).toBe(true);
+  });
+
   it("meeting_name ラベル付き件名を REDACTED_MEETING に置換", () => {
     const { text, redactions } = redactSensitive("件名: 月次商談レビュー（社外秘）\n本文...");
     expect(text).toContain("[REDACTED_MEETING]");

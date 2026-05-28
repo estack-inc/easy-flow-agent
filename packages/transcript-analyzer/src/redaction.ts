@@ -47,9 +47,9 @@ const CREDENTIAL_PATTERN =
 const ADDRESS_PATTERN =
   /(?:[東-鿿ｦ-ﾟ]{1,5}(?:都|道|府|県))?[東-鿿ｦ-ﾟ]{1,10}(?:市|区|町|村)[0-9東-鿿ｦ-ﾟ\-\s]{0,30}(?:番地|丁目|番|号)?/g;
 
-// participant：「参加者:」「発言者:」「Speaker:」等のラベル直後の名前
+// participant：「参加者:」「発言者:」「Speaker:」等のラベル直後の名前リスト
 const PARTICIPANT_PATTERN =
-  /(?:参加者|発言者|司会|発表者|出席者|Speaker|Participant|Host)\s*[:：]\s*([^\n,、，。]{1,40})/g;
+  /(?:参加者|発言者|司会|発表者|出席者|Speaker|Participant|Host)\s*[:：]\s*([^\n]{1,200})/g;
 
 // meeting_name：「件名:」「議題:」「会議名:」「Subject:」「Meeting:」等のラベル直後
 const MEETING_PATTERN =
