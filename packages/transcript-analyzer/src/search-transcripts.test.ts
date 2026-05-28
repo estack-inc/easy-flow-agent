@@ -114,6 +114,24 @@ describe("searchTranscripts", () => {
     }
   });
 
+  it("top_k が上限を超えても最大 50 件に制限", async () => {
+    const dir = makeTmpDir();
+    try {
+      writeFileSync(
+        join(dir, "big.txt"),
+        Array.from({ length: 2000 }, () => "keyword keyword keyword 内容").join("\n"),
+      );
+      const res = await searchTranscripts(
+        { query: "keyword", top_k: 1000 },
+        { transcriptDir: dir },
+      );
+      expect(res.chunks.length).toBeLessThanOrEqual(50);
+      expect(res.total_found).toBeGreaterThan(50);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("score 降順で並ぶ", async () => {
     const dir = makeTmpDir();
     try {

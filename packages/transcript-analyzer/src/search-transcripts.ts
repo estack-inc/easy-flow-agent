@@ -30,6 +30,7 @@ export interface SearchTranscriptsDeps {
 
 const CHUNK_SIZE_BYTES = 512;
 const DEFAULT_TOP_K = 10;
+const MAX_TOP_K = 50;
 
 /**
  * search_transcripts 実装。
@@ -43,7 +44,7 @@ export async function searchTranscripts(
   const query = typeof req?.query === "string" ? req.query : "";
   const topK =
     typeof req?.top_k === "number" && req.top_k > 0 && Number.isFinite(req.top_k)
-      ? Math.floor(req.top_k)
+      ? Math.min(Math.floor(req.top_k), MAX_TOP_K)
       : DEFAULT_TOP_K;
 
   if (query.length === 0) {
