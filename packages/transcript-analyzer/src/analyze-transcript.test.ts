@@ -74,8 +74,8 @@ const validGeminiJson = JSON.stringify({
     {
       transcript_id: "auto",
       chunk_id: "c-0",
-      byte_range: [0, 50],
-      excerpt: "会議の決定事項は来月までに方針を確定する。",
+      byte_range: [0, 6],
+      excerpt: "件名",
     },
   ],
   used_chunks: ["c-0"],
@@ -183,12 +183,20 @@ describe("analyzeTranscript - 6 つの cache_status 分岐", () => {
     const dir = makeTmpDir();
     try {
       // 14000 文字超で chunk 分割が effective に
-      const content = `件名: long\n${"あ".repeat(14000)}`;
+      const chunk1Excerpt = "chunk 1 excerpt";
+      const chunk2Excerpt = "chunk 2 excerpt";
+      const content = `${chunk1Excerpt}${"あ".repeat(12000 - chunk1Excerpt.length)}${chunk2Excerpt}${"い".repeat(100)}`;
       writeFileSync(join(dir, "long.txt"), content);
       const fileId = computeFileHash(content).slice(0, 16);
       const chunk1Json = JSON.stringify({
         answer: "chunk 1 answer",
-        citations: [{ chunk_id: "c-1", byte_range: [0, 10], excerpt: "chunk 1 excerpt" }],
+        citations: [
+          {
+            chunk_id: "c-1",
+            byte_range: [0, Buffer.byteLength(chunk1Excerpt, "utf8")],
+            excerpt: chunk1Excerpt,
+          },
+        ],
         used_chunks: ["c-1"],
         answer_scope: "explicit",
         confidence: 0.7,
@@ -197,7 +205,13 @@ describe("analyzeTranscript - 6 つの cache_status 分岐", () => {
       });
       const chunk2Json = JSON.stringify({
         answer: "chunk 2 answer",
-        citations: [{ chunk_id: "c-2", byte_range: [0, 10], excerpt: "chunk 2 excerpt" }],
+        citations: [
+          {
+            chunk_id: "c-2",
+            byte_range: [0, Buffer.byteLength(chunk2Excerpt, "utf8")],
+            excerpt: chunk2Excerpt,
+          },
+        ],
         used_chunks: ["c-2"],
         answer_scope: "explicit",
         confidence: 0.9,
@@ -469,13 +483,19 @@ describe("analyzeTranscript - 検証項目", () => {
   it("excerpt が 500 文字を超える場合は truncate", async () => {
     const dir = makeTmpDir();
     try {
-      const content = `件名: long\n${"A".repeat(2000)}`;
+      const longExcerpt = "B".repeat(800);
+      const content = `${longExcerpt}${"A".repeat(2000)}`;
       writeFileSync(join(dir, "long.txt"), content);
       const fileId = computeFileHash(content).slice(0, 16);
-      const longExcerpt = "B".repeat(800);
       const json = JSON.stringify({
         answer: "ok",
-        citations: [{ chunk_id: "c1", byte_range: [0, 100], excerpt: longExcerpt }],
+        citations: [
+          {
+            chunk_id: "c1",
+            byte_range: [0, Buffer.byteLength(longExcerpt, "utf8")],
+            excerpt: longExcerpt,
+          },
+        ],
         used_chunks: ["c1"],
         answer_scope: "explicit",
         confidence: 0.5,
@@ -499,10 +519,13 @@ describe("analyzeTranscript - 検証項目", () => {
       const content = "件名: bad-range\n本文";
       writeFileSync(join(dir, "x.txt"), content);
       const fileId = computeFileHash(content).slice(0, 16);
+      const validExcerpt = "本文";
+      const validStart = Buffer.byteLength(content.slice(0, content.indexOf(validExcerpt)), "utf8");
+      const validEnd = validStart + Buffer.byteLength(validExcerpt, "utf8");
       const json = JSON.stringify({
         answer: "ok",
         citations: [
-          { chunk_id: "c-good", byte_range: [0, 5], excerpt: "本文" },
+          { chunk_id: "c-good", byte_range: [validStart, validEnd], excerpt: validExcerpt },
           { chunk_id: "c-bad", byte_range: [9999999, 9999999], excerpt: "捏造" },
         ],
         used_chunks: ["c-good", "c-bad"],
@@ -518,6 +541,46 @@ describe("analyzeTranscript - 検証項目", () => {
       expect(res.citations.map((c) => c.chunk_id)).toEqual(["c-good"]);
       expect(res.used_chunks).toEqual(["c-good"]);
       expect(res.warnings.some((w) => w.includes("citation_byte_range_invalid"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("escaped transcript 基準の citation は元 transcript と一致しないため drop", async () => {
+    const dir = makeTmpDir();
+    try {
+      const content = "議題: <tag>A&B</tag>\n決定: 承認";
+      writeFileSync(join(dir, "xml-like.txt"), content);
+      const fileId = computeFileHash(content).slice(0, 16);
+      const escapedExcerpt = "&lt;tag&gt;A&amp;B&lt;/tag&gt;";
+      const escapedStart = Buffer.byteLength("議題: ", "utf8");
+      const escapedEnd = escapedStart + Buffer.byteLength("<tag>A&B</tag>", "utf8");
+      const json = JSON.stringify({
+        answer: "ok",
+        citations: [
+          {
+            chunk_id: "c-escaped",
+            byte_range: [escapedStart, escapedEnd],
+            excerpt: escapedExcerpt,
+          },
+        ],
+        used_chunks: ["c-escaped"],
+        answer_scope: "explicit",
+        confidence: 0.8,
+        confidence_reason: "escaped text",
+        warnings: [],
+        open_questions: [],
+      });
+      const { client } = createMockGeminiClient({ responses: [{ kind: "ok", rawJson: json }] });
+      const deps = makeDeps({ dir, client });
+
+      const res = await analyzeTranscript({ transcript_id: fileId, query: "議題は？" }, deps);
+
+      expect(res.citations).toEqual([]);
+      expect(res.used_chunks).toEqual([]);
+      expect(res.warnings.some((w) => w.includes("citation_excerpt_mismatch:c-escaped"))).toBe(
+        true,
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

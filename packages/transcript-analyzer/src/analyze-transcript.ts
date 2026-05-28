@@ -214,6 +214,7 @@ export async function analyzeTranscript(
     parsed,
     cacheStatus: fallbackResult.cacheStatus,
     transcriptId,
+    transcriptContent,
     transcriptByteLength,
     config,
     modelUsed: fallbackResult.model,
@@ -301,6 +302,7 @@ interface AssembleParams {
   parsed: GeminiResponseShape;
   cacheStatus: "miss" | "fallback_chunk" | "fallback_model";
   transcriptId: string;
+  transcriptContent: string;
   transcriptByteLength: number;
   config: ResolvedConfig;
   modelUsed: string;
@@ -334,6 +336,14 @@ function assembleResponse(p: AssembleParams): AnalyzeTranscriptResponse {
     }
     const rawExcerpt = typeof c.excerpt === "string" ? c.excerpt : "";
     if (rawExcerpt.length === 0) continue;
+    if (
+      extractTranscriptExcerpt(p.transcriptContent, byteRange as [number, number]) !== rawExcerpt
+    ) {
+      warnings.push(
+        `citation_excerpt_mismatch:${chunkId || "(no chunk_id)"}:${JSON.stringify(byteRange)}`,
+      );
+      continue;
+    }
     validCitations.push({
       transcript_id: transcriptIdField,
       chunk_id: chunkId,
@@ -416,6 +426,11 @@ function assembleResponse(p: AssembleParams): AnalyzeTranscriptResponse {
     warnings,
     open_questions: openQuestions,
   };
+}
+
+function extractTranscriptExcerpt(transcriptContent: string, byteRange: [number, number]): string {
+  const transcriptBytes = Buffer.from(transcriptContent, "utf8");
+  return transcriptBytes.subarray(byteRange[0], byteRange[1]).toString("utf8");
 }
 
 function buildFailureResponse(
