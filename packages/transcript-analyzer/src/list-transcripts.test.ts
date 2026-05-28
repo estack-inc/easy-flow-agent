@@ -76,18 +76,19 @@ describe("listTranscripts", () => {
     const outsideDir = makeTmpDir();
     try {
       const outside = join(outsideDir, "outside.txt");
-      writeFileSync(outside, "件名: symlink secret\n本文");
+      writeFileSync(outside, "outside-content-payload\n本文");
       try {
         symlinkSync(outside, join(dir, "linked.txt"));
       } catch {
         return;
       }
-      writeFileSync(join(dir, "visible.txt"), "件名: visible\n本文");
+      writeFileSync(join(dir, "visible.txt"), "visible-content-payload\n本文");
 
       const res = await listTranscripts({ transcriptDir: dir });
 
       expect(res.transcripts).toHaveLength(1);
-      expect(res.transcripts[0].summary_excerpt_redacted).toContain("visible");
+      // fixture content は redaction 対象外パターンを使い、identifier が excerpt に残ることを検証
+      expect(res.transcripts[0].summary_excerpt_redacted).toContain("visible-content-payload");
     } finally {
       rmSync(dir, { recursive: true, force: true });
       rmSync(outsideDir, { recursive: true, force: true });
