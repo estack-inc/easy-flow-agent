@@ -38,9 +38,7 @@ describe("redactSensitive", () => {
   });
 
   it("participant ラベル付きの複数参加者をすべて REDACTED_PARTICIPANT に置換", () => {
-    const { text, redactions } = redactSensitive(
-      "参加者: 山田太郎, 佐藤花子、鈴木一郎\n本文",
-    );
+    const { text, redactions } = redactSensitive("参加者: 山田太郎, 佐藤花子、鈴木一郎\n本文");
     expect(text).toContain("[REDACTED_PARTICIPANT]");
     expect(text).not.toContain("山田太郎");
     expect(text).not.toContain("佐藤花子");

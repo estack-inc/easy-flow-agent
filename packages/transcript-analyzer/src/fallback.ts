@@ -12,15 +12,11 @@
  * 「primaryModel / fallbackModel が gemini- 系であること」を確認する。
  */
 
-import {
-  GeminiAuthMissingError,
-  GeminiCallError,
-  type GeminiClient,
-} from "./gemini-client.js";
+import { GeminiAuthMissingError, GeminiCallError, type GeminiClient } from "./gemini-client.js";
 import { buildAnalyzePrompt } from "./prompt-injection-guard.js";
 import {
-  assertAllowedGeminiModel,
   type AnswerScope,
+  assertAllowedGeminiModel,
   type CacheStatus,
   type GeminiFailureKind,
 } from "./types.js";

@@ -22,7 +22,6 @@ import { GeminiClient } from "./gemini-client.js";
 import { listTranscripts } from "./list-transcripts.js";
 import { QuotaStore } from "./quota.js";
 import { searchTranscripts } from "./search-transcripts.js";
-import { assertAllowedGeminiModel } from "./types.js";
 import type {
   AnalyzeTranscriptRequest,
   AnalyzeTranscriptResponse,
@@ -32,6 +31,7 @@ import type {
   SearchTranscriptsResponse,
   TranscriptAnalyzerConfig,
 } from "./types.js";
+import { assertAllowedGeminiModel } from "./types.js";
 
 export { analyzeTranscript } from "./analyze-transcript.js";
 // public API として再 export
