@@ -4,17 +4,28 @@
  * contracts.md §4.2「同時実行衝突」の以下を実装：
  * - 1 session あたり 20 回 (maxAnalyzePerSession)
  * - 1 transcript あたり 1 日 50 回 (maxAnalyzePerFilePerDay)
- * - Gemini API spend：$50/instance/月の上限 (monthlySpendCapUsd)
+ * - Gemini API spend：$50/月の上限 (monthlySpendCapUsd)
  *
  * 超過時は cache_status: "quota_exceeded" で明示的失敗。
  *
- * 永続層を持たない設計：プロセス内 in-memory map で管理する。
+ * session / file-day はプロセス内 in-memory map で管理する。
  * - session counter は agent process と同じ寿命
  * - per-file-day counter は UTC day で reset
- * - spend は月初で reset
  *
- * pgvector / file 永続化は Phase 2 で実装。Phase 1 は in-memory で十分。
+ * monthly spend は plugin 再起動後も cap を維持するため、file backend を指定された場合は
+ * JSON に永続化する。
  */
+
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname } from "node:path";
 
 export interface QuotaLimits {
   maxAnalyzePerSession: number;
@@ -32,6 +43,15 @@ export interface QuotaCheckResult {
   };
 }
 
+export interface QuotaStoreOptions {
+  spendFilePath?: string;
+}
+
+interface PersistedSpendState {
+  version: 1;
+  monthSpend: Record<string, number>;
+}
+
 /**
  * tenant quota / spend cap を管理する store。
  *
@@ -46,6 +66,13 @@ export class QuotaStore {
 
   // YYYY-MM -> 累積 spend USD
   private readonly monthSpend = new Map<string, number>();
+
+  private readonly spendFilePath?: string;
+
+  constructor(options: QuotaStoreOptions = {}) {
+    this.spendFilePath = options.spendFilePath;
+    this.reloadSpend();
+  }
 
   /**
    * 呼び出し前の quota check（消費なし）。
@@ -62,7 +89,7 @@ export class QuotaStore {
 
     const sessionCount = this.sessionCounts.get(sessionKey) ?? 0;
     const fileDayCount = this.fileDayCounts.get(fileDayKey) ?? 0;
-    const monthSpendUsd = this.monthSpend.get(monthKey) ?? 0;
+    const monthSpendUsd = this.getMonthSpend(monthKey);
 
     if (sessionCount >= limits.maxAnalyzePerSession) {
       return {
@@ -108,14 +135,18 @@ export class QuotaStore {
   addSpend(usd: number, now: Date = new Date()): void {
     if (usd <= 0 || !Number.isFinite(usd)) return;
     const monthKey = utcMonthKey(now);
-    this.monthSpend.set(monthKey, (this.monthSpend.get(monthKey) ?? 0) + usd);
+    this.withSpendLock(() => {
+      this.reloadSpend();
+      this.monthSpend.set(monthKey, (this.monthSpend.get(monthKey) ?? 0) + usd);
+      this.persistSpend();
+    });
   }
 
   /**
    * 現在の spend を取得（test / observability 用）
    */
   getMonthlySpend(now: Date = new Date()): number {
-    return this.monthSpend.get(utcMonthKey(now)) ?? 0;
+    return this.getMonthSpend(utcMonthKey(now));
   }
 
   /**
@@ -125,7 +156,81 @@ export class QuotaStore {
     this.sessionCounts.clear();
     this.fileDayCounts.clear();
     this.monthSpend.clear();
+    if (this.spendFilePath && existsSync(this.spendFilePath)) {
+      this.withSpendLock(() => {
+        this.monthSpend.clear();
+        this.persistSpend();
+      });
+    }
   }
+
+  private getMonthSpend(monthKey: string): number {
+    this.reloadSpend();
+    return this.monthSpend.get(monthKey) ?? 0;
+  }
+
+  private reloadSpend(): void {
+    if (!this.spendFilePath || !existsSync(this.spendFilePath)) return;
+    try {
+      const parsed = JSON.parse(readFileSync(this.spendFilePath, "utf8")) as PersistedSpendState;
+      if (parsed.version !== 1 || typeof parsed.monthSpend !== "object" || !parsed.monthSpend) {
+        return;
+      }
+      this.monthSpend.clear();
+      for (const [monthKey, value] of Object.entries(parsed.monthSpend)) {
+        if (/^\d{4}-\d{2}$/.test(monthKey) && typeof value === "number" && Number.isFinite(value)) {
+          this.monthSpend.set(monthKey, value);
+        }
+      }
+    } catch {
+      // 破損した quota file は安全側に倒し、現在プロセスの値を維持する。
+    }
+  }
+
+  private persistSpend(): void {
+    if (!this.spendFilePath) return;
+    mkdirSync(dirname(this.spendFilePath), { recursive: true });
+    const state: PersistedSpendState = {
+      version: 1,
+      monthSpend: Object.fromEntries(this.monthSpend),
+    };
+    const tmpPath = `${this.spendFilePath}.${process.pid}.${Date.now()}.tmp`;
+    writeFileSync(tmpPath, JSON.stringify(state), "utf8");
+    renameSync(tmpPath, this.spendFilePath);
+  }
+
+  private withSpendLock<T>(fn: () => T): T {
+    if (!this.spendFilePath) return fn();
+    const lockDir = `${this.spendFilePath}.lock`;
+    mkdirSync(dirname(this.spendFilePath), { recursive: true });
+    const deadline = Date.now() + 1000;
+    while (true) {
+      try {
+        mkdirSync(lockDir);
+        break;
+      } catch {
+        try {
+          const ageMs = Date.now() - statSync(lockDir).mtimeMs;
+          if (ageMs > 30000) rmSync(lockDir, { recursive: true, force: true });
+        } catch {
+          // lock が消えた場合は次の loop で再試行する。
+        }
+        if (Date.now() >= deadline) {
+          throw new Error("[transcript-analyzer] quota spend file lock timeout");
+        }
+        sleepSync(10);
+      }
+    }
+    try {
+      return fn();
+    } finally {
+      rmSync(lockDir, { recursive: true, force: true });
+    }
+  }
+}
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 function utcDayKey(d: Date): string {

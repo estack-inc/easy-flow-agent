@@ -15,6 +15,7 @@
  * forbidden model token を runtime check で弾いている。
  */
 
+import { join } from "node:path";
 import { analyzeTranscript } from "./analyze-transcript.js";
 import { CACHE_NAMESPACE, CacheStore, FileCacheBackend } from "./cache.js";
 import { GeminiClient } from "./gemini-client.js";
@@ -169,6 +170,11 @@ export function createCacheStore(config: ResolvedConfig): CacheStore {
     ttlDays: config.cacheTtlDays,
     failureTtlMinutes: config.cacheFailureTtlMinutes,
   });
+}
+
+export function createQuotaStore(): QuotaStore {
+  const baseDir = process.env.TRANSCRIPT_ANALYZER_CACHE_DIR ?? `/data/cache/${CACHE_NAMESPACE}`;
+  return new QuotaStore({ spendFilePath: join(baseDir, "quota-spend.json") });
 }
 
 function createListTranscriptsTool(deps: ToolDependencies): AgentToolLike {
@@ -331,7 +337,7 @@ const transcriptAnalyzerPlugin = {
     }
 
     const cacheStore = createCacheStore(config);
-    const quotaStore = new QuotaStore();
+    const quotaStore = createQuotaStore();
 
     const metricsIncrement = (name: string, labels?: Record<string, string>): void => {
       api.metrics?.incrementCounter?.(name, labels);

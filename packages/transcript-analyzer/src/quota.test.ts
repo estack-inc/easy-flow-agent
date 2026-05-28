@@ -6,6 +6,9 @@
  * - UTC 日付境界
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { QuotaStore } from "./quota.js";
 
@@ -87,6 +90,24 @@ describe("QuotaStore.check", () => {
     s.addSpend(50, m1);
     expect(s.check("s", "h", LIMITS, m1).allowed).toBe(false);
     expect(s.check("s", "h", LIMITS, m2).allowed).toBe(true);
+  });
+
+  it("file backend 指定時は QuotaStore 作り直し後も同月 spend cap を維持する", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ta-quota-"));
+    try {
+      const spendFilePath = join(dir, "quota-spend.json");
+      const now = new Date("2026-05-15T12:00:00Z");
+      const s1 = new QuotaStore({ spendFilePath });
+      s1.addSpend(50, now);
+
+      const s2 = new QuotaStore({ spendFilePath });
+      const r = s2.check("s", "h", LIMITS, now);
+      expect(s2.getMonthlySpend(now)).toBe(50);
+      expect(r.allowed).toBe(false);
+      expect(r.reason).toBe("spend_cap");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("sessionId 空文字列は default として扱う", () => {

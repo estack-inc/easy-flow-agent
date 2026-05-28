@@ -72,6 +72,9 @@ export function detectPromptInjection(transcriptContent: string): string[] {
  * @returns Gemini に渡す full prompt
  */
 export function buildAnalyzePrompt(transcriptContent: string, userQuery: string): string {
+  const escapedTranscript = escapeXmlText(transcriptContent);
+  const escapedUserQuery = escapeXmlText(userQuery);
+
   // transcript を専用 fence で囲み、内部の token を Gemini に「指示として実行しない」ことを宣言する。
   return [
     "あなたは transcript analyzer です。以下のルールを厳守してください：",
@@ -88,13 +91,20 @@ export function buildAnalyzePrompt(transcriptContent: string, userQuery: string)
     "6. citation の excerpt は引用元データから一字一句変えず抜粋すること（最大 500 文字 / 件）。",
     "",
     "<transcript>",
-    transcriptContent,
+    escapedTranscript,
     "</transcript>",
     "",
-    `<user_query>${userQuery}</user_query>`,
+    `<user_query>${escapedUserQuery}</user_query>`,
     "",
     "JSON 形式で回答してください。",
   ].join("\n");
+}
+
+function escapeXmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**
