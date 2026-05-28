@@ -1,0 +1,47 @@
+{
+  "name": "transcript-analyzer",
+  "version": "0.1.0",
+  "description": "Phase 1 transcript-analyzer plugin: Gemini 2.5 Flash + 3 tool + 4-key cache + 多段 fallback。transcript を業務利用する唯一の合法経路として、cost-guard の allowlist 通過対象になる。",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./transcript-analyzer/index.js",
+      "types": "./transcript-analyzer/index.d.ts",
+      "default": "./transcript-analyzer/index.js"
+    }
+  },
+  "main": "./transcript-analyzer/index.js",
+  "types": "./transcript-analyzer/index.d.ts",
+  "openclaw": {
+    "extensions": ["./src/index.ts"]
+  },
+  "files": [
+    "transcript-analyzer",
+    "src",
+    "openclaw.plugin.json"
+  ],
+  "scripts": {
+    "build": "tsc && cp openclaw.plugin.json transcript-analyzer/openclaw.plugin.json",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src/"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.5.12"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  }
+}

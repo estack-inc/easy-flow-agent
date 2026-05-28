@@ -1,0 +1,73 @@
+{
+  "id": "transcript-analyzer",
+  "kind": "plugin",
+  "name": "Transcript Analyzer",
+  "description": "Phase 1 transcript-analyzer plugin。transcript を業務利用する唯一の合法経路として 3 tool（list_transcripts / search_transcripts / analyze_transcript）を提供。Gemini 2.5 Flash で transcript を analyze し structured JSON（answer + citations + confidence）を返す。cost-guard の allowlist 通過対象。多段 fallback（cache → Gemini → chunk 分割 → fallbackModel → 明示的失敗）。Sonnet 全文 fallback は禁止。",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "transcriptDir": {
+        "type": "string",
+        "default": "/data/workspace/zoom_transcribe/",
+        "description": "transcript ファイルのディレクトリ"
+      },
+      "model": {
+        "type": "string",
+        "default": "gemini-2.5-flash",
+        "description": "analyze 用主モデル"
+      },
+      "fallbackModel": {
+        "type": "string",
+        "default": "gemini-1.5-flash",
+        "description": "Gemini 主モデル失敗時の cheap model。Sonnet 等の別 provider への切替は禁止"
+      },
+      "cacheBackend": {
+        "type": "string",
+        "enum": ["pgvector", "file"],
+        "default": "pgvector",
+        "description": "cache 保存先。pgvector は専用 namespace（通常 RAG namespace から隔離）"
+      },
+      "cacheTtlDays": {
+        "type": "number",
+        "default": 30,
+        "description": "正常応答の cache TTL（日）"
+      },
+      "cacheFailureTtlMinutes": {
+        "type": "number",
+        "default": 5,
+        "description": "failure cache の TTL（分）"
+      },
+      "maxAnalyzePerSession": {
+        "type": "number",
+        "default": 20,
+        "description": "1 session あたりの analyze 上限"
+      },
+      "maxAnalyzePerFilePerDay": {
+        "type": "number",
+        "default": 50,
+        "description": "1 transcript あたりの 1 日 analyze 上限"
+      },
+      "monthlySpendCapUsd": {
+        "type": "number",
+        "default": 50,
+        "description": "Gemini API spend の月次上限（USD）"
+      },
+      "promptVersion": {
+        "type": "string",
+        "default": "v1",
+        "description": "prompt template の version（cache key の一部）"
+      },
+      "geminiTimeoutSec": {
+        "type": "number",
+        "default": 60,
+        "description": "Gemini API 呼び出しの timeout（秒）"
+      },
+      "enabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "plugin を有効化するか"
+      }
+    }
+  }
+}
