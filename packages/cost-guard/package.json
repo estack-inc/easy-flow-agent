@@ -1,0 +1,44 @@
+{
+  "name": "cost-guard",
+  "version": "0.1.0",
+  "description": "Phase 1 cost-guard plugin: default deny + tool allowlist + 2 段 breaker。transcript コスト爆発を構造的に遮断する。",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./cost-guard/index.js",
+      "types": "./cost-guard/index.d.ts",
+      "default": "./cost-guard/index.js"
+    }
+  },
+  "main": "./cost-guard/index.js",
+  "types": "./cost-guard/index.d.ts",
+  "openclaw": {
+    "extensions": ["./src/index.ts"]
+  },
+  "files": [
+    "cost-guard",
+    "src",
+    "openclaw.plugin.json"
+  ],
+  "scripts": {
+    "build": "tsc && cp openclaw.plugin.json cost-guard/openclaw.plugin.json",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src/"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.5.12"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  }
+}
