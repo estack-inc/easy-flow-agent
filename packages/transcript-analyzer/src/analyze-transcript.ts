@@ -4,8 +4,8 @@
  * transcript 全文を Gemini 2.5 Flash で読み込み、query に対する answer + citations を抽出する。
  *
  * 経路（contracts.md §7.3）：
- *   1. quota 不足 → quota_exceeded
- *   2. cache hit  → hit
+ *   1. cache hit  → hit
+ *   2. quota 不足 → quota_exceeded
  *   3. Gemini 2.5 Flash → miss
  *   4. chunk 分割 → fallback_chunk
  *   5. fallbackModel → fallback_model
@@ -99,7 +99,22 @@ export async function analyzeTranscript(
     );
   }
 
-  // ステップ 2：quota check
+  // ステップ 2：cache lookup（0 コストの hit は quota 超過後も利用可能）
+  const queryHash = computeQueryHash(userQuery);
+  const cacheKey = {
+    file_hash: fileInfo.fileHash,
+    query_hash: queryHash,
+    model: config.model,
+    prompt_version: config.promptVersion,
+  };
+  const cached = await deps.cacheStore.get(cacheKey, now);
+  if (cached) {
+    deps.metrics?.("transcript_analyzer.analyze_called", { cache_status: "hit" });
+    // cache hit は consumeCall せず即返却（再課金 0）。contracts.md §4.4「重複イベント」
+    return { ...cached, cache_status: "hit" };
+  }
+
+  // ステップ 3：quota check（cache miss 時のみ）
   const quotaCheck = deps.quotaStore.check(
     deps.sessionId,
     fileInfo.fileHash,
@@ -127,21 +142,6 @@ export async function analyzeTranscript(
       warnings: [`quota_exceeded:${quotaCheck.reason ?? "unknown"}`],
       open_questions: [],
     };
-  }
-
-  // ステップ 3：cache lookup
-  const queryHash = computeQueryHash(userQuery);
-  const cacheKey = {
-    file_hash: fileInfo.fileHash,
-    query_hash: queryHash,
-    model: config.model,
-    prompt_version: config.promptVersion,
-  };
-  const cached = await deps.cacheStore.get(cacheKey, now);
-  if (cached) {
-    deps.metrics?.("transcript_analyzer.analyze_called", { cache_status: "hit" });
-    // cache hit は consumeCall せず即返却（再課金 0）。contracts.md §4.4「重複イベント」
-    return { ...cached, cache_status: "hit" };
   }
 
   // ステップ 4：quota consume（cache miss 時のみ加算）
@@ -363,9 +363,7 @@ function assembleResponse(p: AssembleParams): AnalyzeTranscriptResponse {
   const { text: redactedAnswer, redactions: ar } = redactSensitive(rawAnswer);
   redactions.push(...ar);
 
-  const usedChunks = Array.isArray(p.parsed.used_chunks)
-    ? p.parsed.used_chunks.filter((s): s is string => typeof s === "string")
-    : citations.map((c) => c.chunk_id).filter((s) => s.length > 0);
+  const usedChunks = citations.map((c) => c.chunk_id).filter((s) => s.length > 0);
 
   let answerScope: AnswerScope = "not_found";
   if (p.parsed.answer_scope === "explicit" || p.parsed.answer_scope === "inferred") {

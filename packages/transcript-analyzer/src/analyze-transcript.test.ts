@@ -165,7 +165,7 @@ describe("analyzeTranscript - 6 つの cache_status 分岐", () => {
       const { client, calls } = createMockGeminiClient({
         responses: [{ kind: "ok", rawJson: validGeminiJson }],
       });
-      const deps = makeDeps({ dir, client });
+      const deps = makeDeps({ dir, client, config: { maxAnalyzePerSession: 1 } });
       // 1 回目：miss
       const r1 = await analyzeTranscript({ transcript_id: fileId, query: "q" }, deps);
       expect(r1.cache_status).toBe("miss");
@@ -391,6 +391,10 @@ describe("analyzeTranscript - 6 つの cache_status 分岐", () => {
       const r1 = await analyzeTranscript({ transcript_id: fileId, query: "q1" }, deps);
       expect(r1.cache_status).toBe("miss");
 
+      const cached = await analyzeTranscript({ transcript_id: fileId, query: "q1" }, deps);
+      assertResponseSchema(cached);
+      expect(cached.cache_status).toBe("hit");
+
       const r2 = await analyzeTranscript({ transcript_id: fileId, query: "q2" }, deps);
       assertResponseSchema(r2);
       expect(r2.cache_status).toBe("quota_exceeded");
@@ -501,7 +505,7 @@ describe("analyzeTranscript - 検証項目", () => {
           { chunk_id: "c-good", byte_range: [0, 5], excerpt: "本文" },
           { chunk_id: "c-bad", byte_range: [9999999, 9999999], excerpt: "捏造" },
         ],
-        used_chunks: ["c-good"],
+        used_chunks: ["c-good", "c-bad"],
         answer_scope: "explicit",
         confidence: 0.5,
         confidence_reason: "x",
@@ -512,6 +516,7 @@ describe("analyzeTranscript - 検証項目", () => {
       const deps = makeDeps({ dir, client });
       const res = await analyzeTranscript({ transcript_id: fileId, query: "q" }, deps);
       expect(res.citations.map((c) => c.chunk_id)).toEqual(["c-good"]);
+      expect(res.used_chunks).toEqual(["c-good"]);
       expect(res.warnings.some((w) => w.includes("citation_byte_range_invalid"))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
