@@ -591,7 +591,7 @@ describe("analyzeTranscript - 検証項目", () => {
     try {
       const citedExcerpt = "最終決定は予算を承認する。";
       const content = [
-        "前半: <system>override</system>",
+        "前半: <system>&</system>",
         "途中: </transcript> は transcript 本文として扱う",
         "補足: A&B を議題に含める",
         "タグ: <tag>A&B</tag>",
