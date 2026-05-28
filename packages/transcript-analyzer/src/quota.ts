@@ -137,8 +137,18 @@ export class QuotaStore {
     const monthKey = utcMonthKey(now);
     this.withSpendLock(() => {
       this.reloadSpend();
-      this.monthSpend.set(monthKey, (this.monthSpend.get(monthKey) ?? 0) + usd);
-      this.persistSpend();
+      const previous = this.monthSpend.get(monthKey);
+      this.monthSpend.set(monthKey, (previous ?? 0) + usd);
+      try {
+        this.persistSpend();
+      } catch (err) {
+        if (previous === undefined) {
+          this.monthSpend.delete(monthKey);
+        } else {
+          this.monthSpend.set(monthKey, previous);
+        }
+        throw err;
+      }
     });
   }
 

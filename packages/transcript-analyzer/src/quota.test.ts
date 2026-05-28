@@ -6,7 +6,7 @@
  * - UTC 日付境界
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -105,6 +105,42 @@ describe("QuotaStore.check", () => {
       expect(s2.getMonthlySpend(now)).toBe(50);
       expect(r.allowed).toBe(false);
       expect(r.reason).toBe("spend_cap");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("破損 JSON は安全に無視し、addSpend で有効な JSON に復旧する", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ta-quota-"));
+    try {
+      const spendFilePath = join(dir, "quota-spend.json");
+      const now = new Date("2026-05-15T12:00:00Z");
+      writeFileSync(spendFilePath, "{broken", "utf8");
+
+      const s = new QuotaStore({ spendFilePath });
+      expect(s.getMonthlySpend(now)).toBe(0);
+      expect(s.check("s", "h", LIMITS, now).allowed).toBe(true);
+
+      s.addSpend(50, now);
+      const s2 = new QuotaStore({ spendFilePath });
+      expect(s2.getMonthlySpend(now)).toBe(50);
+      expect(s2.check("s", "h", LIMITS, now).reason).toBe("spend_cap");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("書き込み不能時は明示的に失敗し、プロセス内 spend も加算しない", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ta-quota-"));
+    try {
+      const spendFilePath = join(dir, "quota-spend.json");
+      mkdirSync(spendFilePath);
+      const now = new Date("2026-05-15T12:00:00Z");
+      const s = new QuotaStore({ spendFilePath });
+
+      expect(() => s.addSpend(1, now)).toThrow();
+      expect(s.getMonthlySpend(now)).toBe(0);
+      expect(s.check("s", "h", LIMITS, now).allowed).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
