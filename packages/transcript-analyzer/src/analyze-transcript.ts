@@ -201,6 +201,10 @@ export async function analyzeTranscript(
     return failureResp;
   }
 
+  if (fallbackResult.costUsd > 0) {
+    deps.quotaStore.addSpend(fallbackResult.costUsd, now);
+  }
+
   // ステップ 7：Gemini 応答 parse + validate + redact
   const parsed = safeParseGeminiJson(fallbackResult.rawJson);
   const response = assembleResponse({

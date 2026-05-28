@@ -24,9 +24,9 @@
       },
       "cacheBackend": {
         "type": "string",
-        "enum": ["pgvector", "file"],
-        "default": "pgvector",
-        "description": "cache 保存先。pgvector は専用 namespace（通常 RAG namespace から隔離）"
+        "enum": ["file"],
+        "default": "file",
+        "description": "cache 保存先。Phase 1 は file backend を使用し、専用 namespace で通常 RAG namespace から隔離"
       },
       "cacheTtlDays": {
         "type": "number",

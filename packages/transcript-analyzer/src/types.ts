@@ -156,7 +156,7 @@ export interface TranscriptAnalyzerConfig {
   transcriptDir?: string;
   model?: string;
   fallbackModel?: string;
-  cacheBackend?: "pgvector" | "file";
+  cacheBackend?: "file";
   cacheTtlDays?: number;
   cacheFailureTtlMinutes?: number;
   maxAnalyzePerSession?: number;
@@ -171,7 +171,7 @@ export interface ResolvedConfig {
   transcriptDir: string;
   model: string;
   fallbackModel: string;
-  cacheBackend: "pgvector" | "file";
+  cacheBackend: "file";
   cacheTtlDays: number;
   cacheFailureTtlMinutes: number;
   maxAnalyzePerSession: number;
@@ -212,5 +212,18 @@ export function assertNotForbiddenModel(modelName: string): void {
         `[transcript-analyzer] forbidden model detected: ${modelName}. Sonnet 全文 fallback is disabled by design.`,
       );
     }
+  }
+}
+
+/**
+ * fallbackModel が明示的に Gemini 系であることを検査する。
+ */
+export function assertAllowedGeminiModel(modelName: string): void {
+  assertNotForbiddenModel(modelName);
+  const lower = modelName.toLowerCase();
+  if (!ALLOWED_FALLBACK_MODEL_PREFIXES.some((prefix) => lower.startsWith(prefix))) {
+    throw new Error(
+      `[transcript-analyzer] unsupported fallback model: ${modelName}. fallbackModel must start with one of: ${ALLOWED_FALLBACK_MODEL_PREFIXES.join(", ")}`,
+    );
   }
 }

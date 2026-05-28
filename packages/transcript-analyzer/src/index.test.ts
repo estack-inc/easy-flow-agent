@@ -9,8 +9,12 @@
  * - GEMINI_API_KEY 未設定で warn ログ出力（plugin load は成功）
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { register, resolveConfig } from "./index.js";
+import { CACHE_NAMESPACE, FileCacheBackend } from "./cache.js";
+import { createCacheStore, register, resolveConfig } from "./index.js";
 
 interface MockApi {
   pluginConfig: Record<string, unknown>;
@@ -35,12 +39,20 @@ function makeApi(config: Record<string, unknown> = {}): MockApi {
 }
 
 const ENV_BACKUP = process.env.GEMINI_API_KEY;
+const CACHE_DIR_BACKUP = process.env.TRANSCRIPT_ANALYZER_CACHE_DIR;
+let cacheDir: string | undefined;
 beforeEach(() => {
   process.env.GEMINI_API_KEY = "ENV_KEY";
+  cacheDir = mkdtempSync(join(tmpdir(), `${CACHE_NAMESPACE}-`));
+  process.env.TRANSCRIPT_ANALYZER_CACHE_DIR = cacheDir;
 });
 afterEach(() => {
   if (ENV_BACKUP === undefined) delete process.env.GEMINI_API_KEY;
   else process.env.GEMINI_API_KEY = ENV_BACKUP;
+  if (CACHE_DIR_BACKUP === undefined) delete process.env.TRANSCRIPT_ANALYZER_CACHE_DIR;
+  else process.env.TRANSCRIPT_ANALYZER_CACHE_DIR = CACHE_DIR_BACKUP;
+  if (cacheDir) rmSync(cacheDir, { recursive: true, force: true });
+  cacheDir = undefined;
 });
 
 describe("resolveConfig", () => {
@@ -49,7 +61,7 @@ describe("resolveConfig", () => {
     expect(cfg.transcriptDir).toBe("/data/workspace/zoom_transcribe/");
     expect(cfg.model).toBe("gemini-2.5-flash");
     expect(cfg.fallbackModel).toBe("gemini-1.5-flash");
-    expect(cfg.cacheBackend).toBe("pgvector");
+    expect(cfg.cacheBackend).toBe("file");
     expect(cfg.cacheTtlDays).toBe(30);
     expect(cfg.cacheFailureTtlMinutes).toBe(5);
     expect(cfg.maxAnalyzePerSession).toBe(20);
@@ -77,11 +89,19 @@ describe("resolveConfig", () => {
     const cfg = resolveConfig({
       cacheTtlDays: -1 as unknown as number,
       monthlySpendCapUsd: "abc" as unknown as number,
-      cacheBackend: "redis" as unknown as "pgvector",
+      cacheBackend: "redis" as unknown as "file",
     });
     expect(cfg.cacheTtlDays).toBe(30);
     expect(cfg.monthlySpendCapUsd).toBe(50);
-    expect(cfg.cacheBackend).toBe("pgvector");
+    expect(cfg.cacheBackend).toBe("file");
+  });
+});
+
+describe("createCacheStore", () => {
+  it("cacheBackend='file' で FileCacheBackend を使う", () => {
+    const cfg = resolveConfig({ cacheBackend: "file" });
+    const store = createCacheStore(cfg);
+    expect(store.getBackend()).toBeInstanceOf(FileCacheBackend);
   });
 });
 

@@ -145,6 +145,20 @@ describe("runWithFallback", () => {
       }),
     ).rejects.toThrow(/forbidden model/);
   });
+
+  it("fallbackModel に非 Gemini model を指定すると runWithFallback が throw", async () => {
+    const { client } = createMockClient(async () => ({
+      rawJson: "{}",
+      costUsd: 0,
+      model: "x",
+    }));
+    await expect(
+      runWithFallback(client, transcript, query, {
+        primaryModel: "gemini-2.5-flash",
+        fallbackModel: "gpt-4.1",
+      }),
+    ).rejects.toThrow(/unsupported fallback model/);
+  });
 });
 
 describe("splitIntoChunks", () => {

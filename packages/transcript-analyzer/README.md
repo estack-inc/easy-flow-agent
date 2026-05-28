@@ -74,7 +74,7 @@ Phase 1 本番既定：
           "transcriptDir": "/data/workspace/zoom_transcribe/",
           "model": "gemini-2.5-flash",
           "fallbackModel": "gemini-1.5-flash",
-          "cacheBackend": "pgvector",
+          "cacheBackend": "file",
           "cacheTtlDays": 30,
           "cacheFailureTtlMinutes": 5,
           "maxAnalyzePerSession": 20,

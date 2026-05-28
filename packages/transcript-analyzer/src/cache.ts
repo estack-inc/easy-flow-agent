@@ -2,16 +2,15 @@
  * transcript-analyzer cache
  *
  * contracts.md §3.1 / §3.2 準拠：
- * - 保存場所：pgvector 専用 namespace（通常 RAG namespace から隔離）
- *   または file backend（/data/cache/transcript-analyzer/）
+ * - 保存場所：file backend（/data/cache/transcript-analyzer-cache/）
  * - 4-key cache：sha256(file_hash + "|" + query_hash + "|" + model + "|" + prompt_version)
  * - TTL：既定 30 日、failure のみ 5 分
  * - 通常 RAG 検索から見えないよう、専用 namespace prefix を強制する
  *
  * 実装：
- * - CacheBackend interface（pgvector / file の差し替え可能）
+ * - CacheBackend interface（将来の pgvector backend / file の差し替え可能）
  * - InMemoryCacheBackend（test / dev 用）
- * - FileCacheBackend（/data/cache/transcript-analyzer/ 配下に JSON 保存）
+ * - FileCacheBackend（/data/cache/transcript-analyzer-cache/ 配下に JSON 保存）
  *
  * pgvector backend は別 PR（@easy-flow/pgvector-client への接続コード）で追加。
  * Phase 1 では interface を整備し、unit test は InMemory で完結する。

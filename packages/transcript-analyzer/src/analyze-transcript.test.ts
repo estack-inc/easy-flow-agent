@@ -186,18 +186,38 @@ describe("analyzeTranscript - 6 つの cache_status 分岐", () => {
       const content = `件名: long\n${"あ".repeat(14000)}`;
       writeFileSync(join(dir, "long.txt"), content);
       const fileId = computeFileHash(content).slice(0, 16);
+      const chunk1Json = JSON.stringify({
+        answer: "chunk 1 answer",
+        citations: [{ chunk_id: "c-1", byte_range: [0, 10], excerpt: "chunk 1 excerpt" }],
+        used_chunks: ["c-1"],
+        answer_scope: "explicit",
+        confidence: 0.7,
+        warnings: [],
+        open_questions: [],
+      });
+      const chunk2Json = JSON.stringify({
+        answer: "chunk 2 answer",
+        citations: [{ chunk_id: "c-2", byte_range: [0, 10], excerpt: "chunk 2 excerpt" }],
+        used_chunks: ["c-2"],
+        answer_scope: "explicit",
+        confidence: 0.9,
+        warnings: [],
+        open_questions: [],
+      });
       const { client } = createMockGeminiClient({
         responses: [
           { kind: "throw", kind2: "429" }, // primary
-          { kind: "ok", rawJson: validGeminiJson }, // chunk 1
-          { kind: "ok", rawJson: validGeminiJson }, // chunk 2 (もしあれば)
-          { kind: "ok", rawJson: validGeminiJson }, // chunk 3
+          { kind: "ok", rawJson: chunk1Json }, // chunk 1
+          { kind: "ok", rawJson: chunk2Json }, // chunk 2
         ],
       });
       const deps = makeDeps({ dir, client });
       const res = await analyzeTranscript({ transcript_id: fileId, query: "q" }, deps);
       assertResponseSchema(res);
       expect(res.cache_status).toBe("fallback_chunk");
+      expect(res.answer).toContain("chunk 1 answer");
+      expect(res.answer).toContain("chunk 2 answer");
+      expect(res.citations.map((c) => c.chunk_id)).toEqual(["c-1", "c-2"]);
       expect(res.warnings.some((w) => w.startsWith("primary_model_failed"))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -268,6 +288,30 @@ describe("analyzeTranscript - 6 つの cache_status 分岐", () => {
       expect(r2.cache_status).toBe("quota_exceeded");
       expect(r2.answer).toContain("利用上限");
       // Gemini は 1 回しか呼ばれない
+      expect(calls).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("成功した Gemini spend が月次 cap に加算され、2 回目は quota_exceeded", async () => {
+    const dir = makeTmpDir();
+    try {
+      const content = "件名: spend\n本文";
+      writeFileSync(join(dir, "spend.txt"), content);
+      const fileId = computeFileHash(content).slice(0, 16);
+      const { client, calls } = createMockGeminiClient({
+        responses: [{ kind: "ok", rawJson: validGeminiJson, costUsd: 0.001 }],
+      });
+      const deps = makeDeps({ dir, client, config: { monthlySpendCapUsd: 0.0005 } });
+
+      const r1 = await analyzeTranscript({ transcript_id: fileId, query: "q1" }, deps);
+      expect(r1.cache_status).toBe("miss");
+
+      const r2 = await analyzeTranscript({ transcript_id: fileId, query: "q2" }, deps);
+      assertResponseSchema(r2);
+      expect(r2.cache_status).toBe("quota_exceeded");
+      expect(r2.confidence_reason).toContain("spend_cap");
       expect(calls).toHaveLength(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });

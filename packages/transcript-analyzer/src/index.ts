@@ -16,7 +16,7 @@
  */
 
 import { analyzeTranscript } from "./analyze-transcript.js";
-import { CacheStore, InMemoryCacheBackend } from "./cache.js";
+import { CACHE_NAMESPACE, CacheStore, FileCacheBackend } from "./cache.js";
 import { GeminiClient } from "./gemini-client.js";
 import { listTranscripts } from "./list-transcripts.js";
 import { QuotaStore } from "./quota.js";
@@ -63,7 +63,7 @@ const DEFAULTS: ResolvedConfig = {
   transcriptDir: "/data/workspace/zoom_transcribe/",
   model: "gemini-2.5-flash",
   fallbackModel: "gemini-1.5-flash",
-  cacheBackend: "pgvector",
+  cacheBackend: "file",
   cacheTtlDays: 30,
   cacheFailureTtlMinutes: 5,
   maxAnalyzePerSession: 20,
@@ -83,10 +83,7 @@ export function resolveConfig(raw: TranscriptAnalyzerConfig): ResolvedConfig {
     transcriptDir: safeString(raw.transcriptDir, DEFAULTS.transcriptDir),
     model: safeString(raw.model, DEFAULTS.model),
     fallbackModel: safeString(raw.fallbackModel, DEFAULTS.fallbackModel),
-    cacheBackend:
-      raw.cacheBackend === "pgvector" || raw.cacheBackend === "file"
-        ? raw.cacheBackend
-        : DEFAULTS.cacheBackend,
+    cacheBackend: raw.cacheBackend === "file" ? raw.cacheBackend : DEFAULTS.cacheBackend,
     cacheTtlDays: safeNumber(raw.cacheTtlDays, DEFAULTS.cacheTtlDays),
     cacheFailureTtlMinutes: safeNumber(raw.cacheFailureTtlMinutes, DEFAULTS.cacheFailureTtlMinutes),
     maxAnalyzePerSession: safeNumber(raw.maxAnalyzePerSession, DEFAULTS.maxAnalyzePerSession),
@@ -154,6 +151,14 @@ interface ToolDependencies {
   quotaStore: QuotaStore;
   geminiClient: GeminiClient;
   metricsIncrement: (name: string, labels?: Record<string, string>) => void;
+}
+
+export function createCacheStore(config: ResolvedConfig): CacheStore {
+  const baseDir = process.env.TRANSCRIPT_ANALYZER_CACHE_DIR ?? `/data/cache/${CACHE_NAMESPACE}`;
+  return new CacheStore(new FileCacheBackend(baseDir), {
+    ttlDays: config.cacheTtlDays,
+    failureTtlMinutes: config.cacheFailureTtlMinutes,
+  });
 }
 
 function createListTranscriptsTool(deps: ToolDependencies): AgentToolLike {
@@ -315,10 +320,7 @@ const transcriptAnalyzerPlugin = {
       return;
     }
 
-    const cacheStore = new CacheStore(new InMemoryCacheBackend(), {
-      ttlDays: config.cacheTtlDays,
-      failureTtlMinutes: config.cacheFailureTtlMinutes,
-    });
+    const cacheStore = createCacheStore(config);
     const quotaStore = new QuotaStore();
 
     const metricsIncrement = (name: string, labels?: Record<string, string>): void => {
