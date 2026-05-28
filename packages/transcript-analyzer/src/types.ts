@@ -216,14 +216,14 @@ export function assertNotForbiddenModel(modelName: string): void {
 }
 
 /**
- * fallbackModel が明示的に Gemini 系であることを検査する。
+ * model が明示的に Gemini 系であることを検査する。
  */
 export function assertAllowedGeminiModel(modelName: string): void {
   assertNotForbiddenModel(modelName);
   const lower = modelName.toLowerCase();
   if (!ALLOWED_FALLBACK_MODEL_PREFIXES.some((prefix) => lower.startsWith(prefix))) {
     throw new Error(
-      `[transcript-analyzer] unsupported fallback model: ${modelName}. fallbackModel must start with one of: ${ALLOWED_FALLBACK_MODEL_PREFIXES.join(", ")}`,
+      `[transcript-analyzer] unsupported Gemini model: ${modelName}. model must start with one of: ${ALLOWED_FALLBACK_MODEL_PREFIXES.join(", ")}`,
     );
   }
 }

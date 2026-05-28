@@ -21,6 +21,7 @@ import { GeminiClient } from "./gemini-client.js";
 import { listTranscripts } from "./list-transcripts.js";
 import { QuotaStore } from "./quota.js";
 import { searchTranscripts } from "./search-transcripts.js";
+import { assertAllowedGeminiModel } from "./types.js";
 import type {
   AnalyzeTranscriptRequest,
   AnalyzeTranscriptResponse,
@@ -77,12 +78,21 @@ const DEFAULTS: ResolvedConfig = {
 export function resolveConfig(raw: TranscriptAnalyzerConfig): ResolvedConfig {
   const safeString = (v: unknown, fallback: string): string =>
     typeof v === "string" && v.length > 0 ? v : fallback;
+  const safeGeminiModel = (v: unknown, fallback: string): string => {
+    const model = safeString(v, fallback);
+    try {
+      assertAllowedGeminiModel(model);
+      return model;
+    } catch {
+      return fallback;
+    }
+  };
   const safeNumber = (v: unknown, fallback: number): number =>
     typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : fallback;
   return {
     transcriptDir: safeString(raw.transcriptDir, DEFAULTS.transcriptDir),
-    model: safeString(raw.model, DEFAULTS.model),
-    fallbackModel: safeString(raw.fallbackModel, DEFAULTS.fallbackModel),
+    model: safeGeminiModel(raw.model, DEFAULTS.model),
+    fallbackModel: safeGeminiModel(raw.fallbackModel, DEFAULTS.fallbackModel),
     cacheBackend: raw.cacheBackend === "file" ? raw.cacheBackend : DEFAULTS.cacheBackend,
     cacheTtlDays: safeNumber(raw.cacheTtlDays, DEFAULTS.cacheTtlDays),
     cacheFailureTtlMinutes: safeNumber(raw.cacheFailureTtlMinutes, DEFAULTS.cacheFailureTtlMinutes),

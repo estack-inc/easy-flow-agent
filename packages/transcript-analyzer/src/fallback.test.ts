@@ -132,6 +132,20 @@ describe("runWithFallback", () => {
     ).rejects.toThrow(/forbidden model/);
   });
 
+  it("primaryModel に非 Gemini model を指定すると runWithFallback が throw", async () => {
+    const { client } = createMockClient(async () => ({
+      rawJson: "{}",
+      costUsd: 0,
+      model: "x",
+    }));
+    await expect(
+      runWithFallback(client, transcript, query, {
+        primaryModel: "gpt-4.1",
+        fallbackModel: "gemini-1.5-flash",
+      }),
+    ).rejects.toThrow(/unsupported Gemini model/);
+  });
+
   it("fallbackModel に forbidden token を指定すると runWithFallback が throw", async () => {
     const { client } = createMockClient(async () => ({
       rawJson: "{}",
@@ -157,7 +171,45 @@ describe("runWithFallback", () => {
         primaryModel: "gemini-2.5-flash",
         fallbackModel: "gpt-4.1",
       }),
-    ).rejects.toThrow(/unsupported fallback model/);
+    ).rejects.toThrow(/unsupported Gemini model/);
+  });
+
+  it("chunk fallback の citation byte_range は UTF-8 byte offset で補正される", async () => {
+    const multibyte = `${"あ".repeat(4)}B`;
+    const { client } = createMockClient(async (_model, attempt) => {
+      if (attempt === 1) {
+        throw new GeminiCallError("429", "rate limit");
+      }
+      if (attempt === 2) {
+        return {
+          rawJson: JSON.stringify({
+            answer: "chunk 1",
+            citations: [{ chunk_id: "c-1", byte_range: [0, 3], excerpt: "あ" }],
+          }),
+          costUsd: 0.001,
+          model: "gemini-2.5-flash",
+        };
+      }
+      return {
+        rawJson: JSON.stringify({
+          answer: "chunk 2",
+          citations: [{ chunk_id: "c-2", byte_range: [0, 1], excerpt: "B" }],
+        }),
+        costUsd: 0.001,
+        model: "gemini-2.5-flash",
+      };
+    });
+
+    const res = await runWithFallback(client, multibyte, query, {
+      ...options,
+      chunkMaxChars: 4,
+    });
+    const parsed = JSON.parse(res.rawJson) as {
+      citations: Array<{ chunk_id: string; byte_range: [number, number] }>;
+    };
+
+    expect(res.cacheStatus).toBe("fallback_chunk");
+    expect(parsed.citations.find((c) => c.chunk_id === "c-2")?.byte_range).toEqual([12, 13]);
   });
 });
 

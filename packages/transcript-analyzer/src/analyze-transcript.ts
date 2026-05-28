@@ -188,6 +188,9 @@ export async function analyzeTranscript(
 
   // ステップ 6：全段失敗時の処理
   if (fallbackResult.cacheStatus === "failure") {
+    if (fallbackResult.costUsd > 0) {
+      deps.quotaStore.addSpend(fallbackResult.costUsd, now);
+    }
     deps.metrics?.("transcript_analyzer.gemini_failure", {
       failure_kind: fallbackResult.lastFailureKind ?? "500",
     });

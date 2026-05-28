@@ -247,6 +247,32 @@ describe("analyzeTranscript - 6 つの cache_status 分岐", () => {
     }
   });
 
+  it("fallback model 成功時に chunk 途中成功分と fallback model 分の spend が合算される", async () => {
+    const dir = makeTmpDir();
+    try {
+      const content = "A".repeat(14000);
+      writeFileSync(join(dir, "partial-fallback.txt"), content);
+      const fileId = computeFileHash(content).slice(0, 16);
+      const { client } = createMockGeminiClient({
+        responses: [
+          { kind: "throw", kind2: "500" }, // primary 全文
+          { kind: "ok", rawJson: validGeminiJson, costUsd: 0.0004 }, // chunk 1
+          { kind: "throw", kind2: "500" }, // chunk 2
+          { kind: "ok", rawJson: validGeminiJson, costUsd: 0.0007 }, // fallback model 全文
+        ],
+      });
+      const deps = makeDeps({ dir, client });
+
+      const res = await analyzeTranscript({ transcript_id: fileId, query: "q" }, deps);
+
+      assertResponseSchema(res);
+      expect(res.cache_status).toBe("fallback_model");
+      expect(deps.quotaStore.getMonthlySpend()).toBeCloseTo(0.0011);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("cache_status='failure' で全段失敗 + 5 分 TTL", async () => {
     const dir = makeTmpDir();
     try {
@@ -264,6 +290,36 @@ describe("analyzeTranscript - 6 つの cache_status 分岐", () => {
 
       // 5 分以内に再 query すると failure cache が hit する（backend に entry 1 件以上）
       expect((deps.cacheStore.getBackend() as InMemoryCacheBackend).size()).toBeGreaterThan(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("chunk 途中成功後の failure spend が月次 cap に加算され、2 回目は quota_exceeded", async () => {
+    const dir = makeTmpDir();
+    try {
+      const content = "A".repeat(14000);
+      writeFileSync(join(dir, "partial-failure.txt"), content);
+      const fileId = computeFileHash(content).slice(0, 16);
+      const { client, calls } = createMockGeminiClient({
+        responses: [
+          { kind: "throw", kind2: "500" }, // primary 全文
+          { kind: "ok", rawJson: validGeminiJson, costUsd: 0.001 }, // chunk 1
+          { kind: "throw", kind2: "500" }, // chunk 2
+          { kind: "throw", kind2: "500" }, // fallback model 全文
+        ],
+      });
+      const deps = makeDeps({ dir, client, config: { monthlySpendCapUsd: 0.0005 } });
+
+      const r1 = await analyzeTranscript({ transcript_id: fileId, query: "q1" }, deps);
+      expect(r1.cache_status).toBe("failure");
+      expect(deps.quotaStore.getMonthlySpend()).toBeCloseTo(0.001);
+
+      const r2 = await analyzeTranscript({ transcript_id: fileId, query: "q2" }, deps);
+      assertResponseSchema(r2);
+      expect(r2.cache_status).toBe("quota_exceeded");
+      expect(r2.confidence_reason).toContain("spend_cap");
+      expect(calls).toHaveLength(4);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -8,15 +8,14 @@
  *   4. fallbackModel              → 成功なら "fallback_model"（モデルは Gemini 系のみ。Sonnet 禁止）
  *   5. 全段失敗                   → "failure" を返却（answer は明示メッセージ）
  *
- * 重要：Sonnet 全文 fallback は実装しない。本ファイル外でも assertNotForbiddenModel が
- * チェックされるが、本ファイルでも明示的に「fallbackModel が gemini- 系であること」を確認する。
+ * 重要：Sonnet 全文 fallback は実装しない。本ファイルでも明示的に
+ * 「primaryModel / fallbackModel が gemini- 系であること」を確認する。
  */
 
 import { GeminiCallError, type GeminiClient } from "./gemini-client.js";
 import { buildAnalyzePrompt } from "./prompt-injection-guard.js";
 import {
   assertAllowedGeminiModel,
-  assertNotForbiddenModel,
   type AnswerScope,
   type CacheStatus,
   type GeminiFailureKind,
@@ -51,8 +50,8 @@ const DEFAULT_CHUNK_MAX_CHARS = 12_000;
 /**
  * Gemini fallback 経路を実行する。
  *
- * Sonnet 全文 fallback は呼ばない。fallbackModel が gemini- 系で
- * ないことを runtime check で弾く。
+ * Sonnet 全文 fallback は呼ばない。primaryModel / fallbackModel が
+ * gemini- 系でないことを runtime check で弾く。
  */
 export async function runWithFallback(
   client: GeminiClient,
@@ -60,19 +59,21 @@ export async function runWithFallback(
   userQuery: string,
   options: FallbackOptions,
 ): Promise<FallbackResult> {
-  assertNotForbiddenModel(options.primaryModel);
+  assertAllowedGeminiModel(options.primaryModel);
   assertAllowedGeminiModel(options.fallbackModel);
 
   const warnings: string[] = [];
+  let billableCostUsd = 0;
 
   // ステップ 1：primary 全文
   try {
     const prompt = buildAnalyzePrompt(transcriptContent, userQuery);
     const res = await client.generateContent(prompt, options.primaryModel);
+    billableCostUsd += res.costUsd;
     return {
       rawJson: res.rawJson,
       model: res.model,
-      costUsd: res.costUsd,
+      costUsd: billableCostUsd,
       cacheStatus: "miss",
       warnings,
     };
@@ -97,16 +98,18 @@ export async function runWithFallback(
         warnings: [...warnings, ...chunkResult.warnings],
       };
     }
+    billableCostUsd += chunkResult.costUsd;
     warnings.push(...chunkResult.warnings);
 
     // ステップ 3：fallbackModel を全文で試行
     try {
       const prompt2 = buildAnalyzePrompt(transcriptContent, userQuery);
       const res2 = await client.generateContent(prompt2, options.fallbackModel);
+      billableCostUsd += res2.costUsd;
       return {
         rawJson: res2.rawJson,
         model: res2.model,
-        costUsd: res2.costUsd,
+        costUsd: billableCostUsd,
         cacheStatus: "fallback_model",
         warnings: [...warnings, `fallback_model_used:${options.fallbackModel}`],
       };
@@ -118,7 +121,7 @@ export async function runWithFallback(
       return {
         rawJson: "",
         model: options.fallbackModel,
-        costUsd: 0,
+        costUsd: billableCostUsd,
         cacheStatus: "failure",
         warnings,
         lastFailureKind: kind2,
@@ -157,7 +160,7 @@ async function tryChunkSplit(
   const parsedChunks: GeminiChunkShape[] = [];
   let totalCost = 0;
   const warnings: string[] = [`chunk_split_used:${chunks.length}_chunks`];
-  let charOffset = 0;
+  let byteOffset = 0;
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
@@ -167,20 +170,20 @@ async function tryChunkSplit(
     );
     try {
       const res = await client.generateContent(chunkPrompt, modelName);
+      totalCost += res.costUsd;
       const parsed = parseGeminiChunkJson(res.rawJson);
       if (!parsed) {
         warnings.push(`chunk_${i + 1}_parse_failed`);
         return { ok: false, rawJson: "", model: modelName, costUsd: totalCost, warnings };
       }
-      parsedChunks.push(offsetChunkCitations(parsed, charOffset));
-      totalCost += res.costUsd;
+      parsedChunks.push(offsetChunkCitations(parsed, byteOffset));
     } catch (err) {
       const kind = err instanceof GeminiCallError ? err.kind : "500";
       warnings.push(`chunk_${i + 1}_failed:${kind}`);
       // chunk が 1 つでも全失敗したら fallback 失敗扱い
       return { ok: false, rawJson: "", model: modelName, costUsd: totalCost, warnings };
     }
-    charOffset += chunk.length;
+    byteOffset += Buffer.byteLength(chunk, "utf8");
   }
 
   return {
@@ -226,13 +229,13 @@ function parseGeminiChunkJson(rawJson: string): GeminiChunkShape | null {
   }
 }
 
-function offsetChunkCitations(parsed: GeminiChunkShape, charOffset: number): GeminiChunkShape {
+function offsetChunkCitations(parsed: GeminiChunkShape, byteOffset: number): GeminiChunkShape {
   const citations = Array.isArray(parsed.citations)
     ? parsed.citations.map((c) => {
         if (!Array.isArray(c.byte_range) || c.byte_range.length !== 2) return c;
         return {
           ...c,
-          byte_range: [c.byte_range[0] + charOffset, c.byte_range[1] + charOffset] as [
+          byte_range: [c.byte_range[0] + byteOffset, c.byte_range[1] + byteOffset] as [
             number,
             number,
           ],

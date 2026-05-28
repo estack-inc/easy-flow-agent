@@ -95,6 +95,15 @@ describe("resolveConfig", () => {
     expect(cfg.monthlySpendCapUsd).toBe(50);
     expect(cfg.cacheBackend).toBe("file");
   });
+
+  it("非 Gemini model は default にフォールバック", () => {
+    const cfg = resolveConfig({
+      model: "gpt-4.1",
+      fallbackModel: "gpt-4.1",
+    });
+    expect(cfg.model).toBe("gemini-2.5-flash");
+    expect(cfg.fallbackModel).toBe("gemini-1.5-flash");
+  });
 });
 
 describe("createCacheStore", () => {
