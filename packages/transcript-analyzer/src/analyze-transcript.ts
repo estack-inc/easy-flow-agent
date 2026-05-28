@@ -18,8 +18,8 @@
  * - citation の byte_range は post-validate（不正は warning 追加 + drop）
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { isAbsolute, join, relative } from "node:path";
 import { type CacheStore, computeFileHash, computeQueryHash } from "./cache.js";
 import { runWithFallback } from "./fallback.js";
 import { GeminiAuthMissingError, GeminiCallError, type GeminiClient } from "./gemini-client.js";
@@ -240,8 +240,10 @@ async function locateTranscriptById(
   transcriptId: string,
 ): Promise<LocatedTranscript | null> {
   let entries: string[];
+  let transcriptDirRealPath: string;
   try {
     entries = readdirSync(transcriptDir, { withFileTypes: false }) as string[];
+    transcriptDirRealPath = realpathSync(transcriptDir);
   } catch {
     return null;
   }
@@ -250,7 +252,8 @@ async function locateTranscriptById(
     if (name.startsWith(".")) continue;
     const fullPath = join(transcriptDir, name);
     try {
-      if (!statSync(fullPath).isFile()) continue;
+      if (!lstatSync(fullPath).isFile()) continue;
+      if (!isWithinDirectory(realpathSync(fullPath), transcriptDirRealPath)) continue;
     } catch {
       continue;
     }
@@ -266,6 +269,11 @@ async function locateTranscriptById(
     }
   }
   return null;
+}
+
+function isWithinDirectory(childPath: string, parentPath: string): boolean {
+  const rel = relative(parentPath, childPath);
+  return rel.length > 0 && !rel.startsWith("..") && !isAbsolute(rel);
 }
 
 function safeParseGeminiJson(rawJson: string): GeminiResponseShape {

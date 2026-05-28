@@ -10,7 +10,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runWithFallback, splitIntoChunks } from "./fallback.js";
-import { GeminiCallError, type GeminiClient } from "./gemini-client.js";
+import { GeminiAuthMissingError, GeminiCallError, type GeminiClient } from "./gemini-client.js";
 
 const FORBIDDEN_TOKENS = ["sonnet", "claude", "anthropic"];
 
@@ -100,6 +100,17 @@ describe("runWithFallback", () => {
     const res = await runWithFallback(client, transcript, query, options);
     expect(res.cacheStatus).toBe("failure");
     expect(res.lastFailureKind).toBe("500");
+  });
+
+  it("API key 未設定なら auth_missing failure として fallback/chunk retry しない", async () => {
+    const { client, calls } = createMockClient(async () => {
+      throw new GeminiAuthMissingError();
+    });
+    const res = await runWithFallback(client, "A".repeat(14000), query, options);
+    expect(res.cacheStatus).toBe("failure");
+    expect(res.lastFailureKind).toBe("auth_missing");
+    expect(res.warnings).toContain("primary_model_failed:auth_missing");
+    expect(calls).toHaveLength(1);
   });
 
   it("**assertNotCalled：Sonnet 全文 fallback が一度も呼ばれない**", async () => {

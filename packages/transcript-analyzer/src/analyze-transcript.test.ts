@@ -13,13 +13,13 @@
  *  - prompt injection token 検出 → warnings 追加
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { analyzeTranscript } from "./analyze-transcript.js";
 import { CacheStore, computeFileHash, InMemoryCacheBackend } from "./cache.js";
-import { GeminiCallError, type GeminiClient } from "./gemini-client.js";
+import { GeminiAuthMissingError, GeminiCallError, type GeminiClient } from "./gemini-client.js";
 import { resolveConfig } from "./index.js";
 import { QuotaStore } from "./quota.js";
 import type { AnalyzeTranscriptResponse } from "./types.js";
@@ -295,6 +295,33 @@ describe("analyzeTranscript - 6 つの cache_status 分岐", () => {
     }
   });
 
+  it("auth missing response の warnings に auth_missing が含まれ fallback retry しない", async () => {
+    const dir = makeTmpDir();
+    try {
+      const content = "件名: auth\n本文";
+      writeFileSync(join(dir, "auth.txt"), content);
+      const fileId = computeFileHash(content).slice(0, 16);
+      const calls: Array<{ model: string }> = [];
+      const client = {
+        generateContent: vi.fn(async (_prompt: string, modelOverride?: string) => {
+          calls.push({ model: modelOverride ?? "gemini-2.5-flash" });
+          throw new GeminiAuthMissingError();
+        }),
+        resolveApiKey: vi.fn(async () => undefined),
+      } as unknown as GeminiClient;
+      const deps = makeDeps({ dir, client });
+
+      const res = await analyzeTranscript({ transcript_id: fileId, query: "q" }, deps);
+
+      assertResponseSchema(res);
+      expect(res.cache_status).toBe("failure");
+      expect(res.warnings.some((w) => w.includes("auth_missing"))).toBe(true);
+      expect(calls).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("chunk 途中成功後の failure spend が月次 cap に加算され、2 回目は quota_exceeded", async () => {
     const dir = makeTmpDir();
     try {
@@ -387,6 +414,35 @@ describe("analyzeTranscript - 検証項目", () => {
       expect(res.cache_status).toBe("failure");
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("symlink 先の hash/id では解析できない", async () => {
+    const dir = makeTmpDir();
+    const outsideDir = makeTmpDir();
+    try {
+      const outsideContent = "件名: outside secret\n本文";
+      const outside = join(outsideDir, "outside.txt");
+      writeFileSync(outside, outsideContent);
+      try {
+        symlinkSync(outside, join(dir, "linked.txt"));
+      } catch {
+        return;
+      }
+      const fileId = computeFileHash(outsideContent).slice(0, 16);
+      const { client, calls } = createMockGeminiClient({
+        responses: [{ kind: "ok", rawJson: validGeminiJson }],
+      });
+      const deps = makeDeps({ dir, client });
+
+      const res = await analyzeTranscript({ transcript_id: fileId, query: "q" }, deps);
+
+      assertResponseSchema(res);
+      expect(res.cache_status).toBe("failure");
+      expect(calls).toHaveLength(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
     }
   });
 

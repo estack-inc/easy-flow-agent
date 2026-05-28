@@ -7,7 +7,7 @@
  * - id が file_hash の prefix 16 文字
  */
 
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -68,6 +68,29 @@ describe("listTranscripts", () => {
       expect(res.transcripts).toHaveLength(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("transcriptDir 内の symlink は無視", async () => {
+    const dir = makeTmpDir();
+    const outsideDir = makeTmpDir();
+    try {
+      const outside = join(outsideDir, "outside.txt");
+      writeFileSync(outside, "件名: symlink secret\n本文");
+      try {
+        symlinkSync(outside, join(dir, "linked.txt"));
+      } catch {
+        return;
+      }
+      writeFileSync(join(dir, "visible.txt"), "件名: visible\n本文");
+
+      const res = await listTranscripts({ transcriptDir: dir });
+
+      expect(res.transcripts).toHaveLength(1);
+      expect(res.transcripts[0].summary_excerpt_redacted).toContain("visible");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
     }
   });
 

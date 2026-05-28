@@ -14,8 +14,8 @@
  * 同一 transcript を一意に識別できる。
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { isAbsolute, join, relative } from "node:path";
 import { computeFileHash } from "./cache.js";
 import { redactForListSummary } from "./redaction.js";
 import type { ListTranscriptsResponse, TranscriptMetadata } from "./types.js";
@@ -35,8 +35,10 @@ export async function listTranscripts(deps: ListTranscriptsDeps): Promise<ListTr
   const transcripts: TranscriptMetadata[] = [];
 
   let entries: string[];
+  let transcriptDirRealPath: string;
   try {
     entries = readdirSync(deps.transcriptDir, { withFileTypes: false }) as string[];
+    transcriptDirRealPath = realpathSync(deps.transcriptDir);
   } catch {
     // ディレクトリが存在しない / 読めない場合は空配列を返す（block にはしない）
     return { transcripts: [] };
@@ -46,13 +48,18 @@ export async function listTranscripts(deps: ListTranscriptsDeps): Promise<ListTr
     if (typeof name !== "string") continue;
     if (name.startsWith(".")) continue;
     const fullPath = join(deps.transcriptDir, name);
-    let stats: ReturnType<typeof statSync>;
+    let stats: ReturnType<typeof lstatSync>;
     try {
-      stats = statSync(fullPath);
+      stats = lstatSync(fullPath);
     } catch {
       continue;
     }
     if (!stats.isFile()) continue;
+    try {
+      if (!isWithinDirectory(realpathSync(fullPath), transcriptDirRealPath)) continue;
+    } catch {
+      continue;
+    }
 
     let content: string;
     try {
@@ -79,4 +86,9 @@ export async function listTranscripts(deps: ListTranscriptsDeps): Promise<ListTr
 
   transcripts.sort((a, b) => (a.modified_at < b.modified_at ? 1 : -1));
   return { transcripts };
+}
+
+function isWithinDirectory(childPath: string, parentPath: string): boolean {
+  const rel = relative(parentPath, childPath);
+  return rel.length > 0 && !rel.startsWith("..") && !isAbsolute(rel);
 }

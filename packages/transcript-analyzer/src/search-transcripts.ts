@@ -15,8 +15,8 @@
  * - score desc で top_k（既定 10）
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { isAbsolute, join, relative } from "node:path";
 import { computeFileHash, normalizeQuery } from "./cache.js";
 import type {
   SearchTranscriptsRequest,
@@ -56,8 +56,10 @@ export async function searchTranscripts(
   }
 
   let entries: string[];
+  let transcriptDirRealPath: string;
   try {
     entries = readdirSync(deps.transcriptDir, { withFileTypes: false }) as string[];
+    transcriptDirRealPath = realpathSync(deps.transcriptDir);
   } catch {
     return { chunks: [], total_found: 0 };
   }
@@ -67,13 +69,18 @@ export async function searchTranscripts(
     if (typeof name !== "string") continue;
     if (name.startsWith(".")) continue;
     const fullPath = join(deps.transcriptDir, name);
-    let stats: ReturnType<typeof statSync>;
+    let stats: ReturnType<typeof lstatSync>;
     try {
-      stats = statSync(fullPath);
+      stats = lstatSync(fullPath);
     } catch {
       continue;
     }
     if (!stats.isFile()) continue;
+    try {
+      if (!isWithinDirectory(realpathSync(fullPath), transcriptDirRealPath)) continue;
+    } catch {
+      continue;
+    }
 
     let content: string;
     try {
@@ -151,4 +158,9 @@ function computeKeywordScore(chunkContent: string, tokens: string[]): number {
   if (raw > 1) return 1;
   if (raw < 0) return 0;
   return raw;
+}
+
+function isWithinDirectory(childPath: string, parentPath: string): boolean {
+  const rel = relative(parentPath, childPath);
+  return rel.length > 0 && !rel.startsWith("..") && !isAbsolute(rel);
 }

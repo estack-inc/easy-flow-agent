@@ -7,7 +7,7 @@
  * - non-existing dir
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -56,6 +56,32 @@ describe("searchTranscripts", () => {
       expect(res.chunks).toHaveLength(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("symlink 先の transcript は検索対象にしない", async () => {
+    const dir = makeTmpDir();
+    const outsideDir = makeTmpDir();
+    try {
+      const outside = join(outsideDir, "outside.txt");
+      writeFileSync(outside, "leaked-unique-keyword ".repeat(20));
+      try {
+        symlinkSync(outside, join(dir, "linked.txt"));
+      } catch {
+        return;
+      }
+      writeFileSync(join(dir, "visible.txt"), "ordinary transcript text");
+
+      const res = await searchTranscripts(
+        { query: "leaked-unique-keyword" },
+        { transcriptDir: dir },
+      );
+
+      expect(res.chunks).toHaveLength(0);
+      expect(res.total_found).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
     }
   });
 

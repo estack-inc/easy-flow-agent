@@ -12,7 +12,11 @@
  * 「primaryModel / fallbackModel が gemini- 系であること」を確認する。
  */
 
-import { GeminiCallError, type GeminiClient } from "./gemini-client.js";
+import {
+  GeminiAuthMissingError,
+  GeminiCallError,
+  type GeminiClient,
+} from "./gemini-client.js";
 import { buildAnalyzePrompt } from "./prompt-injection-guard.js";
 import {
   assertAllowedGeminiModel,
@@ -78,8 +82,18 @@ export async function runWithFallback(
       warnings,
     };
   } catch (err) {
-    const kind = err instanceof GeminiCallError ? err.kind : "500";
+    const kind = classifyFallbackError(err);
     warnings.push(`primary_model_failed:${kind}`);
+    if (kind === "auth_missing") {
+      return {
+        rawJson: "",
+        model: options.primaryModel,
+        costUsd: billableCostUsd,
+        cacheStatus: "failure",
+        warnings,
+        lastFailureKind: kind,
+      };
+    }
 
     // ステップ 2：chunk 分割で primary を再試行
     const chunkResult = await tryChunkSplit(
@@ -100,6 +114,16 @@ export async function runWithFallback(
     }
     billableCostUsd += chunkResult.costUsd;
     warnings.push(...chunkResult.warnings);
+    if (chunkResult.nonRetryableFailureKind) {
+      return {
+        rawJson: "",
+        model: options.primaryModel,
+        costUsd: billableCostUsd,
+        cacheStatus: "failure",
+        warnings,
+        lastFailureKind: chunkResult.nonRetryableFailureKind,
+      };
+    }
 
     // ステップ 3：fallbackModel を全文で試行
     try {
@@ -114,7 +138,7 @@ export async function runWithFallback(
         warnings: [...warnings, `fallback_model_used:${options.fallbackModel}`],
       };
     } catch (err2) {
-      const kind2 = err2 instanceof GeminiCallError ? err2.kind : "500";
+      const kind2 = classifyFallbackError(err2);
       warnings.push(`fallback_model_failed:${kind2}`);
 
       // ステップ 4：全段失敗
@@ -136,6 +160,7 @@ interface ChunkResult {
   model: string;
   costUsd: number;
   warnings: string[];
+  nonRetryableFailureKind?: Extract<GeminiFailureKind, "auth_missing">;
 }
 
 async function tryChunkSplit(
@@ -178,10 +203,17 @@ async function tryChunkSplit(
       }
       parsedChunks.push(offsetChunkCitations(parsed, byteOffset));
     } catch (err) {
-      const kind = err instanceof GeminiCallError ? err.kind : "500";
+      const kind = classifyFallbackError(err);
       warnings.push(`chunk_${i + 1}_failed:${kind}`);
       // chunk が 1 つでも全失敗したら fallback 失敗扱い
-      return { ok: false, rawJson: "", model: modelName, costUsd: totalCost, warnings };
+      return {
+        ok: false,
+        rawJson: "",
+        model: modelName,
+        costUsd: totalCost,
+        warnings,
+        nonRetryableFailureKind: kind === "auth_missing" ? kind : undefined,
+      };
     }
     byteOffset += Buffer.byteLength(chunk, "utf8");
   }
@@ -193,6 +225,12 @@ async function tryChunkSplit(
     costUsd: totalCost,
     warnings,
   };
+}
+
+function classifyFallbackError(err: unknown): GeminiFailureKind {
+  if (err instanceof GeminiAuthMissingError) return "auth_missing";
+  if (err instanceof GeminiCallError) return err.kind;
+  return "500";
 }
 
 interface GeminiChunkShape {
