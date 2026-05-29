@@ -50,3 +50,7 @@ coverage/
 
 # Vitest
 .vitest/
+
+# Fleet: security-guidance プラグイン用ポリシーは追跡対象（.claude/ 除外の例外）
+!.claude/
+!.claude/claude-security-guidance.md
