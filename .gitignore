@@ -15,6 +15,7 @@ packages/model-router/model-router/
 packages/portal-notify-tool/portal-notify-tool/
 packages/cost-guard-hello/cost-guard-hello/
 packages/cost-guard/cost-guard/
+packages/transcript-analyzer/transcript-analyzer/
 build/
 !packages/easyflow-cli/test/fixtures/build/
 *.js.map
