@@ -155,6 +155,97 @@ jobs:
 
           if [ -z "$REVIEW_WEBHOOK_URL" ]; then echo "::error::CODEX_REVIEW_WEBHOOK_URL is not set"; exit 1; fi
           if [ -z "$REVIEW_WEBHOOK_TOKEN" ]; then echo "::error::CODEX_REVIEW_WEBHOOK_TOKEN is not set"; exit 1; fi
+          post_review_webhook() {
+            if command -v curl >/dev/null 2>&1; then
+              curl -sS -o /tmp/review-result.json -w '%{http_code}' \
+                -X POST "$REVIEW_WEBHOOK_URL" \
+                -H "Authorization: Bearer $REVIEW_WEBHOOK_TOKEN" \
+                -H "Content-Type: application/json" \
+                --retry 5 \
+                --retry-delay 20 \
+                --retry-max-time 600 \
+                --retry-connrefused \
+                --max-time 720 \
+                --data @/tmp/codex-review-request.rendered.json
+              return $?
+            fi
+
+            echo "::warning::curl is not available; using Node.js HTTPS fallback for Codex Review webhook" >&2
+            REVIEW_REQUEST_PATH=/tmp/codex-review-request.rendered.json \
+            REVIEW_RESULT_PATH=/tmp/review-result.json \
+            node <<'NODE'
+          const fs = require('node:fs');
+          const http = require('node:http');
+          const https = require('node:https');
+
+          const endpoint = new URL(process.env.REVIEW_WEBHOOK_URL);
+          const requestBody = fs.readFileSync(process.env.REVIEW_REQUEST_PATH);
+          const resultPath = process.env.REVIEW_RESULT_PATH;
+          const transport = endpoint.protocol === 'http:' ? http : https;
+          const retryDelayMs = 20_000;
+          const maxAttempts = 6;
+
+          function sleep(ms) {
+            return new Promise((resolve) => setTimeout(resolve, ms));
+          }
+
+          function shouldRetryStatus(statusCode) {
+            return statusCode === 408 || statusCode === 409 || statusCode === 425 || statusCode === 429 || statusCode >= 500;
+          }
+
+          function postOnce() {
+            return new Promise((resolve, reject) => {
+              const req = transport.request(
+                endpoint,
+                {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${process.env.REVIEW_WEBHOOK_TOKEN}`,
+                    'Content-Type': 'application/json',
+                    'Content-Length': requestBody.length,
+                  },
+                  timeout: 720_000,
+                },
+                (res) => {
+                  const chunks = [];
+                  res.on('data', (chunk) => chunks.push(chunk));
+                  res.on('end', () => {
+                    fs.writeFileSync(resultPath, Buffer.concat(chunks));
+                    resolve(res.statusCode || 0);
+                  });
+                },
+              );
+              req.on('timeout', () => req.destroy(new Error('request timed out')));
+              req.on('error', reject);
+              req.end(requestBody);
+            });
+          }
+
+          (async () => {
+            let lastError;
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+              try {
+                const statusCode = await postOnce();
+                if (!shouldRetryStatus(statusCode) || attempt === maxAttempts) {
+                  process.stdout.write(String(statusCode).padStart(3, '0'));
+                  return;
+                }
+              } catch (error) {
+                lastError = error;
+                if (attempt === maxAttempts) {
+                  throw error;
+                }
+              }
+              await sleep(retryDelayMs);
+            }
+            throw lastError || new Error('webhook request failed');
+          })().catch((error) => {
+            fs.writeFileSync(resultPath, '');
+            console.error(error.message);
+            process.exit(1);
+          });
+          NODE
+          }
           # codex-review-json.cjs は base ブランチの trusted copy から実行する（pull_request
           # 維持リポでは checkout が PR head のため、PR 由来 cjs を secret 付き job で実行
           # しないようにする）。base ref は checkout の実装詳細に依存せず明示 fetch し、
@@ -354,16 +445,7 @@ jobs:
             ATTEMPT=$((ATTEMPT + 1))
             set +e
             : > /tmp/review-result.json
-            HTTP_STATUS=$(curl -sS -o /tmp/review-result.json -w '%{http_code}' \
-              -X POST "$REVIEW_WEBHOOK_URL" \
-              -H "Authorization: Bearer $REVIEW_WEBHOOK_TOKEN" \
-              -H "Content-Type: application/json" \
-              --retry 5 \
-              --retry-delay 20 \
-              --retry-max-time 600 \
-              --retry-connrefused \
-              --max-time 720 \
-              --data @/tmp/codex-review-request.rendered.json)
+            HTTP_STATUS=$(post_review_webhook)
             CURL_RC=$?
             set -e
             if [ "$CURL_RC" -ne 0 ] || [ "${HTTP_STATUS:-000}" != "200" ]; then

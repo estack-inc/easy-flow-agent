@@ -58,6 +58,19 @@ test('secret-bearing codex review step emits failure outputs before preflight ex
   assert.match(step, /schema_ok=\$SCHEMA_OK/, 'schema_ok output must be emitted on failure');
 });
 
+test('secret-bearing codex review step can post without curl', () => {
+  const step = extractStep(readWorkflowText(), 'Codex Review via connector bridge');
+
+  assert.match(step, /command -v curl/, 'curl availability must be checked before invoking it');
+  assert.match(
+    step,
+    /curl is not available; using Node\.js HTTPS fallback/,
+    'missing curl must use a Node.js webhook fallback instead of failing with rc=127',
+  );
+  assert.match(step, /const https = require\('node:https'\)/, 'fallback must use built-in HTTPS transport');
+  assert.match(step, /HTTP_STATUS=\$\(post_review_webhook\)/, 'review loop must call the shared webhook poster');
+});
+
 test('review JSON render step also fails closed without trusted base CJS', () => {
   const step = extractStep(readWorkflowText(), 'Validate and render review JSON');
 
