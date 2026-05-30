@@ -630,11 +630,26 @@ jobs:
           VERDICT: ${{ steps.review_json.outputs.verdict || steps.review_infra_failure.outputs.verdict }}
         run: |
           set +e
+          CURRENT_HEAD_SHA=$(gh api "repos/$REPO/pulls/$PR_NUM" --jq '.head.sha' 2>/dev/null)
+          CURRENT_HEAD_RC=$?
+          set -e
+          if [ "$CURRENT_HEAD_RC" -ne 0 ]; then
+            echo "::error::PR の最新 head SHA 取得に失敗しました。誤 dismiss を避けるため fail-closed で停止します。"
+            exit 1
+          fi
+
+          PRESERVE_SHA=""
+          if [ "$CURRENT_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
+            PRESERVE_SHA="$CURRENT_HEAD_SHA"
+          fi
+          export PRESERVE_SHA
+
+          set +e
           STALE_APPROVAL_REVIEWS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
-            --jq ".[] | select(.state==\"APPROVED\" and (((.body // \"\") | contains(\"<!-- codex-reviewer-bot:v1\")) or ((.body // \"\") | contains(\"🤖 AIレビュー判定\"))) and ((.body // \"\") | contains(\"sha=$PR_HEAD_SHA\") | not)) | .id" 2>/dev/null)
+            --jq '.[] | select(.state=="APPROVED" and (((.body // "") | contains("<!-- codex-reviewer-bot:v1")) or ((.body // "") | contains("🤖 AIレビュー判定"))) and ((.body // "") | contains("sha=" + env.PR_HEAD_SHA) | not) and (env.PRESERVE_SHA == "" or ((.body // "") | contains("sha=" + env.PRESERVE_SHA) | not))) | .id' 2>/dev/null)
           STALE_APPROVAL_LIST_RC=$?
           STALE_REVIEWS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
-            --jq ".[] | select((.state==\"APPROVED\" or .state==\"CHANGES_REQUESTED\") and (((.body // \"\") | contains(\"<!-- codex-reviewer-bot:v1\")) or ((.body // \"\") | contains(\"🤖 AIレビュー判定\"))) and ((.body // \"\") | contains(\"sha=$PR_HEAD_SHA\") | not)) | .id" 2>/dev/null)
+            --jq '.[] | select((.state=="APPROVED" or .state=="CHANGES_REQUESTED") and (((.body // "") | contains("<!-- codex-reviewer-bot:v1")) or ((.body // "") | contains("🤖 AIレビュー判定"))) and ((.body // "") | contains("sha=" + env.PR_HEAD_SHA) | not) and (env.PRESERVE_SHA == "" or ((.body // "") | contains("sha=" + env.PRESERVE_SHA) | not))) | .id' 2>/dev/null)
           STALE_LIST_RC=$?
           SAME_SHA_REVIEWS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
             --jq ".[] | select((.state==\"APPROVED\" or .state==\"CHANGES_REQUESTED\") and ((.body // \"\") | contains(\"<!-- codex-reviewer-bot:v1 sha=$PR_HEAD_SHA\"))) | .id" 2>/dev/null)

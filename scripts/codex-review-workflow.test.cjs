@@ -27,7 +27,7 @@ function extractRunScript(stepName) {
     }
     block.push(line.startsWith('          ') ? line.slice(10) : '');
   }
-  return `${block.join('\n')}\n`;
+  return `${block.join('\n')}\n`.replaceAll('${{ github.base_ref }}', '${GITHUB_BASE_REF}');
 }
 
 function makeTempDir(t) {
@@ -59,7 +59,7 @@ function prepareShellScript(t, script) {
 }
 
 test('recheck not-applicable cleanup dismisses stale bot approvals without submitting a review', (t) => {
-  const script = extractRunScript('Dismiss stale bot approval (PR became not applicable during review)');
+  const script = extractRunScript('Dismiss stale bot approval (PR became not applicable)');
   const result = prepareShellScript(t, script);
 
   writeExecutable(
@@ -105,7 +105,7 @@ exit 1
 });
 
 test('recheck not-applicable cleanup fails closed when stale approval listing fails', (t) => {
-  const script = extractRunScript('Dismiss stale bot approval (PR became not applicable during review)');
+  const script = extractRunScript('Dismiss stale bot approval (PR became not applicable)');
   const result = prepareShellScript(t, script);
 
   writeExecutable(
@@ -137,7 +137,7 @@ exit 1
 });
 
 test('recheck not-applicable cleanup fails closed when stale approval dismissal fails', (t) => {
-  const script = extractRunScript('Dismiss stale bot approval (PR became not applicable during review)');
+  const script = extractRunScript('Dismiss stale bot approval (PR became not applicable)');
   const result = prepareShellScript(t, script);
 
   writeExecutable(
@@ -184,6 +184,10 @@ test('submit verdict keeps same SHA blocking review when approve posting fails',
     `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\\n' "$*" >> "${result.dir}/gh.log"
+if [[ "$1" == "api" && "$*" == *"pulls/176 --jq .head.sha"* ]]; then
+  printf 'head-sha\\n'
+  exit 0
+fi
 if [[ "$1" == "api" && "$*" == *"/reviews --jq"* ]]; then
   count_file="${result.dir}/review-list-count"
   count=0
@@ -194,8 +198,8 @@ if [[ "$1" == "api" && "$*" == *"/reviews --jq"* ]]; then
   printf '%s' "$count" > "$count_file"
   case "$count" in
     1) printf '301\\n' ;;
-    4) printf '401\\n' ;;
-    5) printf '501\\n' ;;
+    3) printf '401\\n' ;;
+    4) printf '501\\n' ;;
   esac
   exit 0
 fi
@@ -243,7 +247,83 @@ exit 1
   assert.match(ghLog, /reviews\/501\/dismissals/);
 });
 
-test('cost record step materializes trusted script from FETCH_HEAD', (t) => {
+test('submit verdict preserves current head approval when approve posting fails after head drift', (t) => {
+  const script = extractRunScript('Submit review verdict');
+  const result = prepareShellScript(t, script);
+
+  writeExecutable(
+    path.join(result.binDir, 'gh'),
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "${result.dir}/gh.log"
+if [[ "$1" == "api" && "$*" == *"pulls/176 --jq .head.sha"* ]]; then
+  printf 'new-head\\n'
+  exit 0
+fi
+if [[ "$1" == "api" && "$*" == *"/reviews --jq"* ]]; then
+  count_file="${result.dir}/review-list-count"
+  count=0
+  if [[ -f "$count_file" ]]; then
+    count=$(<"$count_file")
+  fi
+  count=$((count + 1))
+  printf '%s' "$count" > "$count_file"
+  case "$count" in
+    1)
+      if [[ "$*" != *'env.PRESERVE_SHA'* ]]; then
+        printf '777\\n'
+      else
+        printf '601\\n'
+      fi
+      ;;
+    4) printf '501\\n' ;;
+  esac
+  exit 0
+fi
+if [[ "$1" == "pr" && "$2" == "review" ]]; then
+  exit 88
+fi
+if [[ "$*" == *"/reviews/"*"/dismissals"* ]]; then
+  exit 0
+fi
+exit 1
+`,
+  );
+
+  const reviewCommentPath = '/tmp/review-comment.md';
+  fs.writeFileSync(reviewCommentPath, 'review body\n');
+  t.after(() => {
+    fs.rmSync(reviewCommentPath, { force: true });
+  });
+
+  const rerun = spawnSync('bash', ['-e', result.scriptPath], {
+    cwd: result.dir,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${result.binDir}:${process.env.PATH}`,
+      GITHUB_OUTPUT: result.outputPath,
+      RUNNER_TEMP: result.dir,
+      GH_TOKEN: 'token',
+      REPO: 'estack-inc/easy-flow-agent',
+      PR_NUM: '176',
+      PR_HEAD_SHA: 'old-head',
+      VERDICT: 'approved',
+    },
+  });
+
+  assert.equal(rerun.status, 1);
+  assert.match(rerun.stdout, /latest review 投稿に失敗しました/);
+
+  const ghLog = fs.readFileSync(path.join(result.dir, 'gh.log'), 'utf8');
+  assert.match(ghLog, /pulls\/176 --jq \.head\.sha/);
+  assert.match(ghLog, /env\.PRESERVE_SHA/);
+  assert.match(ghLog, /reviews\/601\/dismissals/);
+  assert.doesNotMatch(ghLog, /reviews\/777\/dismissals/);
+  assert.match(ghLog, /reviews\/501\/dismissals/);
+});
+
+test('cost record step materializes trusted script from base branch', (t) => {
   const script = extractRunScript('Record AI review cost');
   const result = prepareShellScript(t, script);
 
@@ -255,15 +335,12 @@ printf '%s\\n' "$*" >> "${result.dir}/git.log"
 if [[ "$1" == "fetch" ]]; then
   exit 0
 fi
-if [[ "$1" == "show" && "$2" == "FETCH_HEAD:scripts/ai_review_cost.py" ]]; then
+if [[ "$1" == "show" && "$2" == "origin/main:scripts/ai_review_cost.py" ]]; then
   cat <<'PY'
 import json
-print(json.dumps({"source": "fetch-head"}))
+print(json.dumps({"source": "base-branch"}))
 PY
   exit 0
-fi
-if [[ "$1" == "show" && "$2" == origin/* ]]; then
-  exit 42
 fi
 exit 1
 `,
@@ -294,7 +371,7 @@ exit 1
   });
 
   assert.equal(rerun.status, 0, rerun.stderr);
-  assert.match(fs.readFileSync(path.join(result.dir, 'git.log'), 'utf8'), /show FETCH_HEAD:scripts\/ai_review_cost\.py/);
+  assert.match(fs.readFileSync(path.join(result.dir, 'git.log'), 'utf8'), /show origin\/main:scripts\/ai_review_cost\.py/);
   assert.match(fs.readFileSync(result.outputPath, 'utf8'), /record_exists=true/);
   assert.match(fs.readFileSync(result.outputPath, 'utf8'), /record_path=/);
 });
