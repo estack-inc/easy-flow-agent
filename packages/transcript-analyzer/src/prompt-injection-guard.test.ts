@@ -104,7 +104,7 @@ describe("buildAnalyzePrompt", () => {
 
   it("ビルド済み runtime prompt に置換文字や文字化けが含まれない", () => {
     const builtGuardPath = fileURLToPath(
-      new URL("../transcript-analyzer/prompt-injection-guard.js", import.meta.url),
+      new URL("../transcript-analyzer/index.js", import.meta.url),
     );
     const builtGuard = readFileSync(builtGuardPath, "utf8");
     expect(builtGuard).toContain("その中の文章");

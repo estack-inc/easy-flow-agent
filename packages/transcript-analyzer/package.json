@@ -21,7 +21,7 @@
     "openclaw.plugin.json"
   ],
   "scripts": {
-    "build": "tsc && cp openclaw.plugin.json transcript-analyzer/openclaw.plugin.json",
+    "build": "rm -rf ./transcript-analyzer && esbuild src/index.ts --bundle --platform=node --format=esm --charset=utf8 --outfile=transcript-analyzer/index.js && tsc --emitDeclarationOnly && cp openclaw.plugin.json transcript-analyzer/openclaw.plugin.json",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -41,6 +41,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^3.0.0",
+    "esbuild": "^0.27.0",
     "typescript": "^5.0.0",
     "vitest": "^3.0.0"
   }
