@@ -641,6 +641,29 @@ jobs:
           PRESERVE_SHA=""
           if [ "$CURRENT_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
             PRESERVE_SHA="$CURRENT_HEAD_SHA"
+            export PRESERVE_SHA
+
+            set +e
+            STALE_DRIFT_APPROVAL_REVIEWS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
+              --jq '.[] | select(.state=="APPROVED" and (((.body // "") | contains("<!-- codex-reviewer-bot:v1")) or ((.body // "") | contains("🤖 AIレビュー判定"))) and (env.PRESERVE_SHA == "" or ((.body // "") | contains("sha=" + env.PRESERVE_SHA) | not))) | .id' 2>/dev/null)
+            STALE_DRIFT_APPROVAL_LIST_RC=$?
+            set -e
+            if [ "$STALE_DRIFT_APPROVAL_LIST_RC" -ne 0 ]; then
+              echo "::error::review listing 失敗 — head drift 検出後に stale approval を dismiss できないため fail-closed"
+              exit 1
+            fi
+
+            DISMISS_FAILED=0
+            for RID in $STALE_DRIFT_APPROVAL_REVIEWS; do
+              if ! gh api -X PUT "repos/$REPO/pulls/$PR_NUM/reviews/$RID/dismissals" \
+                  -f message="Codex Reviewer: 投稿直前に head SHA drift ($CURRENT_HEAD_SHA) を検出したため、古い bot APPROVED を dismiss しました。" >/dev/null; then
+                echo "::error::stale approval dismiss 失敗 (id=$RID)"
+                DISMISS_FAILED=1
+              fi
+            done
+            if [ "$DISMISS_FAILED" = "1" ]; then exit 1; fi
+            echo "::error::PR head SHA drift を検出しました (event=$PR_HEAD_SHA current=$CURRENT_HEAD_SHA)。古い verdict の投稿を避けるため fail-closed で停止します。"
+            exit 1
           fi
           export PRESERVE_SHA
 

@@ -10,6 +10,8 @@ const test = require('node:test');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const WORKFLOW_PATH = path.join(REPO_ROOT, '.github/workflows/codex-review.yml');
+const DISMISS_STALE_POST_TIME_STEP = 'Dismiss stale bot approval (PR no longer applicable at post time)';
+const SUBMIT_REVIEW_VERDICT_STEP = 'Submit review verdict';
 
 function extractRunScript(stepName) {
   const lines = fs.readFileSync(WORKFLOW_PATH, 'utf8').split('\n');
@@ -59,7 +61,7 @@ function prepareShellScript(t, script) {
 }
 
 test('recheck not-applicable cleanup dismisses stale bot approvals without submitting a review', (t) => {
-  const script = extractRunScript('Dismiss stale bot approval (PR became not applicable)');
+  const script = extractRunScript(DISMISS_STALE_POST_TIME_STEP);
   const result = prepareShellScript(t, script);
 
   writeExecutable(
@@ -105,7 +107,7 @@ exit 1
 });
 
 test('recheck not-applicable cleanup fails closed when stale approval listing fails', (t) => {
-  const script = extractRunScript('Dismiss stale bot approval (PR became not applicable)');
+  const script = extractRunScript(DISMISS_STALE_POST_TIME_STEP);
   const result = prepareShellScript(t, script);
 
   writeExecutable(
@@ -137,7 +139,7 @@ exit 1
 });
 
 test('recheck not-applicable cleanup fails closed when stale approval dismissal fails', (t) => {
-  const script = extractRunScript('Dismiss stale bot approval (PR became not applicable)');
+  const script = extractRunScript(DISMISS_STALE_POST_TIME_STEP);
   const result = prepareShellScript(t, script);
 
   writeExecutable(
@@ -176,7 +178,7 @@ exit 1
 });
 
 test('submit verdict keeps same SHA blocking review when approve posting fails', (t) => {
-  const script = extractRunScript('Submit review verdict');
+  const script = extractRunScript(SUBMIT_REVIEW_VERDICT_STEP);
   const result = prepareShellScript(t, script);
 
   writeExecutable(
@@ -247,8 +249,8 @@ exit 1
   assert.match(ghLog, /reviews\/501\/dismissals/);
 });
 
-test('submit verdict preserves current head approval when approve posting fails after head drift', (t) => {
-  const script = extractRunScript('Submit review verdict');
+test('submit verdict skips posting and dismisses stale approvals after head drift', (t) => {
+  const script = extractRunScript(SUBMIT_REVIEW_VERDICT_STEP);
   const result = prepareShellScript(t, script);
 
   writeExecutable(
@@ -261,27 +263,15 @@ if [[ "$1" == "api" && "$*" == *"pulls/176 --jq .head.sha"* ]]; then
   exit 0
 fi
 if [[ "$1" == "api" && "$*" == *"/reviews --jq"* ]]; then
-  count_file="${result.dir}/review-list-count"
-  count=0
-  if [[ -f "$count_file" ]]; then
-    count=$(<"$count_file")
+  if [[ "$*" != *'env.PRESERVE_SHA'* ]]; then
+    printf '777\\n'
+  else
+    printf '601\\n'
   fi
-  count=$((count + 1))
-  printf '%s' "$count" > "$count_file"
-  case "$count" in
-    1)
-      if [[ "$*" != *'env.PRESERVE_SHA'* ]]; then
-        printf '777\\n'
-      else
-        printf '601\\n'
-      fi
-      ;;
-    4) printf '501\\n' ;;
-  esac
   exit 0
 fi
 if [[ "$1" == "pr" && "$2" == "review" ]]; then
-  exit 88
+  exit 99
 fi
 if [[ "$*" == *"/reviews/"*"/dismissals"* ]]; then
   exit 0
@@ -313,14 +303,14 @@ exit 1
   });
 
   assert.equal(rerun.status, 1);
-  assert.match(rerun.stdout, /latest review 投稿に失敗しました/);
+  assert.match(rerun.stdout, /head SHA drift/);
 
   const ghLog = fs.readFileSync(path.join(result.dir, 'gh.log'), 'utf8');
   assert.match(ghLog, /pulls\/176 --jq \.head\.sha/);
   assert.match(ghLog, /env\.PRESERVE_SHA/);
   assert.match(ghLog, /reviews\/601\/dismissals/);
   assert.doesNotMatch(ghLog, /reviews\/777\/dismissals/);
-  assert.match(ghLog, /reviews\/501\/dismissals/);
+  assert.doesNotMatch(ghLog, /pr review/);
 });
 
 test('cost record step materializes trusted script from base branch', (t) => {
