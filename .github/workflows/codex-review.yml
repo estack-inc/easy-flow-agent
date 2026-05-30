@@ -34,7 +34,11 @@
 name: Codex Code Review
 
 on:
-  pull_request_target:
+  pull_request:
+    # 以下のイベント遷移でも cleanup step が走るように types を拡張する。
+    #   - converted_to_draft: ready → draft（bot APPROVED が残ると stale になるため dismiss する）
+    #   - labeled / unlabeled: ラベル付与・解除で適用可否が反転するため再評価する
+    #   - edited: PR 本文の `## AIレビュースキップ理由` 追加・変更・削除で verdict が変わり得るため
     types: [opened, synchronize, ready_for_review, reopened, converted_to_draft, labeled, unlabeled, edited]
     branches: [main]
 
@@ -183,6 +187,12 @@ jobs:
                 repository_context: $repository_context[0],
                 checklists: $checklists[0],
                 required_checklist_names: $checklist_names[0],
+                # required_checklist_count は required_checklist_names の件数を
+                # jq で動的に算出する。固定値をハードコードせず常にテンプレートに
+                # 追従させることで、checklist 項目の増減時に prompt と validator の
+                # 期待件数が自動で揃う (validator は requiredChecklistNames.length を
+                # 参照する)。
+                required_checklist_count: ($checklist_names[0] | length),
                 # BEGIN:managed:codex_review_shared_prompt
                 # easy-flow/manifests/profiles/codex-review.yaml の patch mode が
                 # この BEGIN/END で囲まれた jq filter 領域を配布対象 10 リポに同期する。
@@ -199,12 +209,15 @@ jobs:
                   "blocking finding がなく、指摘なしまたは補足のみの場合は verdict=approved"
                 ],
                 checklist_contract: [
+                  "checklist の件数は required_checklist_count と完全に一致させる (required_checklist_names の全項目をちょうど 1 件ずつ。過不足は契約違反)",
                   "checklist には required_checklist_names の exact name を必ず 1 件ずつ含める (末尾「を確認する」も含めた完全一致。短縮・言い換え不可)",
                   "追加の観点を入れたくなった場合は新しい checklist item を作らず、最も近い required 項目の note にその観点を併記する",
                   "対象外の項目も省略せず status=not_applicable と note で理由を書く",
                   "status=finding の項目は未スキップの finding id を必ず finding_ids に入れる",
                   "status=skipped の項目は skipped=true の finding id を必ず finding_ids に入れる",
-                  "checklist[].finding_ids は必ず array で出力する (該当無しの場合も省略せず空 array `[]` にする)"
+                  "status=ok / not_applicable の項目は finding_ids を必ず空 array `[]` にする (finding を参照しない)",
+                  "checklist[].finding_ids は必ず array で出力する (該当無しの場合も省略せず空 array `[]` にする)",
+                  "finding.id と finding_ids[] は `F-001` `F-042` のように F- + 3 桁以上ゼロ詰めの連番にする (`F-1` のようなゼロ詰めなしは契約違反)"
                 ],
                 transport_normalization: [
                   "既存 connector bridge が互換性のため末尾に `<!-- VERDICT:... -->` を付ける場合があるため、workflow はこの legacy suffix だけを transport artifact として削除してから JSON schema validation を行う",
@@ -290,28 +303,61 @@ jobs:
               }
             }' > /tmp/codex-review-request.rendered.json
 
-          set +e
-          : > /tmp/review-result.json
-          HTTP_STATUS=$(curl -sS -o /tmp/review-result.json -w '%{http_code}' \
-            -X POST "$REVIEW_WEBHOOK_URL" \
-            -H "Authorization: Bearer $REVIEW_WEBHOOK_TOKEN" \
-            -H "Content-Type: application/json" \
-            --retry 5 \
-            --retry-delay 20 \
-            --retry-max-time 600 \
-            --retry-connrefused \
-            --max-time 720 \
-            --data @/tmp/codex-review-request.rendered.json)
-          CURL_RC=$?
+          # reviewer の応答が（codex-review-json.cjs の機械補正をかけても）JSON
+          # schema を満たさない「フォーマットミス」は、外部 reviewer の一時的な
+          # 出力ブレであることが多い。1 回の応答だけで F-JSON-CONTRACT に倒さず、
+          # webhook を最大 SCHEMA_RETRY_MAX 回まで呼び直して、最後に成功した応答
+          # （または最後の応答）を採用する。これにより「bot のフォーマットミス」と
+          # 「実際の指摘」を分離し、前者で PR をブロックしない。
+          # 通信障害 (curl_rc!=0 / http!=200) は従来どおり即座に fail-closed。
+          SCHEMA_RETRY_MAX=2
+          ATTEMPT=0
+          CURL_RC=0
+          HTTP_STATUS=000
+          SCHEMA_OK=0
+          while [ "$ATTEMPT" -le "$SCHEMA_RETRY_MAX" ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            set +e
+            : > /tmp/review-result.json
+            HTTP_STATUS=$(curl -sS -o /tmp/review-result.json -w '%{http_code}' \
+              -X POST "$REVIEW_WEBHOOK_URL" \
+              -H "Authorization: Bearer $REVIEW_WEBHOOK_TOKEN" \
+              -H "Content-Type: application/json" \
+              --retry 5 \
+              --retry-delay 20 \
+              --retry-max-time 600 \
+              --retry-connrefused \
+              --max-time 720 \
+              --data @/tmp/codex-review-request.rendered.json)
+            CURL_RC=$?
+            set -e
+            if [ "$CURL_RC" -ne 0 ] || [ "${HTTP_STATUS:-000}" != "200" ]; then
+              # 通信断は schema retry の対象外。即座に break して fail-closed へ。
+              break
+            fi
+            # transport artifact (legacy VERDICT suffix) を除去してから検証する。
+            node -e 'const fs=require("fs"); const p="/tmp/review-result.json"; const raw=fs.readFileSync(p,"utf8"); const normalized=raw.replace(/\s*<!--[ \t]*VERDICT:(APPROVED|CHANGES_REQUESTED)[ \t]*-->\s*$/i,"").trim(); fs.writeFileSync(p, normalized + "\n");'
+            set +e
+            node scripts/codex-review-json.cjs validate /tmp/review-result.json >/dev/null 2>&1
+            SCHEMA_RC=$?
+            set -e
+            if [ "$SCHEMA_RC" -eq 0 ]; then
+              SCHEMA_OK=1
+              echo "Codex review JSON schema validation passed on attempt $ATTEMPT."
+              break
+            fi
+            cp /tmp/review-result.json /tmp/review-result.last.json
+            echo "::warning::Codex review JSON schema validation failed on attempt $ATTEMPT/$((SCHEMA_RETRY_MAX + 1)). Retrying webhook."
+          done
           {
             echo "curl_rc=$CURL_RC"
             echo "http_status=${HTTP_STATUS:-000}"
+            echo "schema_ok=$SCHEMA_OK"
           } >> "$GITHUB_OUTPUT"
           if [ "$CURL_RC" -ne 0 ] || [ "${HTTP_STATUS:-000}" != "200" ]; then
             echo "::error::Codex Review webhook に失敗しました (curl_rc=$CURL_RC, http_status=${HTTP_STATUS:-000})"
             exit 1
           fi
-          node -e 'const fs=require("fs"); const p="/tmp/review-result.json"; const raw=fs.readFileSync(p,"utf8"); const normalized=raw.replace(/\s*<!--[ \t]*VERDICT:(APPROVED|CHANGES_REQUESTED)[ \t]*-->\s*$/i,"").trim(); fs.writeFileSync(p, normalized + "\n");'
 
       - name: Validate and render review JSON
         id: review_json
