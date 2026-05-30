@@ -141,6 +141,18 @@ jobs:
           # cjs が fail-loud し retry が常に失敗して webhook を無駄に呼び直す）。
           REQUIRED_CHECKLIST_NAMES_FILE: /tmp/codex-review-required-checklist-names.json
         run: |
+          CURL_RC=127
+          HTTP_STATUS=000
+          SCHEMA_OK=0
+          write_codex_review_outputs() {
+            {
+              echo "curl_rc=$CURL_RC"
+              echo "http_status=${HTTP_STATUS:-000}"
+              echo "schema_ok=$SCHEMA_OK"
+            } >> "$GITHUB_OUTPUT"
+          }
+          trap write_codex_review_outputs EXIT
+
           if [ -z "$REVIEW_WEBHOOK_URL" ]; then echo "::error::CODEX_REVIEW_WEBHOOK_URL is not set"; exit 1; fi
           if [ -z "$REVIEW_WEBHOOK_TOKEN" ]; then echo "::error::CODEX_REVIEW_WEBHOOK_TOKEN is not set"; exit 1; fi
           # codex-review-json.cjs は base ブランチの trusted copy から実行する（pull_request
@@ -338,9 +350,6 @@ jobs:
           # 通信障害 (curl_rc!=0 / http!=200) は従来どおり即座に fail-closed。
           SCHEMA_RETRY_MAX=2
           ATTEMPT=0
-          CURL_RC=0
-          HTTP_STATUS=000
-          SCHEMA_OK=0
           while [ "$ATTEMPT" -le "$SCHEMA_RETRY_MAX" ]; do
             ATTEMPT=$((ATTEMPT + 1))
             set +e
@@ -375,11 +384,6 @@ jobs:
             cp /tmp/review-result.json /tmp/review-result.last.json
             echo "::warning::Codex review JSON schema validation failed on attempt $ATTEMPT/$((SCHEMA_RETRY_MAX + 1)). Retrying webhook."
           done
-          {
-            echo "curl_rc=$CURL_RC"
-            echo "http_status=${HTTP_STATUS:-000}"
-            echo "schema_ok=$SCHEMA_OK"
-          } >> "$GITHUB_OUTPUT"
           if [ "$CURL_RC" -ne 0 ] || [ "${HTTP_STATUS:-000}" != "200" ]; then
             echo "::error::Codex Review webhook に失敗しました (curl_rc=$CURL_RC, http_status=${HTTP_STATUS:-000})"
             exit 1

@@ -42,6 +42,22 @@ test('secret-bearing codex review step does not fall back to PR head CJS', () =>
   );
 });
 
+test('secret-bearing codex review step emits failure outputs before preflight exits', () => {
+  const step = extractStep(readWorkflowText(), 'Codex Review via connector bridge');
+  const trapIndex = step.indexOf('trap write_codex_review_outputs EXIT');
+  const firstPreflightExitIndex = step.indexOf('CODEX_REVIEW_WEBHOOK_URL is not set');
+
+  assert.notEqual(trapIndex, -1, 'failure output trap must be installed');
+  assert.notEqual(firstPreflightExitIndex, -1, 'test must cover a preflight exit path');
+  assert.ok(
+    trapIndex < firstPreflightExitIndex,
+    'failure output trap must be installed before any preflight exit',
+  );
+  assert.match(step, /CURL_RC=127/, 'preflight failures must produce a non-zero curl_rc output');
+  assert.match(step, /HTTP_STATUS=000/, 'preflight failures must produce an http_status output');
+  assert.match(step, /schema_ok=\$SCHEMA_OK/, 'schema_ok output must be emitted on failure');
+});
+
 test('review JSON render step also fails closed without trusted base CJS', () => {
   const step = extractStep(readWorkflowText(), 'Validate and render review JSON');
 
