@@ -166,6 +166,12 @@ jobs:
           JSON
           jq -c '[.[] | split(":")[0] | gsub("^\\s+|\\s+$"; "")]' /tmp/codex-review-checklists.json > /tmp/codex-review-required-checklist-names.json
 
+          TRUSTED_REVIEW_JSON_SCRIPT="${RUNNER_TEMP}/trusted-codex-review-json.cjs"
+          if ! git show "origin/${{ github.base_ref }}:scripts/codex-review-json.cjs" > "$TRUSTED_REVIEW_JSON_SCRIPT" 2>/dev/null; then
+            echo "::error::trusted scripts/codex-review-json.cjs を origin/${{ github.base_ref }} から取得できませんでした。"
+            exit 1
+          fi
+
           jq -n \
             --arg repo "$REPO" \
             --arg pr_url "$PR_URL" \
@@ -338,7 +344,7 @@ jobs:
             # transport artifact (legacy VERDICT suffix) を除去してから検証する。
             node -e 'const fs=require("fs"); const p="/tmp/review-result.json"; const raw=fs.readFileSync(p,"utf8"); const normalized=raw.replace(/\s*<!--[ \t]*VERDICT:(APPROVED|CHANGES_REQUESTED)[ \t]*-->\s*$/i,"").trim(); fs.writeFileSync(p, normalized + "\n");'
             set +e
-            node scripts/codex-review-json.cjs validate /tmp/review-result.json >/dev/null 2>&1
+            REQUIRED_CHECKLIST_NAMES_FILE=/tmp/codex-review-required-checklist-names.json node "$TRUSTED_REVIEW_JSON_SCRIPT" validate /tmp/review-result.json >/dev/null 2>&1
             SCHEMA_RC=$?
             set -e
             if [ "$SCHEMA_RC" -eq 0 ]; then
@@ -370,13 +376,20 @@ jobs:
           REQUIRED_CHECKLIST_NAMES_FILE: /tmp/codex-review-required-checklist-names.json
           CODEX_REVIEW_COMMENT_MARKER: '<!-- codex-reviewer-bot:v1 sha=${{ github.event.pull_request.head.sha }} -->'
         run: |
+          TRUSTED_REVIEW_JSON_SCRIPT="${RUNNER_TEMP}/trusted-codex-review-json.cjs"
+          if [ ! -s "$TRUSTED_REVIEW_JSON_SCRIPT" ]; then
+            if ! git show "origin/${{ github.base_ref }}:scripts/codex-review-json.cjs" > "$TRUSTED_REVIEW_JSON_SCRIPT" 2>/dev/null; then
+              echo "::error::trusted scripts/codex-review-json.cjs を origin/${{ github.base_ref }} から取得できませんでした。"
+              exit 1
+            fi
+          fi
           set +e
-          VALIDATION_OUTPUT=$(node scripts/codex-review-json.cjs validate /tmp/review-result.json 2>&1)
+          VALIDATION_OUTPUT=$(node "$TRUSTED_REVIEW_JSON_SCRIPT" validate /tmp/review-result.json 2>&1)
           VALIDATION_RC=$?
           set -e
           if [ "$VALIDATION_RC" -eq 0 ]; then
-            node scripts/codex-review-json.cjs render /tmp/review-result.json > /tmp/review-comment.md
-            VERDICT=$(node scripts/codex-review-json.cjs verdict /tmp/review-result.json)
+            node "$TRUSTED_REVIEW_JSON_SCRIPT" render /tmp/review-result.json > /tmp/review-comment.md
+            VERDICT=$(node "$TRUSTED_REVIEW_JSON_SCRIPT" verdict /tmp/review-result.json)
           else
             VERDICT=changes_requested
             {
