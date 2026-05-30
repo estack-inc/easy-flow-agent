@@ -9,9 +9,10 @@
  * - GEMINI_API_KEY 未設定で warn ログ出力（plugin load は成功）
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CACHE_NAMESPACE, FileCacheBackend } from "./cache.js";
 import { createCacheStore, register, resolveConfig } from "./index.js";
@@ -234,5 +235,49 @@ describe("register", () => {
     expect(tools).toHaveLength(3);
     // factory が ctx を読み取って GeminiClient を組んでいる（呼び出し時点では resolve は走らない）
     expect(resolveApiKeyForProvider).not.toHaveBeenCalled();
+  });
+});
+
+describe("npm package metadata", () => {
+  it("openclaw.extensions は存在するビルド済み extension を import できる", async () => {
+    const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const packageJson = JSON.parse(readFileSync(resolve(packageDir, "package.json"), "utf8")) as {
+      openclaw: { extensions: string[] };
+    };
+
+    expect(packageJson.openclaw.extensions).toEqual(["./transcript-analyzer/index.js"]);
+    for (const extension of packageJson.openclaw.extensions) {
+      const extensionPath = resolve(packageDir, extension);
+      expect(existsSync(extensionPath)).toBe(true);
+
+      const mod = (await import(extensionPath)) as {
+        default?: unknown;
+        register?: unknown;
+      };
+      expect(mod.default).toEqual(expect.objectContaining({ kind: "plugin" }));
+      expect(typeof (mod.default as { register?: unknown }).register).toBe("function");
+      expect(typeof mod.register).toBe("function");
+    }
+  });
+
+  it("ビルド済み transcript-analyzer extension は OpenClaw plugin として register できる", async () => {
+    const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const extensionPath = resolve(packageDir, "transcript-analyzer/index.js");
+    const mod = (await import(extensionPath)) as {
+      default: { register: (api: unknown) => void };
+      register: (api: unknown) => void;
+    };
+    const api = makeApi();
+
+    expect(mod.register).toBe(mod.default.register);
+    mod.default.register(api);
+
+    expect(api.registerTool).toHaveBeenCalledOnce();
+    const [, options] = api.registerTool.mock.calls[0];
+    expect(options.names).toEqual([
+      "transcript-analyzer.list_transcripts",
+      "transcript-analyzer.search_transcripts",
+      "transcript-analyzer.analyze_transcript",
+    ]);
   });
 });
