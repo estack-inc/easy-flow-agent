@@ -545,6 +545,44 @@ jobs:
           echo "reason=$REASON_JOINED" >> "$GITHUB_OUTPUT"
           echo "still_applicable=$STILL_APPLICABLE reason=$REASON_JOINED"
 
+      - name: Dismiss stale bot approval (PR became not applicable during review)
+        id: dismiss_stale_after_recheck
+        if: >-
+          steps.applicable.outputs.applicable == 'true' &&
+          steps.recheck.outputs.still_applicable == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          REASON: ${{ steps.recheck.outputs.reason }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::REPO_ACCESS_TOKEN / github.token が未設定または失効しています。fail-closed で job を赤くします。"
+            exit 1
+          fi
+          set +e
+          BOT_APPROVAL_IDS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
+            --jq '.[] | select(.state=="APPROVED" and (((.body // "") | contains("<!-- codex-reviewer-bot:v1")) or ((.body // "") | contains("🤖 AIレビュー判定")))) | .id' 2>/dev/null)
+          LISTING_RC=$?
+          set -e
+          DISMISS_FAILED=0
+          if [ "$LISTING_RC" -ne 0 ]; then
+            echo "::error::review listing 失敗 (rc=$LISTING_RC) — fail-closed"
+            DISMISS_FAILED=1
+          else
+            for RID in $BOT_APPROVAL_IDS; do
+              if gh api -X PUT "repos/$REPO/pulls/$PR_NUM/reviews/$RID/dismissals" \
+                  -f message="Codex Reviewer: レビュー中に PR がレビュー対象外（$REASON）になったため、過去の bot APPROVED を dismiss しました。" >/dev/null; then
+                echo "Dismissed stale APPROVED review id=$RID"
+              else
+                echo "::error::review dismiss 失敗 (id=$RID)"
+                DISMISS_FAILED=1
+              fi
+            done
+          fi
+          if [ "$DISMISS_FAILED" = "1" ]; then exit 1; fi
+          echo "::notice::review skipped after recheck (reason: $REASON) — stale bot approvals dismissed"
+
       - name: Submit review verdict
         id: submit_verdict
         if: >-
@@ -689,8 +727,18 @@ jobs:
           # base ブランチ (trusted) のコピーを取得してそれを実行する。
           # base に無い場合 (初回配布前など) は記録を skip する (fail-soft)。
           TRUSTED_COST_SCRIPT="${RUNNER_TEMP}/trusted-ai_review_cost.py"
-          if ! git show "origin/${{ github.base_ref }}:scripts/ai_review_cost.py" > "$TRUSTED_COST_SCRIPT" 2>/dev/null; then
-            echo "::warning::scripts/ai_review_cost.py not found on origin/${{ github.base_ref }} — cost recording skipped"
+          if [ -z "${GITHUB_BASE_REF:-}" ]; then
+            echo "::warning::GITHUB_BASE_REF is not set — cost recording skipped"
+            echo "record_exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git fetch --no-tags --depth=1 origin "${GITHUB_BASE_REF}"; then
+            echo "::warning::base ref fetch failed: ${GITHUB_BASE_REF} — cost recording skipped"
+            echo "record_exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git show "FETCH_HEAD:scripts/ai_review_cost.py" > "$TRUSTED_COST_SCRIPT" 2>/dev/null; then
+            echo "::warning::scripts/ai_review_cost.py not found on FETCH_HEAD (${GITHUB_BASE_REF}) — cost recording skipped"
             echo "record_exists=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
