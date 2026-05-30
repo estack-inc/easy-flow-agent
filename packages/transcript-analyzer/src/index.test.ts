@@ -136,7 +136,10 @@ describe("register", () => {
       "transcript-analyzer.search_transcripts",
       "transcript-analyzer.analyze_transcript",
     ]);
-    expect(options.optional).toBe(true);
+    // 3 tool は標準 tool として登録する（optional 指定なし）。optional: true だと OpenClaw の
+    // pluginToolNamesMatchAllowlist が agent の道具公開 allowlist 明示を要求し、既定では公開されない。
+    // 常用すべき正規アクセス経路のため optional は付けない。
+    expect(options.optional).toBeUndefined();
   });
 
   it("enabled=false なら registerTool 未実行 + warn ログ", () => {

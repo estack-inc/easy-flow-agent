@@ -380,7 +380,11 @@ const transcriptAnalyzerPlugin = {
           "transcript-analyzer.search_transcripts",
           "transcript-analyzer.analyze_transcript",
         ],
-        optional: true,
+        // 3 tool は denyPaths（zoom_transcribe）への唯一の正規アクセス経路（cost-guard allowlist 対象）であり、
+        // agent が常用すべき標準 tool。optional: true にすると OpenClaw の pluginToolNamesMatchAllowlist が
+        // 「allowlist に明示された場合のみ公開」する経路（isOptionalToolEntryPotentiallyAllowed）に入り、
+        // 既定では agent に公開されない。常時公開が要件のため optional は指定しない（= 標準 tool 扱い）。
+        // アクセス制御は公開範囲ではなく cost-guard の実行時 deny_path 判定で担保する。
       },
     );
 

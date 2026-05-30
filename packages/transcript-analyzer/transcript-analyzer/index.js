@@ -63,6 +63,7 @@ var FileCacheBackend = class {
       mkdirSync(baseDir, { recursive: true });
     }
   }
+  baseDir;
   namespace = CACHE_NAMESPACE;
   filePath(key) {
     return join(this.baseDir, `${key}.json`);
@@ -107,6 +108,8 @@ var CacheStore = class {
     this.backend = backend;
     this.options = options;
   }
+  backend;
+  options;
   /**
    * cache から response を取得する。
    * 期限切れ entry は null を返す（自動削除は backend 実装に委譲）。
@@ -140,7 +143,7 @@ var CacheStore = class {
   }
 };
 
-// ../../node_modules/@google/generative-ai/dist/index.mjs
+// node_modules/.pnpm/@google+generative-ai@0.24.1/node_modules/@google/generative-ai/dist/index.mjs
 var SchemaType;
 (function(SchemaType2) {
   SchemaType2["STRING"] = "string";
@@ -1185,12 +1188,14 @@ var GeminiCallError = class extends Error {
     this.kind = kind;
     this.name = "GeminiCallError";
   }
+  kind;
 };
 var GeminiClient = class {
   constructor(options) {
     this.options = options;
     assertNotForbiddenModel(options.model);
   }
+  options;
   /**
    * API key を解決する。
    *
@@ -2531,8 +2536,12 @@ var transcriptAnalyzerPlugin = {
           "transcript-analyzer.list_transcripts",
           "transcript-analyzer.search_transcripts",
           "transcript-analyzer.analyze_transcript"
-        ],
-        optional: true
+        ]
+        // 3 tool は denyPaths（zoom_transcribe）への唯一の正規アクセス経路（cost-guard allowlist 対象）であり、
+        // agent が常用すべき標準 tool。optional: true にすると OpenClaw の pluginToolNamesMatchAllowlist が
+        // 「allowlist に明示された場合のみ公開」する経路（isOptionalToolEntryPotentiallyAllowed）に入り、
+        // 既定では agent に公開されない。常時公開が要件のため optional は指定しない（= 標準 tool 扱い）。
+        // アクセス制御は公開範囲ではなく cost-guard の実行時 deny_path 判定で担保する。
       }
     );
     const envKey = process.env.GEMINI_API_KEY;
