@@ -146,8 +146,7 @@ jobs:
           # codex-review-json.cjs は base ブランチの trusted copy から実行する（pull_request
           # 維持リポでは checkout が PR head のため、PR 由来 cjs を secret 付き job で実行
           # しないようにする）。base ref は checkout の実装詳細に依存せず明示 fetch し、
-          # fetch 失敗や、base に存在すると判定したファイルの取得失敗は fail-closed。
-          # fallback を許すのは base に cjs が無い初回配布 PR だけ。
+          # fetch 失敗や、base に trusted copy が無い場合は fail-closed。
           if [ -z "${GITHUB_BASE_REF:-}" ]; then
             echo "::error::GITHUB_BASE_REF is not set"
             exit 1
@@ -156,17 +155,16 @@ jobs:
             echo "::error::base ref fetch failed: ${GITHUB_BASE_REF}"
             exit 1
           fi
-          CJS="scripts/codex-review-json.cjs"
           TRUSTED_CJS="${RUNNER_TEMP}/trusted-codex-review-json.cjs"
-          if git cat-file -e "FETCH_HEAD:scripts/codex-review-json.cjs" 2>/dev/null; then
-            if ! git show "FETCH_HEAD:scripts/codex-review-json.cjs" > "$TRUSTED_CJS"; then
-              echo "::error::failed to materialize trusted scripts/codex-review-json.cjs from base ref"
-              exit 1
-            fi
-            CJS="$TRUSTED_CJS"
-          else
-            echo "::warning::scripts/codex-review-json.cjs not found on base ref ${GITHUB_BASE_REF}; using PR head copy for initial distribution"
+          if ! git cat-file -e "FETCH_HEAD:scripts/codex-review-json.cjs" 2>/dev/null; then
+            echo "::error::trusted scripts/codex-review-json.cjs not found on base ref ${GITHUB_BASE_REF}; refusing to execute PR head copy"
+            exit 1
           fi
+          if ! git show "FETCH_HEAD:scripts/codex-review-json.cjs" > "$TRUSTED_CJS"; then
+            echo "::error::failed to materialize trusted scripts/codex-review-json.cjs from base ref"
+            exit 1
+          fi
+          CJS="$TRUSTED_CJS"
 
           cat > /tmp/codex-review-context.json <<'JSON'
           [
@@ -400,7 +398,7 @@ jobs:
         run: |
           # codex-review-json.cjs は base ブランチの trusted copy から実行する（bridge step と
           # 同じ解決）。base ref は明示 fetch し、fetch / trusted copy 取得失敗では
-          # fail-closed。fallback は base に cjs が無い初回配布 PR だけ。
+          # fail-closed。
           if [ -z "${GITHUB_BASE_REF:-}" ]; then
             echo "::error::GITHUB_BASE_REF is not set"
             exit 1
@@ -409,17 +407,16 @@ jobs:
             echo "::error::base ref fetch failed: ${GITHUB_BASE_REF}"
             exit 1
           fi
-          CJS="scripts/codex-review-json.cjs"
           TRUSTED_CJS="${RUNNER_TEMP}/trusted-codex-review-json.cjs"
-          if git cat-file -e "FETCH_HEAD:scripts/codex-review-json.cjs" 2>/dev/null; then
-            if ! git show "FETCH_HEAD:scripts/codex-review-json.cjs" > "$TRUSTED_CJS"; then
-              echo "::error::failed to materialize trusted scripts/codex-review-json.cjs from base ref"
-              exit 1
-            fi
-            CJS="$TRUSTED_CJS"
-          else
-            echo "::warning::scripts/codex-review-json.cjs not found on base ref ${GITHUB_BASE_REF}; using PR head copy for initial distribution"
+          if ! git cat-file -e "FETCH_HEAD:scripts/codex-review-json.cjs" 2>/dev/null; then
+            echo "::error::trusted scripts/codex-review-json.cjs not found on base ref ${GITHUB_BASE_REF}; refusing to execute PR head copy"
+            exit 1
           fi
+          if ! git show "FETCH_HEAD:scripts/codex-review-json.cjs" > "$TRUSTED_CJS"; then
+            echo "::error::failed to materialize trusted scripts/codex-review-json.cjs from base ref"
+            exit 1
+          fi
+          CJS="$TRUSTED_CJS"
           set +e
           VALIDATION_OUTPUT=$(node "$CJS" validate /tmp/review-result.json 2>&1)
           VALIDATION_RC=$?
