@@ -3,6 +3,13 @@
   "kind": "plugin",
   "name": "Transcript Analyzer",
   "description": "Phase 1 transcript-analyzer plugin。transcript を業務利用する唯一の合法経路として 3 tool（list_transcripts / search_transcripts / analyze_transcript）を提供。Gemini 2.5 Flash で transcript を analyze し structured JSON（answer + citations + confidence）を返す。cost-guard の allowlist 通過対象。多段 fallback（cache → Gemini → chunk 分割 → fallbackModel → 明示的失敗）。Sonnet 全文 fallback は禁止。",
+  "contracts": {
+    "tools": [
+      "transcript-analyzer.list_transcripts",
+      "transcript-analyzer.search_transcripts",
+      "transcript-analyzer.analyze_transcript"
+    ]
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
