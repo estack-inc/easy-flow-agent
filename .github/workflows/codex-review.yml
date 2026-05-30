@@ -526,28 +526,47 @@ jobs:
 
           STILL_APPLICABLE=true
           REASONS=()
+          HEAD_DRIFTED=false
+          SKIP_REASON=false
           CURRENT_HEAD_SHA=$(echo "$PR_JSON" | jq -r '.head_sha')
           if [ "$CURRENT_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
             STILL_APPLICABLE=false
+            HEAD_DRIFTED=true
             REASONS+=("head SHA drift ($CURRENT_HEAD_SHA)")
           fi
           if echo "$PR_JSON" | jq -e '.draft == true' >/dev/null; then
             STILL_APPLICABLE=false
+            SKIP_REASON=true
             REASONS+=("draft PR")
           fi
           if echo "$PR_JSON" | jq -e '.labels | any(.=="auto-spec-sync")' >/dev/null; then
             STILL_APPLICABLE=false
+            SKIP_REASON=true
             REASONS+=("auto-spec-sync label")
           fi
 
+          # dismiss_drift が「保護する SHA」を決める。head SHA drift のみ（draft でも
+          # auto-spec-sync でもなく PR 自体は有効）の場合だけ、別 run が現在の head に
+          # 既に出した fresh な APPROVED を保護するため現在 head SHA を渡す。draft /
+          # auto-spec-sync で PR 全体がレビュー対象外になった場合は、現在 head の承認も
+          # 消す必要があるため空にする（= 保護しない = 全 bot APPROVED を dismiss）。
+          PRESERVE_SHA=""
+          if [ "$HEAD_DRIFTED" = "true" ] && [ "$SKIP_REASON" = "false" ]; then
+            PRESERVE_SHA="$CURRENT_HEAD_SHA"
+          fi
+
           REASON_JOINED=$(IFS='; '; echo "${REASONS[*]}")
-          echo "still_applicable=$STILL_APPLICABLE" >> "$GITHUB_OUTPUT"
-          echo "reason=$REASON_JOINED" >> "$GITHUB_OUTPUT"
+          {
+            echo "still_applicable=$STILL_APPLICABLE"
+            echo "reason=$REASON_JOINED"
+            echo "preserve_sha=$PRESERVE_SHA"
+          } >> "$GITHUB_OUTPUT"
           echo "still_applicable=$STILL_APPLICABLE reason=$REASON_JOINED"
 
-      - name: Dismiss stale bot approval (PR became not applicable during review)
-        id: dismiss_stale_after_recheck
+      - name: Dismiss stale bot approval (PR no longer applicable at post time)
+        id: dismiss_drift
         if: >-
+          always() &&
           steps.applicable.outputs.applicable == 'true' &&
           steps.recheck.outputs.still_applicable == 'false'
         env:
@@ -555,24 +574,37 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUM: ${{ github.event.pull_request.number }}
           REASON: ${{ steps.recheck.outputs.reason }}
+          PRESERVE_SHA: ${{ steps.recheck.outputs.preserve_sha }}
         run: |
+          # 投稿直前の再判定 (recheck) で本 run がレビュー対象外になった場合
+          # (head SHA drift / draft 化 / auto-spec-sync ラベル付与など)、過去の
+          # bot APPROVED をそのまま残すと、未レビューの最新 SHA が承認済みとして
+          # merge できてしまう。Determine 段の dismiss_stale と対称に、ここでも
+          # 古い bot APPROVED を dismiss し、失敗時は fail-closed で job を赤くする。
+          # 保護範囲は recheck が渡す PRESERVE_SHA で決まる:
+          #  - head SHA drift のみ (PR 自体は有効) の場合、PRESERVE_SHA=現在 head SHA。
+          #    別 run が現在 head に出した fresh な APPROVED を巻き込まないよう除外し、
+          #    古い head SHA の承認と sha マーカー無しの legacy 承認のみを消す。
+          #  - draft / auto-spec-sync で PR 全体が対象外の場合、PRESERVE_SHA="" となり、
+          #    現在 head の承認も含め全 bot APPROVED を消す（スキップ対象 PR に bot 承認を
+          #    残さない）。
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::error::REPO_ACCESS_TOKEN / github.token が未設定または失効しています。fail-closed で job を赤くします。"
+            echo "::error::GH_TOKEN が未設定です。stale approval を dismiss できないため fail-closed で job を赤くします。"
             exit 1
           fi
           set +e
           BOT_APPROVAL_IDS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
-            --jq '.[] | select(.state=="APPROVED" and (((.body // "") | contains("<!-- codex-reviewer-bot:v1")) or ((.body // "") | contains("🤖 AIレビュー判定")))) | .id' 2>/dev/null)
+            --jq '.[] | select(.state=="APPROVED" and (((.body // "") | contains("<!-- codex-reviewer-bot:v1")) or ((.body // "") | contains("🤖 AIレビュー判定"))) and (env.PRESERVE_SHA == "" or ((.body // "") | contains("sha=" + env.PRESERVE_SHA) | not))) | .id' 2>/dev/null)
           LISTING_RC=$?
           set -e
           DISMISS_FAILED=0
-          if [ "$LISTING_RC" -ne 0 ]; then
+          if [ $LISTING_RC -ne 0 ]; then
             echo "::error::review listing 失敗 (rc=$LISTING_RC) — fail-closed"
             DISMISS_FAILED=1
           else
             for RID in $BOT_APPROVAL_IDS; do
               if gh api -X PUT "repos/$REPO/pulls/$PR_NUM/reviews/$RID/dismissals" \
-                  -f message="Codex Reviewer: レビュー中に PR がレビュー対象外（$REASON）になったため、過去の bot APPROVED を dismiss しました。" >/dev/null; then
+                  -f message="Codex Reviewer: 投稿直前の再判定で本 run はレビュー対象外（$REASON）になったため、過去の bot APPROVED を dismiss しました。" >/dev/null; then
                 echo "Dismissed stale APPROVED review id=$RID"
               else
                 echo "::error::review dismiss 失敗 (id=$RID)"
@@ -581,7 +613,7 @@ jobs:
             done
           fi
           if [ "$DISMISS_FAILED" = "1" ]; then exit 1; fi
-          echo "::notice::review skipped after recheck (reason: $REASON) — stale bot approvals dismissed"
+          echo "::notice::review skipped (reason: $REASON) — stale bot approvals dismissed (post-time recheck)"
 
       - name: Submit review verdict
         id: submit_verdict
@@ -607,15 +639,12 @@ jobs:
           SAME_SHA_REVIEWS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
             --jq ".[] | select((.state==\"APPROVED\" or .state==\"CHANGES_REQUESTED\") and ((.body // \"\") | contains(\"<!-- codex-reviewer-bot:v1 sha=$PR_HEAD_SHA\"))) | .id" 2>/dev/null)
           SAME_SHA_LIST_RC=$?
-          SAME_SHA_BLOCKING_REVIEWS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
-            --jq ".[] | select(.state==\"CHANGES_REQUESTED\" and ((.body // \"\") | contains(\"<!-- codex-reviewer-bot:v1 sha=$PR_HEAD_SHA\"))) | .id" 2>/dev/null)
-          SAME_SHA_BLOCKING_LIST_RC=$?
           SAME_SHA_APPROVAL_REVIEWS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
             --jq ".[] | select(.state==\"APPROVED\" and ((.body // \"\") | contains(\"<!-- codex-reviewer-bot:v1 sha=$PR_HEAD_SHA\"))) | .id" 2>/dev/null)
           SAME_SHA_APPROVAL_LIST_RC=$?
           set -e
           DISMISS_FAILED=0
-          if [ "$STALE_APPROVAL_LIST_RC" -ne 0 ] || [ "$STALE_LIST_RC" -ne 0 ] || [ "$SAME_SHA_LIST_RC" -ne 0 ] || [ "$SAME_SHA_BLOCKING_LIST_RC" -ne 0 ] || [ "$SAME_SHA_APPROVAL_LIST_RC" -ne 0 ]; then
+          if [ "$STALE_APPROVAL_LIST_RC" -ne 0 ] || [ "$STALE_LIST_RC" -ne 0 ] || [ "$SAME_SHA_LIST_RC" -ne 0 ] || [ "$SAME_SHA_APPROVAL_LIST_RC" -ne 0 ]; then
             echo "::error::review listing 失敗 — fail-closed"
             exit 1
           fi
@@ -629,6 +658,9 @@ jobs:
               exit 1 ;;
           esac
 
+          # fail-closed の順序: 新しい verdict を先に投稿し、投稿成功を確認して
+          # から旧 review を dismiss する。投稿前に blocking review を外すと、投稿が
+          # 失敗したとき blocking だけ消えてゲートが外れるため、その順序は採らない。
           set +e
           gh pr review "$PR_NUM" --repo "$REPO" "--$REVIEW_EVENT" --body-file /tmp/review-comment.md
           REVIEW_POST_RC=$?
@@ -662,30 +694,17 @@ jobs:
               DISMISS_FAILED=1
             fi
           done
-          if [ "$VERDICT" = "approved" ]; then
-            for RID in $SAME_SHA_BLOCKING_REVIEWS; do
-              if ! gh api -X PUT "repos/$REPO/pulls/$PR_NUM/reviews/$RID/dismissals" \
-                  -f message="Codex Reviewer: 同一 SHA の再評価で APPROVED を提出したため、旧 CHANGES_REQUESTED を dismiss しました。" >/dev/null; then
-                echo "::error::same SHA blocking review dismiss 失敗 (id=$RID)"
-                DISMISS_FAILED=1
-              fi
-            done
-            for RID in $SAME_SHA_APPROVAL_REVIEWS; do
-              if ! gh api -X PUT "repos/$REPO/pulls/$PR_NUM/reviews/$RID/dismissals" \
-                  -f message="Codex Reviewer: 同一 SHA の再評価のため旧 APPROVED を dismiss しました。" >/dev/null; then
-                echo "::error::same SHA approval dismiss 失敗 (id=$RID)"
-                DISMISS_FAILED=1
-              fi
-            done
-          else
-            for RID in $SAME_SHA_REVIEWS; do
-              if ! gh api -X PUT "repos/$REPO/pulls/$PR_NUM/reviews/$RID/dismissals" \
-                  -f message="Codex Reviewer: 同一 SHA の再評価のため旧 review を dismiss しました。" >/dev/null; then
-                echo "::error::same SHA review dismiss 失敗 (id=$RID)"
-                DISMISS_FAILED=1
-              fi
-            done
-          fi
+          # 投稿成功後: 同一 SHA の旧 bot review（APPROVED / CHANGES_REQUESTED の
+          # 両方）を dismiss する。新しい verdict で上書き済みのため安全。投稿前には
+          # 消さないので、投稿失敗時はこのループに到達せず旧 blocking review が残り
+          # ゲートが維持される（fail-closed）。
+          for RID in $SAME_SHA_REVIEWS; do
+            if ! gh api -X PUT "repos/$REPO/pulls/$PR_NUM/reviews/$RID/dismissals" \
+                -f message="Codex Reviewer: 同一 SHA の再評価のため旧 bot review を dismiss しました。" >/dev/null; then
+              echo "::error::same SHA review dismiss 失敗 (id=$RID)"
+              DISMISS_FAILED=1
+            fi
+          done
           if [ "$DISMISS_FAILED" = "1" ]; then
             exit 1
           fi
@@ -721,18 +740,8 @@ jobs:
           # base ブランチ (trusted) のコピーを取得してそれを実行する。
           # base に無い場合 (初回配布前など) は記録を skip する (fail-soft)。
           TRUSTED_COST_SCRIPT="${RUNNER_TEMP}/trusted-ai_review_cost.py"
-          if [ -z "${GITHUB_BASE_REF:-}" ]; then
-            echo "::warning::GITHUB_BASE_REF is not set — cost recording skipped"
-            echo "record_exists=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if ! git fetch --no-tags --depth=1 origin "${GITHUB_BASE_REF}"; then
-            echo "::warning::base ref fetch failed: ${GITHUB_BASE_REF} — cost recording skipped"
-            echo "record_exists=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if ! git show "FETCH_HEAD:scripts/ai_review_cost.py" > "$TRUSTED_COST_SCRIPT" 2>/dev/null; then
-            echo "::warning::scripts/ai_review_cost.py not found on FETCH_HEAD (${GITHUB_BASE_REF}) — cost recording skipped"
+          if ! git show "origin/${{ github.base_ref }}:scripts/ai_review_cost.py" > "$TRUSTED_COST_SCRIPT" 2>/dev/null; then
+            echo "::warning::scripts/ai_review_cost.py not found on origin/${{ github.base_ref }} — cost recording skipped"
             echo "record_exists=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
