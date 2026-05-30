@@ -629,19 +629,6 @@ jobs:
               exit 1 ;;
           esac
 
-          if [ "$VERDICT" = "approved" ]; then
-            for RID in $SAME_SHA_BLOCKING_REVIEWS; do
-              if ! gh api -X PUT "repos/$REPO/pulls/$PR_NUM/reviews/$RID/dismissals" \
-                  -f message="Codex Reviewer: 同一 SHA の再評価で APPROVED を提出するため、旧 CHANGES_REQUESTED を事前に dismiss しました。" >/dev/null; then
-                echo "::error::same SHA blocking review dismiss 失敗 (id=$RID)"
-                DISMISS_FAILED=1
-              fi
-            done
-            if [ "$DISMISS_FAILED" = "1" ]; then
-              exit 1
-            fi
-          fi
-
           set +e
           gh pr review "$PR_NUM" --repo "$REPO" "--$REVIEW_EVENT" --body-file /tmp/review-comment.md
           REVIEW_POST_RC=$?
@@ -676,6 +663,13 @@ jobs:
             fi
           done
           if [ "$VERDICT" = "approved" ]; then
+            for RID in $SAME_SHA_BLOCKING_REVIEWS; do
+              if ! gh api -X PUT "repos/$REPO/pulls/$PR_NUM/reviews/$RID/dismissals" \
+                  -f message="Codex Reviewer: 同一 SHA の再評価で APPROVED を提出したため、旧 CHANGES_REQUESTED を dismiss しました。" >/dev/null; then
+                echo "::error::same SHA blocking review dismiss 失敗 (id=$RID)"
+                DISMISS_FAILED=1
+              fi
+            done
             for RID in $SAME_SHA_APPROVAL_REVIEWS; do
               if ! gh api -X PUT "repos/$REPO/pulls/$PR_NUM/reviews/$RID/dismissals" \
                   -f message="Codex Reviewer: 同一 SHA の再評価のため旧 APPROVED を dismiss しました。" >/dev/null; then

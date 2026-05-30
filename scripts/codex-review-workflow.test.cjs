@@ -175,6 +175,74 @@ exit 1
   assert.match(rerun.stdout, /review dismiss/);
 });
 
+test('submit verdict keeps same SHA blocking review when approve posting fails', (t) => {
+  const script = extractRunScript('Submit review verdict');
+  const result = prepareShellScript(t, script);
+
+  writeExecutable(
+    path.join(result.binDir, 'gh'),
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "${result.dir}/gh.log"
+if [[ "$1" == "api" && "$*" == *"/reviews --jq"* ]]; then
+  count_file="${result.dir}/review-list-count"
+  count=0
+  if [[ -f "$count_file" ]]; then
+    count=$(<"$count_file")
+  fi
+  count=$((count + 1))
+  printf '%s' "$count" > "$count_file"
+  case "$count" in
+    1) printf '301\\n' ;;
+    4) printf '401\\n' ;;
+    5) printf '501\\n' ;;
+  esac
+  exit 0
+fi
+if [[ "$1" == "pr" && "$2" == "review" ]]; then
+  exit 88
+fi
+if [[ "$*" == *"/reviews/"*"/dismissals"* ]]; then
+  exit 0
+fi
+exit 1
+`,
+  );
+
+  const reviewCommentPath = '/tmp/review-comment.md';
+  fs.writeFileSync(reviewCommentPath, 'review body\n');
+  t.after(() => {
+    fs.rmSync(reviewCommentPath, { force: true });
+  });
+
+  const rerun = spawnSync('bash', ['-e', result.scriptPath], {
+    cwd: result.dir,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${result.binDir}:${process.env.PATH}`,
+      GITHUB_OUTPUT: result.outputPath,
+      RUNNER_TEMP: result.dir,
+      GH_TOKEN: 'token',
+      REPO: 'estack-inc/easy-flow-agent',
+      PR_NUM: '176',
+      PR_HEAD_SHA: 'head-sha',
+      VERDICT: 'approved',
+    },
+  });
+
+  assert.equal(rerun.status, 1);
+  assert.match(rerun.stdout, /latest review 投稿に失敗しました/);
+
+  const ghLog = fs.readFileSync(path.join(result.dir, 'gh.log'), 'utf8');
+  const approveIndex = ghLog.indexOf('pr review 176 --repo estack-inc/easy-flow-agent --approve');
+  assert.notEqual(approveIndex, -1, ghLog);
+  assert.doesNotMatch(ghLog.slice(0, approveIndex), /reviews\/401\/dismissals/);
+  assert.doesNotMatch(ghLog, /reviews\/401\/dismissals/);
+  assert.match(ghLog, /reviews\/301\/dismissals/);
+  assert.match(ghLog, /reviews\/501\/dismissals/);
+});
+
 test('cost record step materializes trusted script from FETCH_HEAD', (t) => {
   const script = extractRunScript('Record AI review cost');
   const result = prepareShellScript(t, script);
