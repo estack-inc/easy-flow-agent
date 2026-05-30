@@ -12,7 +12,16 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +34,16 @@ import register, {
 } from "./index.js";
 
 type HookHandler = (event: unknown, ctx: unknown) => unknown;
+
+function listBuildFiles(dir: string): string[] {
+  return readdirSync(dir)
+    .flatMap((entry) => {
+      const path = join(dir, entry);
+      if (statSync(path).isDirectory()) return listBuildFiles(path);
+      return path.endsWith(".js") || path.endsWith(".d.ts") ? [path] : [];
+    })
+    .sort();
+}
 
 interface MockApi {
   pluginConfig: Record<string, unknown>;
@@ -1253,5 +1272,48 @@ describe("npm package metadata", () => {
     for (const extension of packageJson.openclaw.extensions) {
       expect(files.has(extension.replace(/^\.\//, ""))).toBe(true);
     }
+  });
+
+  it("openclaw.extensions は存在するビルド済み extension を import できる", async () => {
+    const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const packageJson = JSON.parse(readFileSync(resolve(packageDir, "package.json"), "utf8")) as {
+      openclaw: { extensions: string[] };
+    };
+
+    expect(packageJson.openclaw.extensions).toEqual(["./cost-guard/index.js"]);
+    for (const extension of packageJson.openclaw.extensions) {
+      const extensionPath = resolve(packageDir, extension);
+      expect(existsSync(extensionPath)).toBe(true);
+
+      const mod = (await import(extensionPath)) as { default?: unknown };
+      expect(typeof mod.default).toBe("function");
+    }
+  });
+
+  it("ビルド済み JS / d.ts の sourceMappingURL は存在しない map 参照を残さない", () => {
+    const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const buildFiles = listBuildFiles(resolve(packageDir, "cost-guard"));
+
+    expect(buildFiles.length).toBeGreaterThan(0);
+    for (const file of buildFiles) {
+      const content = readFileSync(file, "utf8");
+      const matches = content.matchAll(/\/\/# sourceMappingURL=(.+)$/gm);
+      for (const match of matches) {
+        expect(existsSync(resolve(dirname(file), match[1]))).toBe(true);
+      }
+    }
+  });
+
+  it("ビルド済み cost-guard extension の default export は register として呼び出せる", async () => {
+    const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const extensionPath = resolve(packageDir, "cost-guard/index.js");
+    const mod = (await import(extensionPath)) as { default: (api: unknown) => void };
+    const api = makeApi();
+
+    mod.default(api);
+
+    expect(api.hooks.has("before_tool_call")).toBe(true);
+    expect(api.hooks.has("tool_result_persist")).toBe(true);
+    expect(api.hooks.has("before_agent_run")).toBe(true);
   });
 });

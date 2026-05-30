@@ -31,7 +31,11 @@
     }
   },
   "files": {
-    "includes": ["packages/**/*.ts"]
+    "includes": [
+      "packages/**/*.ts",
+      "!packages/cost-guard/cost-guard/**",
+      "!packages/transcript-analyzer/transcript-analyzer/**"
+    ]
   },
   "vcs": {
     "enabled": true,

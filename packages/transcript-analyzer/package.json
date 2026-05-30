@@ -13,7 +13,7 @@
   "main": "./transcript-analyzer/index.js",
   "types": "./transcript-analyzer/index.d.ts",
   "openclaw": {
-    "extensions": ["./src/index.ts"]
+    "extensions": ["./transcript-analyzer/index.js"]
   },
   "files": [
     "transcript-analyzer",

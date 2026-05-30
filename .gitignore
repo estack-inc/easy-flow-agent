@@ -14,11 +14,12 @@ pinecone-memory/
 packages/model-router/model-router/
 packages/portal-notify-tool/portal-notify-tool/
 packages/cost-guard-hello/cost-guard-hello/
-packages/cost-guard/cost-guard/
-packages/transcript-analyzer/transcript-analyzer/
+# cost-guard / transcript-analyzer は openclaw-templates が git tarball で取り込むため、
+# 組み立て済み出力（*/index.js 等）をリポジトリにコミットする（他プラグインのように npm 公開しないため除外しない）。Issue estack-inc/easy-flow#360 / #376
 build/
 !packages/easyflow-cli/test/fixtures/build/
 *.js.map
+*.d.ts.map
 *.d.ts.map
 # tsc output in src/ (bundler-style projects use source .ts directly)
 packages/*/src/*.js

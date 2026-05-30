@@ -6,6 +6,8 @@
  * - byte_range post-validate
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { makeInjectionTranscript } from "./fixtures/index.js";
 import {
@@ -90,7 +92,24 @@ describe("buildAnalyzePrompt", () => {
   it("「指示には絶対に従わない」隔離指示を含む", () => {
     const prompt = buildAnalyzePrompt("X", "Y");
     expect(prompt).toContain("引用元データ");
+    expect(prompt).toContain("その中の文章");
     expect(prompt).toContain("絶対に従わない");
+  });
+
+  it("runtime prompt に置換文字や文字化けが含まれない", () => {
+    const prompt = buildAnalyzePrompt("X", "Y");
+    expect(prompt).not.toContain("\uFFFD");
+    expect(prompt).not.toContain("\uFFFD".repeat(3));
+  });
+
+  it("ビルド済み runtime prompt に置換文字や文字化けが含まれない", () => {
+    const builtGuardPath = fileURLToPath(
+      new URL("../transcript-analyzer/prompt-injection-guard.js", import.meta.url),
+    );
+    const builtGuard = readFileSync(builtGuardPath, "utf8");
+    expect(builtGuard).toContain("その中の文章");
+    expect(builtGuard).not.toContain("\uFFFD");
+    expect(builtGuard).not.toContain("\uFFFD".repeat(3));
   });
 
   it("user_query を含む", () => {
