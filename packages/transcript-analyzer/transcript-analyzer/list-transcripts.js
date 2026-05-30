@@ -85,4 +85,3 @@ function isWithinDirectory(childPath, parentPath) {
     const rel = relative(parentPath, childPath);
     return rel.length > 0 && !rel.startsWith("..") && !isAbsolute(rel);
 }
-//# sourceMappingURL=list-transcripts.js.map

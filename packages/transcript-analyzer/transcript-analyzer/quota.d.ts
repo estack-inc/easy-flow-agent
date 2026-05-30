@@ -68,4 +68,3 @@ export declare class QuotaStore {
     private persistSpend;
     private withSpendLock;
 }
-//# sourceMappingURL=quota.d.ts.map

@@ -29,4 +29,3 @@ export declare function computeContentBytes(value: unknown): number;
  * before_agent_run の cleanup 時に「既に置換済みの message」を再置換しないために使用する。
  */
 export declare function isSentinelMessage(content: unknown): boolean;
-//# sourceMappingURL=sentinel.d.ts.map

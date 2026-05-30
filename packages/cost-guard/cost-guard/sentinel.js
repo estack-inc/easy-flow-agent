@@ -48,4 +48,3 @@ export function computeContentBytes(value) {
 export function isSentinelMessage(content) {
     return typeof content === "string" && content.startsWith(SENTINEL_PREFIX);
 }
-//# sourceMappingURL=sentinel.js.map

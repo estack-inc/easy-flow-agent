@@ -443,4 +443,3 @@ function truncateUtf8(s, maxBytes) {
     }
     return `${head}${suffix}`;
 }
-//# sourceMappingURL=index.js.map

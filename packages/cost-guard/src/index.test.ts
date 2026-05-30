@@ -16,8 +16,10 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,6 +34,16 @@ import register, {
 } from "./index.js";
 
 type HookHandler = (event: unknown, ctx: unknown) => unknown;
+
+function listBuildFiles(dir: string): string[] {
+  return readdirSync(dir)
+    .flatMap((entry) => {
+      const path = join(dir, entry);
+      if (statSync(path).isDirectory()) return listBuildFiles(path);
+      return path.endsWith(".js") || path.endsWith(".d.ts") ? [path] : [];
+    })
+    .sort();
+}
 
 interface MockApi {
   pluginConfig: Record<string, unknown>;
@@ -1275,6 +1287,20 @@ describe("npm package metadata", () => {
 
       const mod = (await import(extensionPath)) as { default?: unknown };
       expect(typeof mod.default).toBe("function");
+    }
+  });
+
+  it("ビルド済み JS / d.ts の sourceMappingURL は存在しない map 参照を残さない", () => {
+    const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const buildFiles = listBuildFiles(resolve(packageDir, "cost-guard"));
+
+    expect(buildFiles.length).toBeGreaterThan(0);
+    for (const file of buildFiles) {
+      const content = readFileSync(file, "utf8");
+      const matches = content.matchAll(/\/\/# sourceMappingURL=(.+)$/gm);
+      for (const match of matches) {
+        expect(existsSync(resolve(dirname(file), match[1]))).toBe(true);
+      }
     }
   });
 

@@ -97,4 +97,3 @@ export function estimatePromptInputTokens(prompt, messages) {
     const messagesTokens = estimateMessagesTokenCount(messages);
     return promptTokens + messagesTokens;
 }
-//# sourceMappingURL=token-estimator.js.map

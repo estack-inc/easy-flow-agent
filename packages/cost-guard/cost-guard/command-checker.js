@@ -170,4 +170,3 @@ function pathBasename(value) {
 function containsShellExpansion(script) {
     return /\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[^}]+\}|\()/.test(script) || script.includes("`");
 }
-//# sourceMappingURL=command-checker.js.map

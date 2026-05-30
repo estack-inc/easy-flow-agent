@@ -276,4 +276,3 @@ export function splitIntoChunks(content, chunkMaxChars) {
     }
     return chunks;
 }
-//# sourceMappingURL=fallback.js.map

@@ -35,4 +35,3 @@ export interface AnalyzeTranscriptDeps {
  */
 export declare function analyzeTranscript(req: AnalyzeTranscriptRequest, deps: AnalyzeTranscriptDeps): Promise<AnalyzeTranscriptResponse>;
 export { GeminiAuthMissingError, GeminiCallError };
-//# sourceMappingURL=analyze-transcript.d.ts.map

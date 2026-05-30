@@ -26,4 +26,3 @@ export declare function buildAnalyzePrompt(transcriptContent: string, userQuery:
  * @returns true なら有効、false なら無効（warning として記録すべき）
  */
 export declare function isCitationByteRangeValid(byteRange: [number, number] | undefined | null, transcriptByteLength: number): boolean;
-//# sourceMappingURL=prompt-injection-guard.d.ts.map

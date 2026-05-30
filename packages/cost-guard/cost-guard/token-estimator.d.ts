@@ -43,4 +43,3 @@ export declare function estimateMessagesTokenCount(messages: SessionMessage[] | 
  * before_agent_run の段 1（per-turn prompt input gate）で次ターン入力の見積もりに使う。
  */
 export declare function estimatePromptInputTokens(prompt: string | undefined, messages: SessionMessage[] | undefined): number;
-//# sourceMappingURL=token-estimator.d.ts.map

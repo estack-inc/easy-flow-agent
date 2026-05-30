@@ -71,4 +71,3 @@ export declare class GeminiClient {
  * Gemini API error の kind 推定（status code / message から）
  */
 export declare function classifyGeminiError(err: unknown): GeminiFailureKind;
-//# sourceMappingURL=gemini-client.d.ts.map

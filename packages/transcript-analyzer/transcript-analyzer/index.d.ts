@@ -76,4 +76,3 @@ declare const transcriptAnalyzerPlugin: {
 export default transcriptAnalyzerPlugin;
 export declare const register: (api: PluginApiLike) => void;
 export type { AnalyzeTranscriptRequest, AnalyzeTranscriptResponse, ListTranscriptsResponse, SearchTranscriptsRequest, SearchTranscriptsResponse, };
-//# sourceMappingURL=index.d.ts.map

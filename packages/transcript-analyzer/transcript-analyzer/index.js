@@ -283,4 +283,3 @@ const transcriptAnalyzerPlugin = {
 export default transcriptAnalyzerPlugin;
 // also export register for direct use (test convenience + symmetry with cost-guard)
 export const register = transcriptAnalyzerPlugin.register;
-//# sourceMappingURL=index.js.map

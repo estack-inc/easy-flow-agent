@@ -207,4 +207,3 @@ function utcMonthKey(d) {
     const m = String(d.getUTCMonth() + 1).padStart(2, "0");
     return `${y}-${m}`;
 }
-//# sourceMappingURL=quota.js.map

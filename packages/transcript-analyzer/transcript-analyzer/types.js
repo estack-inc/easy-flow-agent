@@ -36,4 +36,3 @@ export function assertAllowedGeminiModel(modelName) {
         throw new Error(`[transcript-analyzer] unsupported Gemini model: ${modelName}. model must start with one of: ${ALLOWED_FALLBACK_MODEL_PREFIXES.join(", ")}`);
     }
 }
-//# sourceMappingURL=types.js.map

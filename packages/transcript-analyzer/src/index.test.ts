@@ -9,13 +9,30 @@
  * - GEMINI_API_KEY 未設定で warn ログ出力（plugin load は成功）
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CACHE_NAMESPACE, FileCacheBackend } from "./cache.js";
 import { createCacheStore, register, resolveConfig } from "./index.js";
+
+function listBuildFiles(dir: string): string[] {
+  return readdirSync(dir)
+    .flatMap((entry) => {
+      const path = join(dir, entry);
+      if (statSync(path).isDirectory()) return listBuildFiles(path);
+      return path.endsWith(".js") || path.endsWith(".d.ts") ? [path] : [];
+    })
+    .sort();
+}
 
 interface MockApi {
   pluginConfig: Record<string, unknown>;
@@ -257,6 +274,20 @@ describe("npm package metadata", () => {
       expect(mod.default).toEqual(expect.objectContaining({ kind: "plugin" }));
       expect(typeof (mod.default as { register?: unknown }).register).toBe("function");
       expect(typeof mod.register).toBe("function");
+    }
+  });
+
+  it("ビルド済み JS / d.ts の sourceMappingURL は存在しない map 参照を残さない", () => {
+    const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const buildFiles = listBuildFiles(resolve(packageDir, "transcript-analyzer"));
+
+    expect(buildFiles.length).toBeGreaterThan(0);
+    for (const file of buildFiles) {
+      const content = readFileSync(file, "utf8");
+      const matches = content.matchAll(/\/\/# sourceMappingURL=(.+)$/gm);
+      for (const match of matches) {
+        expect(existsSync(resolve(dirname(file), match[1]))).toBe(true);
+      }
     }
   });
 

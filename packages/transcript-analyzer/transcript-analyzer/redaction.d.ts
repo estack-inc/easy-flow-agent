@@ -41,4 +41,3 @@ export declare function applyExcerptLimits(excerpts: string[]): string[];
  * - 元の文章構造は残し、機密 token のみ置換
  */
 export declare function redactForListSummary(text: string | null | undefined): string | null;
-//# sourceMappingURL=redaction.d.ts.map

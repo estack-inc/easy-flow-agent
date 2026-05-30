@@ -36,4 +36,3 @@ export declare function findCommandDenylistMatch(params: unknown, options: Comma
  * 設計書に明記された 6 パターンを確実に捕捉する）。
  */
 export declare function containsCommandPattern(command: string, pattern: string): boolean;
-//# sourceMappingURL=command-checker.d.ts.map

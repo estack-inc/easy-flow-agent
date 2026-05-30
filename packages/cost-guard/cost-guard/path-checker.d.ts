@@ -81,4 +81,3 @@ export declare function expandPathCandidates(s: string, baseDirs: string[], incl
  */
 export declare function isWithinDenyPath(candidate: string, normalizedDeny: string): boolean;
 export declare function normalizePathForMatch(value: string): string;
-//# sourceMappingURL=path-checker.d.ts.map

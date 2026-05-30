@@ -403,4 +403,3 @@ function collectScopedBaseDirs(entries, inheritedBaseDirs) {
     }
     return [...baseDirs];
 }
-//# sourceMappingURL=path-checker.js.map

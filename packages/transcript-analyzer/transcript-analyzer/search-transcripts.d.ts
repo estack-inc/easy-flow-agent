@@ -24,4 +24,3 @@ export interface SearchTranscriptsDeps {
  * Phase 1 は file 走査ベースの単純検索。Phase 2 で pgvector embedding 検索に置換。
  */
 export declare function searchTranscripts(req: SearchTranscriptsRequest, deps: SearchTranscriptsDeps): Promise<SearchTranscriptsResponse>;
-//# sourceMappingURL=search-transcripts.d.ts.map

@@ -152,4 +152,3 @@ function estimateCostUsd(model, totalTokens) {
     const pricePerMillion = model.startsWith("gemini-2.5") || model.startsWith("gemini-1.5") ? 0.12 : 0.15;
     return (totalTokens / 1_000_000) * pricePerMillion;
 }
-//# sourceMappingURL=gemini-client.js.map

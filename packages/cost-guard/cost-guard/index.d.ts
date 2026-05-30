@@ -72,4 +72,3 @@ export interface OpenClawPluginApi {
     on(event: string, handler: (event: unknown, ctx: unknown) => unknown): void;
 }
 export default function register(api: OpenClawPluginApi): void;
-//# sourceMappingURL=index.d.ts.map

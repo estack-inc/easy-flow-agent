@@ -142,4 +142,3 @@ export declare function assertNotForbiddenModel(modelName: string): void;
  * model が明示的に Gemini 系であることを検査する。
  */
 export declare function assertAllowedGeminiModel(modelName: string): void;
-//# sourceMappingURL=types.d.ts.map

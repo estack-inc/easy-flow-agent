@@ -136,4 +136,3 @@ export function isCitationByteRangeValid(byteRange, transcriptByteLength) {
         return false;
     return true;
 }
-//# sourceMappingURL=prompt-injection-guard.js.map

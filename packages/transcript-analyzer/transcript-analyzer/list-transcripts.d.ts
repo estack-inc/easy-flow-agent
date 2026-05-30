@@ -25,4 +25,3 @@ export interface ListTranscriptsDeps {
  * - 並び順：modified_at desc（新しいファイルを先頭）
  */
 export declare function listTranscripts(deps: ListTranscriptsDeps): Promise<ListTranscriptsResponse>;
-//# sourceMappingURL=list-transcripts.d.ts.map

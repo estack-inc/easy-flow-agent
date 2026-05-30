@@ -142,4 +142,3 @@ export function redactForListSummary(text) {
     const truncated = redacted.length > 80 ? `${redacted.slice(0, 77)}...` : redacted;
     return truncated;
 }
-//# sourceMappingURL=redaction.js.map

@@ -75,4 +75,3 @@ export declare class CacheStore {
     /** test 用：直接 backend にアクセス */
     getBackend(): CacheBackend;
 }
-//# sourceMappingURL=cache.d.ts.map

@@ -46,4 +46,3 @@ export declare function runWithFallback(client: GeminiClient, transcriptContent:
  * transcript を chunk_max_chars で分割する。境界は改行優先で寄せる。
  */
 export declare function splitIntoChunks(content: string, chunkMaxChars: number): string[];
-//# sourceMappingURL=fallback.d.ts.map
