@@ -274,9 +274,8 @@ describe("tool_result_persist - sentinel boundary", () => {
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
       {
-        toolId: "read",
-        toolCallId: "tcid_001",
-        result: { content: "x".repeat(49_999) },
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_001", content: "x".repeat(49_999) },
       },
       {},
     ) as ToolResultPersistResult;
@@ -289,9 +288,8 @@ describe("tool_result_persist - sentinel boundary", () => {
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
       {
-        toolId: "read",
-        toolCallId: "tcid_002",
-        result: { content: "x".repeat(50_000) },
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_002", content: "x".repeat(50_000) },
       },
       {},
     ) as ToolResultPersistResult;
@@ -304,9 +302,8 @@ describe("tool_result_persist - sentinel boundary", () => {
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
       {
-        toolId: "read",
-        toolCallId: "tcid_003",
-        result: { content: "x".repeat(50_001) },
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_003", content: "x".repeat(50_001) },
       },
       {},
     ) as ToolResultPersistResult;
@@ -323,36 +320,38 @@ describe("tool_result_persist - sentinel boundary", () => {
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
       {
-        toolId: "read",
-        toolCallId: "tcid_preserve_me",
-        result: { content: "x".repeat(60_000) },
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_preserve_me", content: "x".repeat(60_000) },
       },
       {},
     ) as ToolResultPersistResult;
     expect((result as any).message.tool_call_id).toBe("tcid_preserve_me");
   });
 
-  it("event.tool_call_id の snake_case 入力も sentinel message に保持", () => {
+  it("message に tool_call_id が無い場合は event.toolCallId(top-level) を fallback で保持", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
       {
-        toolId: "read",
-        tool_call_id: "tcid_x",
-        result: { content: "x".repeat(60_000) },
+        toolName: "read",
+        toolCallId: "tcid_x",
+        message: { role: "tool", content: "x".repeat(60_000) },
       },
       {},
     ) as ToolResultPersistResult;
     expect((result as any).message.tool_call_id).toBe("tcid_x");
   });
 
-  it("string 直結 result でも byte 数計算", () => {
+  it("message.content が string 直結でも byte 数計算", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
-      { toolId: "read", toolCallId: "tcid_str", result: "x".repeat(60_000) },
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_str", content: "x".repeat(60_000) },
+      },
       {},
     ) as ToolResultPersistResult;
     expect((result as any).message).toBeDefined();
@@ -363,7 +362,10 @@ describe("tool_result_persist - sentinel boundary", () => {
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
-      { toolId: "read", toolCallId: "tcid_x", result: { content: "x".repeat(1001) } },
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_x", content: "x".repeat(1001) },
+      },
       {},
     ) as ToolResultPersistResult;
     expect((result as any).message).toBeDefined();
@@ -373,7 +375,13 @@ describe("tool_result_persist - sentinel boundary", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
-    handler({ toolId: "read", toolCallId: "tcid_m", result: { content: "x".repeat(60_000) } }, {});
+    handler(
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_m", content: "x".repeat(60_000) },
+      },
+      {},
+    );
     expect(api.metrics.incrementCounter).toHaveBeenCalledWith(
       "cost_guard.tool_result_rewritten",
       expect.objectContaining({ toolId: "read" }),
@@ -385,7 +393,10 @@ describe("tool_result_persist - sentinel boundary", () => {
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
-      { toolId: "read", toolCallId: "tcid_obs", result: { content: "x".repeat(60_000) } },
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_obs", content: "x".repeat(60_000) },
+      },
       {},
     );
     expect(result).toEqual({});
@@ -401,7 +412,10 @@ describe("tool_result_persist - sentinel boundary", () => {
     const handler = api.hooks.get("tool_result_persist")!;
     api.logger.info.mockClear();
     handler(
-      { toolId: "read", toolCallId: "tcid_obs_log", result: { content: "x".repeat(60_000) } },
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_obs_log", content: "x".repeat(60_000) },
+      },
       {},
     );
     const infoCalls = api.logger.info.mock.calls.map((c: unknown[]) => c[0] as string);
@@ -415,22 +429,26 @@ describe("tool_result_persist - sentinel boundary", () => {
     const handler = api.hooks.get("tool_result_persist")!;
     api.logger.info.mockClear();
     handler(
-      { toolId: "read", toolCallId: "tcid_block_log", result: { content: "x".repeat(60_000) } },
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_block_log", content: "x".repeat(60_000) },
+      },
       {},
     );
     const infoCalls = api.logger.info.mock.calls.map((c: unknown[]) => c[0] as string);
     expect(infoCalls.some((m) => m.includes("tool_result_rewritten:"))).toBe(true);
   });
 
-  it("result.content が配列（[{text: '...'}, ...]）形式でも byte 数を合算", () => {
+  it("message.content が配列（[{text: '...'}, ...]）形式でも byte 数を合算", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
       {
-        toolId: "read",
-        toolCallId: "tcid_arr",
-        result: {
+        toolName: "read",
+        message: {
+          role: "tool",
+          tool_call_id: "tcid_arr",
           content: [{ text: "x".repeat(30_000) }, { text: "y".repeat(30_000) }],
         },
       },
@@ -440,15 +458,16 @@ describe("tool_result_persist - sentinel boundary", () => {
     expect((result as any).message.content).toContain(SENTINEL_PREFIX);
   });
 
-  it("result.content 配列内の object は text 以外の巨大 field も byte 数に含める", () => {
+  it("message.content 配列内の object は text 以外の巨大 field も byte 数に含める", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
       {
-        toolId: "read",
-        toolCallId: "tcid_arr_raw",
-        result: {
+        toolName: "read",
+        message: {
+          role: "tool",
+          tool_call_id: "tcid_arr_raw",
           content: [{ text: "ok", raw: "x".repeat(60_000) }],
         },
       },
@@ -458,55 +477,60 @@ describe("tool_result_persist - sentinel boundary", () => {
     expect((result as any).message.content).toContain(SENTINEL_PREFIX);
   });
 
-  it("result.content 配列内の object に text が無い場合は JSON 化 byte 数で計算", () => {
+  it("message.content 配列内の object に text が無い場合は JSON 化 byte 数で計算", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
       {
-        toolId: "read",
-        toolCallId: "tcid_arr2",
-        result: { content: [{ blob: "x".repeat(100_000) }] },
+        toolName: "read",
+        message: {
+          role: "tool",
+          tool_call_id: "tcid_arr2",
+          content: [{ blob: "x".repeat(100_000) }],
+        },
       },
       {},
     ) as ToolResultPersistResult;
     expect((result as any).message).toBeDefined();
   });
 
-  it("result.content 配列内の非 object 要素も byte 数で計算", () => {
+  it("message.content 配列内の非 object 要素も byte 数で計算", () => {
     const api = makeApi({ rewriteThresholdBytes: 100 });
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
       {
-        toolId: "read",
-        toolCallId: "tcid_arr3",
-        result: { content: ["text".repeat(50), 12345, true] },
+        toolName: "read",
+        message: {
+          role: "tool",
+          tool_call_id: "tcid_arr3",
+          content: ["text".repeat(50), 12345, true],
+        },
       },
       {},
     ) as ToolResultPersistResult;
     expect((result as any).message).toBeDefined();
   });
 
-  it("result が undefined / null の場合は 0 byte 扱いで置換しない", () => {
+  it("message が undefined / null の場合は 0 byte 扱いで置換しない", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
-    const result1 = handler({ toolId: "read", toolCallId: "n1", result: null }, {});
-    const result2 = handler({ toolId: "read", toolCallId: "n2", result: undefined }, {});
+    const result1 = handler({ toolName: "read", message: null }, {});
+    const result2 = handler({ toolName: "read", message: undefined }, {});
     expect(result1).toEqual({});
     expect(result2).toEqual({});
   });
 
-  it("result が plain object（content なし）の場合は JSON 化 byte 数で計算", () => {
+  it("message が plain object（content なし）の場合は JSON 化 byte 数で計算", () => {
     const api = makeApi({ rewriteThresholdBytes: 50 });
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
       {
-        toolId: "read",
-        toolCallId: "tcid_plain",
-        result: { other: "x".repeat(200) },
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_plain", other: "x".repeat(200) },
       },
       {},
     ) as ToolResultPersistResult;
@@ -650,6 +674,43 @@ describe("session state 累積（cumulative budget tracking）", () => {
     expect((result1 as BeforeAgentRunResult).outcome).toBe("pass");
     expect((result2 as BeforeAgentRunResult).outcome).toBe("pass");
     expect((result3 as BeforeAgentRunResult).outcome).toBe("pass");
+  });
+
+  // 実 OpenClaw 経路の検証（session 識別子は ctx が正本。event には sessionId が無い）。回帰防止。
+  it("session 識別子は ctx.sessionId を正本として metric に反映する", () => {
+    const api = makeApi();
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+    handler({ prompt: "x".repeat(300_000), messages: [] }, { sessionId: "ctx_s1" });
+    expect(api.metrics.incrementCounter).toHaveBeenCalledWith(
+      "cost_guard.per_turn_input_blocked",
+      expect.objectContaining({ sessionId: "ctx_s1" }),
+    );
+  });
+
+  it("ctx.sessionId は event.sessionId より優先される（ctx が正本）", () => {
+    const api = makeApi();
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+    handler(
+      { sessionId: "ev_s", prompt: "x".repeat(300_000), messages: [] },
+      { sessionId: "ctx_s" },
+    );
+    expect(api.metrics.incrementCounter).toHaveBeenCalledWith(
+      "cost_guard.per_turn_input_blocked",
+      expect.objectContaining({ sessionId: "ctx_s" }),
+    );
+  });
+
+  it("ctx.sessionId 不在時は ctx.sessionKey を session 識別子に使う", () => {
+    const api = makeApi();
+    register(api as any);
+    const handler = api.hooks.get("before_agent_run")!;
+    handler({ prompt: "x".repeat(300_000), messages: [] }, { sessionKey: "agent:main:k1" });
+    expect(api.metrics.incrementCounter).toHaveBeenCalledWith(
+      "cost_guard.per_turn_input_blocked",
+      expect.objectContaining({ sessionId: "agent:main:k1" }),
+    );
   });
 });
 
@@ -1116,7 +1177,13 @@ describe("metric 発行（contracts.md §10.1 の 5 metric）", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
-    handler({ toolId: "read", toolCallId: "tcid_a", result: { content: "x".repeat(60_000) } }, {});
+    handler(
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_a", content: "x".repeat(60_000) },
+      },
+      {},
+    );
     expect(api.metrics.incrementCounter).toHaveBeenCalledWith(
       "cost_guard.tool_result_rewritten",
       expect.anything(),
