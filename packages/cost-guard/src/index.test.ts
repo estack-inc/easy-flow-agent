@@ -348,7 +348,10 @@ describe("tool_result_persist - sentinel boundary", () => {
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
-      { toolName: "read", message: { role: "tool", tool_call_id: "tcid_str", content: "x".repeat(60_000) } },
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_str", content: "x".repeat(60_000) },
+      },
       {},
     ) as ToolResultPersistResult;
     expect((result as any).message).toBeDefined();
@@ -359,7 +362,10 @@ describe("tool_result_persist - sentinel boundary", () => {
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
-      { toolName: "read", message: { role: "tool", tool_call_id: "tcid_x", content: "x".repeat(1001) } },
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_x", content: "x".repeat(1001) },
+      },
       {},
     ) as ToolResultPersistResult;
     expect((result as any).message).toBeDefined();
@@ -369,7 +375,13 @@ describe("tool_result_persist - sentinel boundary", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
-    handler({ toolName: "read", message: { role: "tool", tool_call_id: "tcid_m", content: "x".repeat(60_000) } }, {});
+    handler(
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_m", content: "x".repeat(60_000) },
+      },
+      {},
+    );
     expect(api.metrics.incrementCounter).toHaveBeenCalledWith(
       "cost_guard.tool_result_rewritten",
       expect.objectContaining({ toolId: "read" }),
@@ -381,7 +393,10 @@ describe("tool_result_persist - sentinel boundary", () => {
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
     const result = handler(
-      { toolName: "read", message: { role: "tool", tool_call_id: "tcid_obs", content: "x".repeat(60_000) } },
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_obs", content: "x".repeat(60_000) },
+      },
       {},
     );
     expect(result).toEqual({});
@@ -397,7 +412,10 @@ describe("tool_result_persist - sentinel boundary", () => {
     const handler = api.hooks.get("tool_result_persist")!;
     api.logger.info.mockClear();
     handler(
-      { toolName: "read", message: { role: "tool", tool_call_id: "tcid_obs_log", content: "x".repeat(60_000) } },
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_obs_log", content: "x".repeat(60_000) },
+      },
       {},
     );
     const infoCalls = api.logger.info.mock.calls.map((c: unknown[]) => c[0] as string);
@@ -411,7 +429,10 @@ describe("tool_result_persist - sentinel boundary", () => {
     const handler = api.hooks.get("tool_result_persist")!;
     api.logger.info.mockClear();
     handler(
-      { toolName: "read", message: { role: "tool", tool_call_id: "tcid_block_log", content: "x".repeat(60_000) } },
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_block_log", content: "x".repeat(60_000) },
+      },
       {},
     );
     const infoCalls = api.logger.info.mock.calls.map((c: unknown[]) => c[0] as string);
@@ -463,7 +484,11 @@ describe("tool_result_persist - sentinel boundary", () => {
     const result = handler(
       {
         toolName: "read",
-        message: { role: "tool", tool_call_id: "tcid_arr2", content: [{ blob: "x".repeat(100_000) }] },
+        message: {
+          role: "tool",
+          tool_call_id: "tcid_arr2",
+          content: [{ blob: "x".repeat(100_000) }],
+        },
       },
       {},
     ) as ToolResultPersistResult;
@@ -477,7 +502,11 @@ describe("tool_result_persist - sentinel boundary", () => {
     const result = handler(
       {
         toolName: "read",
-        message: { role: "tool", tool_call_id: "tcid_arr3", content: ["text".repeat(50), 12345, true] },
+        message: {
+          role: "tool",
+          tool_call_id: "tcid_arr3",
+          content: ["text".repeat(50), 12345, true],
+        },
       },
       {},
     ) as ToolResultPersistResult;
@@ -663,7 +692,10 @@ describe("session state 累積（cumulative budget tracking）", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("before_agent_run")!;
-    handler({ sessionId: "ev_s", prompt: "x".repeat(300_000), messages: [] }, { sessionId: "ctx_s" });
+    handler(
+      { sessionId: "ev_s", prompt: "x".repeat(300_000), messages: [] },
+      { sessionId: "ctx_s" },
+    );
     expect(api.metrics.incrementCounter).toHaveBeenCalledWith(
       "cost_guard.per_turn_input_blocked",
       expect.objectContaining({ sessionId: "ctx_s" }),
@@ -1145,7 +1177,13 @@ describe("metric 発行（contracts.md §10.1 の 5 metric）", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("tool_result_persist")!;
-    handler({ toolName: "read", message: { role: "tool", tool_call_id: "tcid_a", content: "x".repeat(60_000) } }, {});
+    handler(
+      {
+        toolName: "read",
+        message: { role: "tool", tool_call_id: "tcid_a", content: "x".repeat(60_000) },
+      },
+      {},
+    );
     expect(api.metrics.incrementCounter).toHaveBeenCalledWith(
       "cost_guard.tool_result_rewritten",
       expect.anything(),
