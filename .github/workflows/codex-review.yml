@@ -674,15 +674,51 @@ jobs:
           VERDICT: ${{ steps.review_json.outputs.verdict || steps.review_infra_failure.outputs.verdict }}
         run: |
           set +e
-          CURRENT_HEAD_SHA=$(gh api "repos/$REPO/pulls/$PR_NUM" --jq '.head.sha' 2>/dev/null)
-          CURRENT_HEAD_RC=$?
+          PR_JSON=$(gh api "repos/$REPO/pulls/$PR_NUM" \
+            --jq '{head_sha: .head.sha, draft: .draft, labels: [.labels[].name]}' 2>/dev/null)
+          PR_JSON_RC=$?
           set -e
-          if [ "$CURRENT_HEAD_RC" -ne 0 ]; then
-            echo "::error::PR の最新 head SHA 取得に失敗しました。誤 dismiss を避けるため fail-closed で停止します。"
+          if [ "$PR_JSON_RC" -ne 0 ]; then
+            echo "::error::PR の最新状態取得に失敗しました。誤 dismiss を避けるため fail-closed で停止します。"
             exit 1
           fi
 
+          CURRENT_HEAD_SHA=$(echo "$PR_JSON" | jq -r '.head_sha')
           PRESERVE_SHA=""
+          SKIP_REASONS=()
+          if echo "$PR_JSON" | jq -e '.draft == true' >/dev/null; then
+            SKIP_REASONS+=("draft PR")
+          fi
+          if echo "$PR_JSON" | jq -e '.labels | any(.=="auto-spec-sync")' >/dev/null; then
+            SKIP_REASONS+=("auto-spec-sync label")
+          fi
+          if [ "${#SKIP_REASONS[@]}" -gt 0 ]; then
+            export PRESERVE_SHA
+            SKIP_REASON=$(IFS='; '; echo "${SKIP_REASONS[*]}")
+
+            set +e
+            SKIP_STALE_APPROVAL_REVIEWS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/reviews" \
+              --jq '.[] | select(.state=="APPROVED" and (((.body // "") | contains("<!-- codex-reviewer-bot:v1")) or ((.body // "") | contains("🤖 AIレビュー判定"))) and (env.PRESERVE_SHA == "" or ((.body // "") | contains("sha=" + env.PRESERVE_SHA) | not))) | .id' 2>/dev/null)
+            SKIP_STALE_APPROVAL_LIST_RC=$?
+            set -e
+            if [ "$SKIP_STALE_APPROVAL_LIST_RC" -ne 0 ]; then
+              echo "::error::review listing 失敗 — skip 対象検出後に stale approval を dismiss できないため fail-closed"
+              exit 1
+            fi
+
+            DISMISS_FAILED=0
+            for RID in $SKIP_STALE_APPROVAL_REVIEWS; do
+              if ! gh api -X PUT "repos/$REPO/pulls/$PR_NUM/reviews/$RID/dismissals" \
+                  -f message="Codex Reviewer: 投稿直前に本 run はレビュー対象外（$SKIP_REASON）になったため、過去の bot APPROVED を dismiss しました。" >/dev/null; then
+                echo "::error::stale approval dismiss 失敗 (id=$RID)"
+                DISMISS_FAILED=1
+              fi
+            done
+            if [ "$DISMISS_FAILED" = "1" ]; then exit 1; fi
+            echo "::notice::review skipped (reason: $SKIP_REASON) — stale bot approvals dismissed (submit-time recheck)"
+            exit 0
+          fi
+
           if [ "$CURRENT_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
             PRESERVE_SHA="$CURRENT_HEAD_SHA"
             export PRESERVE_SHA

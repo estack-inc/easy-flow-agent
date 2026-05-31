@@ -190,8 +190,8 @@ test('submit verdict keeps same SHA blocking review when approve posting fails',
     `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\\n' "$*" >> "${result.dir}/gh.log"
-if [[ "$1" == "api" && "$*" == *"pulls/176 --jq .head.sha"* ]]; then
-  printf 'head-sha\\n'
+if [[ "$1" == "api" && "$*" == *"pulls/176 --jq {head_sha:"* ]]; then
+  printf '{"head_sha":"head-sha","draft":false,"labels":[]}\\n'
   exit 0
 fi
 if [[ "$1" == "api" && "$*" == *"/reviews --jq"* ]]; then
@@ -262,8 +262,8 @@ test('submit verdict skips posting and dismisses stale approvals after head drif
     `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\\n' "$*" >> "${result.dir}/gh.log"
-if [[ "$1" == "api" && "$*" == *"pulls/176 --jq .head.sha"* ]]; then
-  printf 'new-head\\n'
+if [[ "$1" == "api" && "$*" == *"pulls/176 --jq {head_sha:"* ]]; then
+  printf '{"head_sha":"new-head","draft":false,"labels":[]}\\n'
   exit 0
 fi
 if [[ "$1" == "api" && "$*" == *"/reviews --jq"* ]]; then
@@ -310,10 +310,127 @@ exit 1
   assert.match(rerun.stdout, /head SHA drift/);
 
   const ghLog = fs.readFileSync(path.join(result.dir, 'gh.log'), 'utf8');
-  assert.match(ghLog, /pulls\/176 --jq \.head\.sha/);
+  assert.match(ghLog, /pulls\/176 --jq \{head_sha:/);
   assert.match(ghLog, /env\.PRESERVE_SHA/);
   assert.match(ghLog, /reviews\/601\/dismissals/);
   assert.doesNotMatch(ghLog, /reviews\/777\/dismissals/);
+  assert.doesNotMatch(ghLog, /pr review/);
+});
+
+test('submit verdict skips posting and dismisses stale approvals when PR became draft', (t) => {
+  const script = extractRunScript(SUBMIT_REVIEW_VERDICT_STEP);
+  const result = prepareShellScript(t, script);
+
+  writeExecutable(
+    path.join(result.binDir, 'gh'),
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "${result.dir}/gh.log"
+if [[ "$1" == "api" && "$*" == *"pulls/176 --jq {head_sha:"* ]]; then
+  printf '{"head_sha":"head-sha","draft":true,"labels":[]}\\n'
+  exit 0
+fi
+if [[ "$1" == "api" && "$*" == *"/reviews --jq"* ]]; then
+  printf '701\\n702\\n'
+  exit 0
+fi
+if [[ "$*" == *"/reviews/"*"/dismissals"* ]]; then
+  exit 0
+fi
+if [[ "$1" == "pr" && "$2" == "review" ]]; then
+  exit 99
+fi
+exit 1
+`,
+  );
+
+  const reviewCommentPath = '/tmp/review-comment.md';
+  fs.writeFileSync(reviewCommentPath, 'review body\n');
+  t.after(() => {
+    fs.rmSync(reviewCommentPath, { force: true });
+  });
+
+  const rerun = spawnSync('bash', ['-e', result.scriptPath], {
+    cwd: result.dir,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${result.binDir}:${process.env.PATH}`,
+      GITHUB_OUTPUT: result.outputPath,
+      RUNNER_TEMP: result.dir,
+      GH_TOKEN: 'token',
+      REPO: 'estack-inc/easy-flow-agent',
+      PR_NUM: '176',
+      PR_HEAD_SHA: 'head-sha',
+      VERDICT: 'approved',
+    },
+  });
+
+  assert.equal(rerun.status, 0, rerun.stderr);
+  assert.match(rerun.stdout, /review skipped \(reason: draft PR\)/);
+
+  const ghLog = fs.readFileSync(path.join(result.dir, 'gh.log'), 'utf8');
+  assert.match(ghLog, /pulls\/176 --jq \{head_sha:/);
+  assert.match(ghLog, /reviews\/701\/dismissals/);
+  assert.match(ghLog, /reviews\/702\/dismissals/);
+  assert.doesNotMatch(ghLog, /pr review/);
+});
+
+test('submit verdict skips posting and dismisses stale approvals when auto-spec-sync label appears', (t) => {
+  const script = extractRunScript(SUBMIT_REVIEW_VERDICT_STEP);
+  const result = prepareShellScript(t, script);
+
+  writeExecutable(
+    path.join(result.binDir, 'gh'),
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "${result.dir}/gh.log"
+if [[ "$1" == "api" && "$*" == *"pulls/176 --jq {head_sha:"* ]]; then
+  printf '{"head_sha":"head-sha","draft":false,"labels":["auto-spec-sync"]}\\n'
+  exit 0
+fi
+if [[ "$1" == "api" && "$*" == *"/reviews --jq"* ]]; then
+  printf '801\\n'
+  exit 0
+fi
+if [[ "$*" == *"/reviews/"*"/dismissals"* ]]; then
+  exit 0
+fi
+if [[ "$1" == "pr" && "$2" == "review" ]]; then
+  exit 99
+fi
+exit 1
+`,
+  );
+
+  const reviewCommentPath = '/tmp/review-comment.md';
+  fs.writeFileSync(reviewCommentPath, 'review body\n');
+  t.after(() => {
+    fs.rmSync(reviewCommentPath, { force: true });
+  });
+
+  const rerun = spawnSync('bash', ['-e', result.scriptPath], {
+    cwd: result.dir,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${result.binDir}:${process.env.PATH}`,
+      GITHUB_OUTPUT: result.outputPath,
+      RUNNER_TEMP: result.dir,
+      GH_TOKEN: 'token',
+      REPO: 'estack-inc/easy-flow-agent',
+      PR_NUM: '176',
+      PR_HEAD_SHA: 'head-sha',
+      VERDICT: 'changes_requested',
+    },
+  });
+
+  assert.equal(rerun.status, 0, rerun.stderr);
+  assert.match(rerun.stdout, /review skipped \(reason: auto-spec-sync label\)/);
+
+  const ghLog = fs.readFileSync(path.join(result.dir, 'gh.log'), 'utf8');
+  assert.match(ghLog, /pulls\/176 --jq \{head_sha:/);
+  assert.match(ghLog, /reviews\/801\/dismissals/);
   assert.doesNotMatch(ghLog, /pr review/);
 });
 
