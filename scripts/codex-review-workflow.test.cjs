@@ -17,6 +17,12 @@ function readWorkflowText() {
   return fs.readFileSync(WORKFLOW_PATH, 'utf8');
 }
 
+function extractPullRequestTypes(workflow) {
+  const match = workflow.match(/^\s+types:\s*\[([^\]]+)\]/m);
+  assert.ok(match, 'pull_request.types not found');
+  return match[1].split(',').map((type) => type.trim());
+}
+
 function extractRunScript(stepName) {
   const lines = fs.readFileSync(WORKFLOW_PATH, 'utf8').split('\n');
   const stepIndex = lines.findIndex((line) => line.trim() === `- name: ${stepName}`);
@@ -498,6 +504,23 @@ test('review request includes a strict JSON-only no-findings example', () => {
   assert.match(workflow, /checklist: \(\$checklist_names\[0\] \| map/);
   assert.match(workflow, /最初の文字は `\{`、最後の文字は `\}`/);
   assert.match(workflow, /`指摘事項はありません。` のような自然文だけの応答も契約違反/);
+});
+
+test('pull_request trigger includes not-applicable cleanup events', () => {
+  const workflow = readWorkflowText();
+  const types = extractPullRequestTypes(workflow);
+
+  for (const type of [
+    'opened',
+    'synchronize',
+    'reopened',
+    'ready_for_review',
+    'converted_to_draft',
+    'labeled',
+    'unlabeled',
+  ]) {
+    assert.ok(types.includes(type), `pull_request.types should include ${type}`);
+  }
 });
 
 test('schema retry feeds validation failure back into the next review request', () => {
