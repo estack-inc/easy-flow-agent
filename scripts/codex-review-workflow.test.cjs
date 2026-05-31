@@ -490,9 +490,21 @@ exit 1
 test('review request includes a strict JSON-only no-findings example', () => {
   const workflow = readWorkflowText();
 
+  assert.match(workflow, /output_contract:/);
+  assert.match(workflow, /type: "json_object_only"/);
+  assert.match(workflow, /prohibited_prefixes: \["###", "```", "指摘事項なし", "レビュー結果"\]/);
   assert.match(workflow, /no_findings_json_example:/);
   assert.match(workflow, /reviewed_head_sha: \$head_sha/);
   assert.match(workflow, /checklist: \(\$checklist_names\[0\] \| map/);
   assert.match(workflow, /最初の文字は `\{`、最後の文字は `\}`/);
   assert.match(workflow, /`指摘事項はありません。` のような自然文だけの応答も契約違反/);
+});
+
+test('schema retry feeds validation failure back into the next review request', () => {
+  const workflow = readWorkflowText();
+
+  assert.match(workflow, /VALIDATION_OUTPUT=\$\(node "\$CJS" validate \/tmp\/review-result\.json 2>&1\)/);
+  assert.match(workflow, /schema_retry_feedback/);
+  assert.match(workflow, /invalid_output_head/);
+  assert.match(workflow, /修正済み JSON object だけを返す/);
 });

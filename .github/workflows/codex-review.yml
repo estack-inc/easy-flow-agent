@@ -238,6 +238,20 @@ jobs:
               pr_number: $pr_number,
               pr_url: $pr_url,
               head_sha: $head_sha,
+              output_contract: {
+                type: "json_object_only",
+                strict: true,
+                first_character: "{",
+                last_character: "}",
+                markdown_allowed: false,
+                prose_allowed: false,
+                code_fence_allowed: false,
+                prohibited_prefixes: ["###", "```", "指摘事項なし", "レビュー結果"],
+                required_fields: ["schema_version", "reviewed_head_sha", "verdict", "summary", "checklist", "findings"],
+                reviewed_head_sha: $head_sha,
+                required_checklist_names: $checklist_names[0],
+                required_checklist_count: ($checklist_names[0] | length)
+              },
               instructions: {
                 language: "ja",
                 summary: $summary,
@@ -409,7 +423,7 @@ jobs:
             # transport artifact (legacy VERDICT suffix) を除去してから検証する。
             node -e 'const fs=require("fs"); const p="/tmp/review-result.json"; const raw=fs.readFileSync(p,"utf8"); const normalized=raw.replace(/\s*<!--[ \t]*VERDICT:(APPROVED|CHANGES_REQUESTED)[ \t]*-->\s*$/i,"").trim(); fs.writeFileSync(p, normalized + "\n");'
             set +e
-            node "$CJS" validate /tmp/review-result.json >/dev/null 2>&1
+            VALIDATION_OUTPUT=$(node "$CJS" validate /tmp/review-result.json 2>&1)
             SCHEMA_RC=$?
             set -e
             if [ "$SCHEMA_RC" -eq 0 ]; then
@@ -418,6 +432,23 @@ jobs:
               break
             fi
             cp /tmp/review-result.json /tmp/review-result.last.json
+            if [ "$ATTEMPT" -le "$SCHEMA_RETRY_MAX" ]; then
+              printf '%s\n' "$VALIDATION_OUTPUT" > /tmp/codex-review-validation-error.txt
+              sed -n '1,120p' /tmp/review-result.json > /tmp/codex-review-invalid-output-head.txt
+              jq \
+                --rawfile validation_error /tmp/codex-review-validation-error.txt \
+                --rawfile invalid_output_head /tmp/codex-review-invalid-output-head.txt \
+                '.instructions.schema_retry_feedback = {
+                  message: "前回応答は JSON 契約検証に失敗しました。次の応答では Markdown や説明文を一切出さず、JSON object だけを返してください。",
+                  validation_error: $validation_error,
+                  invalid_output_head: $invalid_output_head
+                }
+                | .instructions.output_format = ([
+                  "前回応答が契約違反だった場合も、謝罪・説明・Markdown 見出しを出さず、修正済み JSON object だけを返す"
+                ] + .instructions.output_format)' \
+                /tmp/codex-review-request.rendered.json > /tmp/codex-review-request.rendered.next.json
+              mv /tmp/codex-review-request.rendered.next.json /tmp/codex-review-request.rendered.json
+            fi
             echo "::warning::Codex review JSON schema validation failed on attempt $ATTEMPT/$((SCHEMA_RETRY_MAX + 1)). Retrying webhook."
           done
           {
