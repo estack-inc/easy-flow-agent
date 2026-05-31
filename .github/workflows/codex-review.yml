@@ -78,6 +78,36 @@ jobs:
           if echo "$LABELS_JSON" | jq -e 'any(.=="auto-spec-sync")' >/dev/null 2>&1; then APPLICABLE=false; REASONS+=("auto-spec-sync label"); fi
           if [ "$HEAD_REPO" != "$REPO" ]; then APPLICABLE=false; IS_FORK=true; REASONS+=("fork PR ($HEAD_REPO)"); fi
 
+          if [ "$APPLICABLE" = "true" ]; then
+            # `gh pr diff` は GitHub API の一時障害・PAT 失効・gh 側の一過性エラーで落ち得る。
+            # step を hard fail させると後段の Dismiss stale bot approval に到達できず、
+            # 過去 run が付けた bot APPROVED が残ったまま本 run の最新 head が未レビュー状態で
+            # merge される経路が開いてしまう。rc を捕まえ、失敗時は applicable=false + 理由付き
+            # にして Dismiss step に委譲する（dismiss も失敗すれば fail-closed で job が赤くなる）。
+            set +e
+            FILES=$(gh pr diff "$PR_NUM" --repo "$REPO" --name-only 2>&1)
+            GH_DIFF_RC=$?
+            set -e
+            if [ $GH_DIFF_RC -ne 0 ]; then
+              APPLICABLE=false
+              REASONS+=("gh pr diff failed (rc=$GH_DIFF_RC)")
+              echo "::warning::gh pr diff failed (rc=$GH_DIFF_RC), falling back to applicable=false so cleanup step can dismiss stale APPROVED"
+              echo "$FILES" | head -5
+            else
+              SHOULD_REVIEW=false
+              for f in $FILES; do
+                case "$f" in
+                  packages/*.ts|packages/*.js|packages/*.json) SHOULD_REVIEW=true ;;
+                  packages/**/*.ts|packages/**/*.js|packages/**/*.json) SHOULD_REVIEW=true ;;
+                  specs/*.md|specs/**/*.md) SHOULD_REVIEW=true ;;
+                  .github/workflows/*.yml|.github/workflows/*.yaml) SHOULD_REVIEW=true ;;
+                  CLAUDE.md) SHOULD_REVIEW=true ;;
+                esac
+              done
+              if [ "$SHOULD_REVIEW" = "false" ]; then APPLICABLE=false; REASONS+=("no reviewable files"); fi
+            fi
+          fi
+
           REASON_JOINED=$(IFS='; '; echo "${REASONS[*]}")
           echo "applicable=$APPLICABLE" >> "$GITHUB_OUTPUT"
           echo "reason=$REASON_JOINED" >> "$GITHUB_OUTPUT"
