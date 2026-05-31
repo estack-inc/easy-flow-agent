@@ -281,7 +281,8 @@ jobs:
                   "reviewer 自身の最終出力契約は JSON object のみであり、Markdown や説明文を付けてはいけない"
                 ],
                 output_format: [
-                  "最終出力は Markdown ではなく JSON object のみ。前後に説明文や code fence を付けない",
+                  "最終出力は Markdown ではなく JSON object のみ。最初の文字は `{`、最後の文字は `}` にする",
+                  "前後に説明文や code fence を付けない。`指摘事項はありません。` のような自然文だけの応答も契約違反",
                   "schema_version は number 1",
                   "reviewed_head_sha にはリクエストの head_sha をそのまま入れる",
                   "verdict は approved または changes_requested",
@@ -298,6 +299,19 @@ jobs:
                   "checked_scope には、その finding の同じ failure mode が残っていないことを確認した実行経路、状態遷移、docs、tests などを具体的に列挙する",
                   "指摘がない場合は findings=[]、verdict=approved"
                 ],
+                no_findings_json_example: {
+                  schema_version: 1,
+                  reviewed_head_sha: $head_sha,
+                  verdict: "approved",
+                  summary: "指摘事項はありません。",
+                  checklist: ($checklist_names[0] | map({
+                    name: .,
+                    status: "ok",
+                    note: "この観点で確認し、blocking finding はありません。",
+                    finding_ids: []
+                  })),
+                  findings: []
+                },
                 json_contract: {
                   schema_version: 1,
                   reviewed_head_sha: "head_sha の値",

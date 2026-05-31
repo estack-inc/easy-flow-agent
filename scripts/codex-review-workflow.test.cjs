@@ -13,6 +13,10 @@ const WORKFLOW_PATH = path.join(REPO_ROOT, '.github/workflows/codex-review.yml')
 const DISMISS_STALE_POST_TIME_STEP = 'Dismiss stale bot approval (PR no longer applicable at post time)';
 const SUBMIT_REVIEW_VERDICT_STEP = 'Submit review verdict';
 
+function readWorkflowText() {
+  return fs.readFileSync(WORKFLOW_PATH, 'utf8');
+}
+
 function extractRunScript(stepName) {
   const lines = fs.readFileSync(WORKFLOW_PATH, 'utf8').split('\n');
   const stepIndex = lines.findIndex((line) => line.trim() === `- name: ${stepName}`);
@@ -364,4 +368,14 @@ exit 1
   assert.match(fs.readFileSync(path.join(result.dir, 'git.log'), 'utf8'), /show origin\/main:scripts\/ai_review_cost\.py/);
   assert.match(fs.readFileSync(result.outputPath, 'utf8'), /record_exists=true/);
   assert.match(fs.readFileSync(result.outputPath, 'utf8'), /record_path=/);
+});
+
+test('review request includes a strict JSON-only no-findings example', () => {
+  const workflow = readWorkflowText();
+
+  assert.match(workflow, /no_findings_json_example:/);
+  assert.match(workflow, /reviewed_head_sha: \$head_sha/);
+  assert.match(workflow, /checklist: \(\$checklist_names\[0\] \| map/);
+  assert.match(workflow, /最初の文字は `\{`、最後の文字は `\}`/);
+  assert.match(workflow, /`指摘事項はありません。` のような自然文だけの応答も契約違反/);
 });
