@@ -150,10 +150,12 @@ export default function register(api) {
     // tool_result_persist: rewriteThresholdBytes 超で sentinel 置換
     // --------------------------------------------------------------------------
     api.on("tool_result_persist", (event, _ctx) => {
+        // OpenClaw の tool_result_persist event は tool result を `message`(AgentMessage) に格納する。
+        // `result` フィールドは存在しない（hook-types.d.ts: PluginHookToolResultPersistEvent）。
         const e = event;
-        const toolId = e.toolId ?? e.toolName ?? "(unknown)";
-        const toolCallId = e.toolCallId ?? e.tool_call_id ?? "";
-        const contentBytes = extractResultContentBytes(e.result);
+        const toolId = e.toolName ?? "(unknown)";
+        const toolCallId = e.message?.tool_call_id ?? e.toolCallId ?? "";
+        const contentBytes = extractResultContentBytes(e.message);
         if (cfg.logging) {
             log.info(`${TAG} tool_result_persist: tool=${toolId} call_id=${toolCallId || "(none)"} bytes=${contentBytes}`);
         }
@@ -167,6 +169,7 @@ export default function register(api) {
                 return {};
             return {
                 message: {
+                    ...e.message,
                     role: "tool",
                     tool_call_id: toolCallId,
                     content: sentinel,
@@ -178,9 +181,12 @@ export default function register(api) {
     // --------------------------------------------------------------------------
     // before_agent_run: 段 1 per-turn gate → 段 2 session budget → cleanup
     // --------------------------------------------------------------------------
-    api.on("before_agent_run", (event, _ctx) => {
+    api.on("before_agent_run", (event, ctx) => {
         const e = event;
-        const sessionId = e.sessionId ?? e.channelId ?? e.accountId ?? "default";
+        // session 識別子は ctx(PluginHookAgentContext) が正本（OpenClaw 実 event には sessionId が無い）。
+        // e.sessionId は後方互換 fallback（ctx より低優先。host 差異や旧 event 形式への保険）。
+        const c = ctx;
+        const sessionId = c.sessionId ?? c.sessionKey ?? e.sessionId ?? e.channelId ?? e.accountId ?? "default";
         // 0. rollback Mode A: suspendAgent
         //    本 case は contracts.md §10.1 の 5 metric とは独立した運用イベントのため、
         //    `cost_guard.session_budget_exceeded` には混ぜず、専用 metric を別途発行する。

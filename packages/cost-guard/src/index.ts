@@ -273,16 +273,17 @@ export default function register(api: OpenClawPluginApi): void {
   // tool_result_persist: rewriteThresholdBytes 超で sentinel 置換
   // --------------------------------------------------------------------------
   api.on("tool_result_persist", (event: unknown, _ctx: unknown): ToolResultPersistResult => {
+    // OpenClaw の tool_result_persist event は tool result を `message`(AgentMessage) に格納する。
+    // `result` フィールドは存在しない（hook-types.d.ts: PluginHookToolResultPersistEvent）。
     const e = event as {
       toolName?: string;
-      toolId?: string;
       toolCallId?: string;
-      tool_call_id?: string;
-      result?: unknown;
+      message?: { role?: string; content?: unknown; tool_call_id?: string; [k: string]: unknown };
+      isSynthetic?: boolean;
     };
-    const toolId = e.toolId ?? e.toolName ?? "(unknown)";
-    const toolCallId = e.toolCallId ?? e.tool_call_id ?? "";
-    const contentBytes = extractResultContentBytes(e.result);
+    const toolId = e.toolName ?? "(unknown)";
+    const toolCallId = e.message?.tool_call_id ?? e.toolCallId ?? "";
+    const contentBytes = extractResultContentBytes(e.message);
 
     if (cfg.logging) {
       log.info(
@@ -302,7 +303,8 @@ export default function register(api: OpenClawPluginApi): void {
       if (cfg.blockMode === "observe") return {};
       return {
         message: {
-          role: "tool",
+          ...e.message,
+          role: "tool" as const,
           tool_call_id: toolCallId,
           content: sentinel,
         },
@@ -314,7 +316,7 @@ export default function register(api: OpenClawPluginApi): void {
   // --------------------------------------------------------------------------
   // before_agent_run: 段 1 per-turn gate → 段 2 session budget → cleanup
   // --------------------------------------------------------------------------
-  api.on("before_agent_run", (event: unknown, _ctx: unknown): BeforeAgentRunResult => {
+  api.on("before_agent_run", (event: unknown, ctx: unknown): BeforeAgentRunResult => {
     const e = event as {
       prompt?: string;
       messages?: SessionMessage[];
@@ -322,7 +324,11 @@ export default function register(api: OpenClawPluginApi): void {
       accountId?: string;
       channelId?: string;
     };
-    const sessionId = e.sessionId ?? e.channelId ?? e.accountId ?? "default";
+    // session 識別子は ctx(PluginHookAgentContext) が正本（OpenClaw 実 event には sessionId が無い）。
+    // e.sessionId は後方互換 fallback（ctx より低優先。host 差異や旧 event 形式への保険）。
+    const c = ctx as { sessionId?: string; sessionKey?: string };
+    const sessionId =
+      c.sessionId ?? c.sessionKey ?? e.sessionId ?? e.channelId ?? e.accountId ?? "default";
 
     // 0. rollback Mode A: suspendAgent
     //    本 case は contracts.md §10.1 の 5 metric とは独立した運用イベントのため、
