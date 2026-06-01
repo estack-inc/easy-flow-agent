@@ -1,5 +1,5 @@
 /**
- * T3: transcript-analyzer.analyze_transcript
+ * T3: transcript_analyzer_analyze_transcript
  *
  * transcript 全文を Gemini 2.5 Flash で読み込み、query に対する answer + citations を抽出する。
  *

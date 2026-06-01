@@ -179,7 +179,7 @@ export function createQuotaStore(): QuotaStore {
 
 function createListTranscriptsTool(deps: ToolDependencies): AgentToolLike {
   return {
-    name: "transcript-analyzer.list_transcripts",
+    name: "transcript_analyzer_list_transcripts",
     description:
       "List transcripts available under transcriptDir. Returns redacted metadata only " +
       "(no participant names, meeting names, etc. shown in clear text). " +
@@ -205,7 +205,7 @@ function createListTranscriptsTool(deps: ToolDependencies): AgentToolLike {
 
 function createSearchTranscriptsTool(deps: ToolDependencies): AgentToolLike {
   return {
-    name: "transcript-analyzer.search_transcripts",
+    name: "transcript_analyzer_search_transcripts",
     description:
       "Search transcript chunks matching the query (BM25-like keyword scoring in Phase 1). " +
       "Returns top-k chunks with transcript_id, chunk_id, byte_range, score (0.0-1.0). " +
@@ -250,7 +250,7 @@ function createAnalyzeTranscriptTool(
   ctx: PluginContextLike,
 ): AgentToolLike {
   return {
-    name: "transcript-analyzer.analyze_transcript",
+    name: "transcript_analyzer_analyze_transcript",
     description:
       "Analyze a transcript with Gemini 2.5 Flash and return a structured answer with citations. " +
       "Returns AnalyzeTranscriptResponse with answer, citations[], confidence (0.0-1.0), " +
@@ -376,9 +376,9 @@ const transcriptAnalyzerPlugin = {
       },
       {
         names: [
-          "transcript-analyzer.list_transcripts",
-          "transcript-analyzer.search_transcripts",
-          "transcript-analyzer.analyze_transcript",
+          "transcript_analyzer_list_transcripts",
+          "transcript_analyzer_search_transcripts",
+          "transcript_analyzer_analyze_transcript",
         ],
         // 3 tool は denyPaths（zoom_transcribe）への唯一の正規アクセス経路（cost-guard allowlist 対象）であり、
         // agent が常用すべき標準 tool。optional: true にすると OpenClaw の pluginToolNamesMatchAllowlist が

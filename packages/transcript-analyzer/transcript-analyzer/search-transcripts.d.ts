@@ -1,5 +1,5 @@
 /**
- * T2: transcript-analyzer.search_transcripts
+ * T2: transcript_analyzer_search_transcripts
  *
  * query に関連する transcript chunk を BM25 風スコアで top-k 返す。
  * Phase 1 は keyword 一致ベース（structured search の代用）の実装。

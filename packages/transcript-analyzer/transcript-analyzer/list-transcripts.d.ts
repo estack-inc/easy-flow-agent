@@ -1,5 +1,5 @@
 /**
- * T1: transcript-analyzer.list_transcripts
+ * T1: transcript_analyzer_list_transcripts
  *
  * transcriptDir 配下のファイル一覧を返す。
  * 機密 metadata（participant / meeting_name 等）は redact 済み summary_excerpt のみ含める。

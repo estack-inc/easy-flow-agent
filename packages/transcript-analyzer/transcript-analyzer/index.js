@@ -2372,7 +2372,7 @@ function createQuotaStore() {
 }
 function createListTranscriptsTool(deps) {
   return {
-    name: "transcript-analyzer.list_transcripts",
+    name: "transcript_analyzer_list_transcripts",
     description: "List transcripts available under transcriptDir. Returns redacted metadata only (no participant names, meeting names, etc. shown in clear text). Use this before search_transcripts or analyze_transcript to discover transcript_id.",
     parameters: {
       type: "object",
@@ -2394,7 +2394,7 @@ function createListTranscriptsTool(deps) {
 }
 function createSearchTranscriptsTool(deps) {
   return {
-    name: "transcript-analyzer.search_transcripts",
+    name: "transcript_analyzer_search_transcripts",
     description: "Search transcript chunks matching the query (BM25-like keyword scoring in Phase 1). Returns top-k chunks with transcript_id, chunk_id, byte_range, score (0.0-1.0). Use the returned transcript_id with analyze_transcript for deep analysis.",
     parameters: {
       type: "object",
@@ -2432,7 +2432,7 @@ function createSearchTranscriptsTool(deps) {
 }
 function createAnalyzeTranscriptTool(deps, ctx) {
   return {
-    name: "transcript-analyzer.analyze_transcript",
+    name: "transcript_analyzer_analyze_transcript",
     description: "Analyze a transcript with Gemini 2.5 Flash and return a structured answer with citations. Returns AnalyzeTranscriptResponse with answer, citations[], confidence (0.0-1.0), answer_scope ('explicit'/'inferred'/'not_found'), cache_status, and redactions. transcript_id must be obtained from list_transcripts or search_transcripts.",
     parameters: {
       type: "object",
@@ -2533,9 +2533,9 @@ var transcriptAnalyzerPlugin = {
       },
       {
         names: [
-          "transcript-analyzer.list_transcripts",
-          "transcript-analyzer.search_transcripts",
-          "transcript-analyzer.analyze_transcript"
+          "transcript_analyzer_list_transcripts",
+          "transcript_analyzer_search_transcripts",
+          "transcript_analyzer_analyze_transcript"
         ]
         // 3 tool は denyPaths（zoom_transcribe）への唯一の正規アクセス経路（cost-guard allowlist 対象）であり、
         // agent が常用すべき標準 tool。optional: true にすると OpenClaw の pluginToolNamesMatchAllowlist が
