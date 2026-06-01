@@ -33,9 +33,9 @@
         "type": "array",
         "items": { "type": "string" },
         "default": [
-          "transcript-analyzer.list_transcripts",
-          "transcript-analyzer.search_transcripts",
-          "transcript-analyzer.analyze_transcript"
+          "transcript_analyzer_list_transcripts",
+          "transcript_analyzer_search_transcripts",
+          "transcript_analyzer_analyze_transcript"
         ],
         "description": "denyPaths 配下にアクセス可能な tool id allowlist"
       },

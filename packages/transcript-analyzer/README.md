@@ -8,9 +8,9 @@ OpenClaw 2026.5.12 以降向け **Phase 1 transcript-analyzer plugin**。`hongmo
 
 | tool | 役割 |
 |---|---|
-| `transcript-analyzer.list_transcripts` | transcriptDir 配下のファイル一覧。機密 metadata は redact 済み summary_excerpt のみ |
-| `transcript-analyzer.search_transcripts` | query に関連する transcript chunk を top-k 返す（Phase 1：BM25 風 keyword 検索、Phase 2 で pgvector embedding 検索に置換予定） |
-| `transcript-analyzer.analyze_transcript` | transcript 全文を Gemini 2.5 Flash で解析し structured JSON（answer + citations + confidence）を返す |
+| `transcript_analyzer_list_transcripts` | transcriptDir 配下のファイル一覧。機密 metadata は redact 済み summary_excerpt のみ |
+| `transcript_analyzer_search_transcripts` | query に関連する transcript chunk を top-k 返す（Phase 1：BM25 風 keyword 検索、Phase 2 で pgvector embedding 検索に置換予定） |
+| `transcript_analyzer_analyze_transcript` | transcript 全文を Gemini 2.5 Flash で解析し structured JSON（answer + citations + confidence）を返す |
 
 詳細設計：[Phase 1 設計 v6（estack-inc/easy-flow#398）](https://github.com/estack-inc/easy-flow/pull/398)
 契約：本案件の `contracts.md`（同 case 配下）

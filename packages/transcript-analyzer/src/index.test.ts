@@ -132,9 +132,9 @@ describe("register", () => {
     expect(api.registerTool).toHaveBeenCalledOnce();
     const [, options] = api.registerTool.mock.calls[0];
     expect(options.names).toEqual([
-      "transcript-analyzer.list_transcripts",
-      "transcript-analyzer.search_transcripts",
-      "transcript-analyzer.analyze_transcript",
+      "transcript_analyzer_list_transcripts",
+      "transcript_analyzer_search_transcripts",
+      "transcript_analyzer_analyze_transcript",
     ]);
     // 3 tool は標準 tool として登録する（optional 指定なし）。optional: true だと OpenClaw の
     // pluginToolNamesMatchAllowlist が agent の道具公開 allowlist 明示を要求し、既定では公開されない。
@@ -178,9 +178,9 @@ describe("register", () => {
     expect(Array.isArray(tools)).toBe(true);
     expect(tools).toHaveLength(3);
     expect(tools.map((t: { name: string }) => t.name)).toEqual([
-      "transcript-analyzer.list_transcripts",
-      "transcript-analyzer.search_transcripts",
-      "transcript-analyzer.analyze_transcript",
+      "transcript_analyzer_list_transcripts",
+      "transcript_analyzer_search_transcripts",
+      "transcript_analyzer_analyze_transcript",
     ]);
   });
 
@@ -201,7 +201,7 @@ describe("register", () => {
     const factory = api.registerTool.mock.calls[0][0];
     const tools = factory({});
     const listTool = tools.find(
-      (t: { name: string }) => t.name === "transcript-analyzer.list_transcripts",
+      (t: { name: string }) => t.name === "transcript_analyzer_list_transcripts",
     );
     const result = await listTool.execute("call-1", {});
     expect(result.content[0].type).toBe("text");
@@ -215,7 +215,7 @@ describe("register", () => {
     const factory = api.registerTool.mock.calls[0][0];
     const tools = factory({});
     const searchTool = tools.find(
-      (t: { name: string }) => t.name === "transcript-analyzer.search_transcripts",
+      (t: { name: string }) => t.name === "transcript_analyzer_search_transcripts",
     );
     const result = await searchTool.execute("call-1", { query: "" });
     const parsed = JSON.parse(result.content[0].text);
@@ -229,7 +229,7 @@ describe("register", () => {
     const factory = api.registerTool.mock.calls[0][0];
     const tools = factory({ sessionId: "test-1" });
     const analyzeTool = tools.find(
-      (t: { name: string }) => t.name === "transcript-analyzer.analyze_transcript",
+      (t: { name: string }) => t.name === "transcript_analyzer_analyze_transcript",
     );
     const result = await analyzeTool.execute("call-1", {
       transcript_id: "",
@@ -302,9 +302,9 @@ describe("npm package metadata", () => {
     expect(api.registerTool).toHaveBeenCalledOnce();
     const [, options] = api.registerTool.mock.calls[0];
     expect(options.names).toEqual([
-      "transcript-analyzer.list_transcripts",
-      "transcript-analyzer.search_transcripts",
-      "transcript-analyzer.analyze_transcript",
+      "transcript_analyzer_list_transcripts",
+      "transcript_analyzer_search_transcripts",
+      "transcript_analyzer_analyze_transcript",
     ]);
   });
 });

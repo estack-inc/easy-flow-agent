@@ -134,13 +134,13 @@ describe("before_tool_call - denyPaths block", () => {
     expect((result as any).block).toBe(true);
   });
 
-  it("allowlist 内 tool（transcript-analyzer.list_transcripts）は通過", () => {
+  it("allowlist 内 tool（transcript_analyzer_list_transcripts）は通過", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("before_tool_call")!;
     const result = handler(
       {
-        toolId: "transcript-analyzer.list_transcripts",
+        toolId: "transcript_analyzer_list_transcripts",
         params: { path: `${DENY}transcript.txt` },
       },
       {},
@@ -148,13 +148,13 @@ describe("before_tool_call - denyPaths block", () => {
     expect(result).toEqual({});
   });
 
-  it("allowlist 内 tool（transcript-analyzer.search_transcripts）は通過", () => {
+  it("allowlist 内 tool（transcript_analyzer_search_transcripts）は通過", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("before_tool_call")!;
     const result = handler(
       {
-        toolId: "transcript-analyzer.search_transcripts",
+        toolId: "transcript_analyzer_search_transcripts",
         params: { query: "hello", dir: DENY },
       },
       {},
@@ -162,13 +162,13 @@ describe("before_tool_call - denyPaths block", () => {
     expect(result).toEqual({});
   });
 
-  it("allowlist 内 tool（transcript-analyzer.analyze_transcript）は通過", () => {
+  it("allowlist 内 tool（transcript_analyzer_analyze_transcript）は通過", () => {
     const api = makeApi();
     register(api as any);
     const handler = api.hooks.get("before_tool_call")!;
     const result = handler(
       {
-        toolId: "transcript-analyzer.analyze_transcript",
+        toolId: "transcript_analyzer_analyze_transcript",
         params: { transcript_id: "xx", query: "hello" },
       },
       {},

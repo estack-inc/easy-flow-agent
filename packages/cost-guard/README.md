@@ -47,9 +47,9 @@ openclaw plugins inspect cost-guard --runtime --json
           "blockMode": "block",
           "denyPaths": ["/data/workspace/zoom_transcribe/"],
           "allowlistedToolsForDenyPaths": [
-            "transcript-analyzer.list_transcripts",
-            "transcript-analyzer.search_transcripts",
-            "transcript-analyzer.analyze_transcript"
+            "transcript_analyzer_list_transcripts",
+            "transcript_analyzer_search_transcripts",
+            "transcript_analyzer_analyze_transcript"
           ],
           "rewriteThresholdBytes": 50000,
           "sessionTokenBudget": 500000,
