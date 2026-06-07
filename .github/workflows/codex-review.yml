@@ -313,19 +313,6 @@ jobs:
                   "checked_scope には、その finding の同じ failure mode が残っていないことを確認した実行経路、状態遷移、docs、tests などを具体的に列挙する",
                   "指摘がない場合は findings=[]、verdict=approved"
                 ],
-                no_findings_json_example: {
-                  schema_version: 1,
-                  reviewed_head_sha: $head_sha,
-                  verdict: "approved",
-                  summary: "指摘事項はありません。",
-                  checklist: ($checklist_names[0] | map({
-                    name: .,
-                    status: "ok",
-                    note: "この観点で確認し、blocking finding はありません。",
-                    finding_ids: []
-                  })),
-                  findings: []
-                },
                 json_contract: {
                   schema_version: 1,
                   reviewed_head_sha: "head_sha の値",
@@ -365,6 +352,19 @@ jobs:
                     }
                   ]
                 },
+                no_findings_json_example: {
+                  schema_version: 1,
+                  reviewed_head_sha: $head_sha,
+                  verdict: "approved",
+                  summary: "指摘事項はありません。",
+                  checklist: ($checklist_names[0] | map({
+                    name: .,
+                    status: "ok",
+                    note: "この観点で確認し、blocking finding はありません。",
+                    finding_ids: []
+                  })),
+                  findings: []
+                },
                 must_not: [
                   "推測で指摘しない",
                   "GitHub に直接投稿しない",
@@ -375,7 +375,13 @@ jobs:
                   "「次のコミットで確認」「別途確認が必要」など先送り表現を使わない",
                   "2〜3 件で出力を切り上げない（このラウンドで全問題を出し切ること）",
                   "Markdown を出力しない",
-                  "JSON schema に存在しない自由形式キーに判断を逃がさない"
+                  "JSON schema に存在しない自由形式キーに判断を逃がさない",
+                  "PR で導入された変更でない既存問題（pre-existing）を指摘しない",
+                  "PR が変更していない行の問題を指摘しない（ただし PR の変更により到達可能性・呼び出し元・契約が変わって顕在化する問題は対象とする）",
+                  "明らかに意図された変更や、より広いリファクタの一部として整合する変更を不整合として指摘しない",
+                  "linter / typechecker / コンパイラが検出する領域（import 漏れ、型エラー、フォーマット、未使用変数）を指摘しない（CI が別途検出する前提）",
+                  "テストカバレッジ・ドキュメント不足など一般的品質課題は、CLAUDE.md / AGENTS.md / phase plan で明示的に要求されていない限り指摘しない",
+                  "linter 抑制コメント等で意図的に silence されている項目を再指摘しない"
                 ],
                 review_strategy: [
                   "【Phase 1: 全体把握】差分の全ファイルをリストアップし、変更の意図・影響範囲・ファイル間依存を把握する。この段階では指摘を出力しない。",
@@ -383,6 +389,23 @@ jobs:
                   "【Phase 3: 統合】問題候補を重複排除・根本原因ベースで統合し、同じ failure mode が他の経路・docs・tests に残っていないか確認する。",
                   "【Phase 4: JSON 出力】schema に従って JSON のみを出力する。このラウンド以降に追加指摘が出ることは品質欠陥とみなす。",
                   "出力前に自問する: 『全チェックリスト項目を全ファイルに適用したか？同じ根本原因の問題をまとめたか？同じ failure mode が残っていないか？先送りにした問題はないか？』"
+                ],
+                grounding_rules: [
+                  "すべての指摘を、提供された context・diff hunk・この実行で実際に読んだファイルのいずれかに根拠づける",
+                  "推論を事実として提示しない。仮説の場合はそれが仮説であると明示する",
+                  "prompt の repository_context が、実際に読めるファイルやテストの内容と矛盾する場合は、ファイル/テストの内容を信頼する",
+                  "repository_context は責務を記述するものであり正確な契約値ではない。repository_context 内の具体的なシンボル・シグネチャ・キー形式・数値リテラルは hint として扱い、ground truth として扱わない"
+                ],
+                verification_loop: [
+                  "各 finding を確定する前に、次の 3 条件すべてを満たすか検証する: (1) Material — merge をブロックする、正確性/セキュリティ/コンプライアンスを損なう、または文書化された契約を破る。(2) Actionable — author が具体的な変更で対応できる。(3) diff・変更ファイル・該当テスト・repo の docs（CLAUDE.md / AGENTS.md / docs 配下）によって反証されていない。",
+                  "いずれかの条件を満たさない finding は drop する。severity を下げて残すのではなく drop する"
+                ],
+                missing_context_gating: [
+                  "diff や repository_context だけでは不十分なとき、欠けている repository の事実を推測で埋めない",
+                  "必要な事実（既存の関数シグネチャ、冪等キーの形式、契約リテラル、閾値など）が diff にも repository_context にも見えない場合は、それを unknown と明記し、ファイル内容を tool で取得するか、その契約に基づく指摘を控える"
+                ],
+                dig_deeper_nudge: [
+                  "ある focus 領域で最初の妥当な finding を見つけた後、確定する前に二次的な失敗（second-order failure）・空状態の挙動・リトライ・stale state・部分成功経路・ロールバック経路を確認する"
                 ]
                 # END:managed:codex_review_shared_prompt
               }
