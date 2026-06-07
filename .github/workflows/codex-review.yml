@@ -912,8 +912,8 @@ jobs:
           # base ブランチ (trusted) のコピーを取得してそれを実行する。
           # base に無い場合 (初回配布前など) は記録を skip する (fail-soft)。
           TRUSTED_COST_SCRIPT="${RUNNER_TEMP}/trusted-ai_review_cost.py"
-          if ! git show "origin/${{ github.base_ref }}:scripts/ai_review_cost.py" > "$TRUSTED_COST_SCRIPT" 2>/dev/null; then
-            echo "::warning::scripts/ai_review_cost.py not found on origin/${{ github.base_ref }} — cost recording skipped"
+          if ! git show "origin/${GITHUB_BASE_REF}:scripts/ai_review_cost.py" > "$TRUSTED_COST_SCRIPT" 2>/dev/null; then
+            echo "::warning::scripts/ai_review_cost.py not found on origin/${GITHUB_BASE_REF} — cost recording skipped"
             echo "record_exists=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
