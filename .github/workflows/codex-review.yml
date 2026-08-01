@@ -54,7 +54,18 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # effort=max のレビューは 1 pass で 10 分を超えることがある（実測 496〜630 秒超）。
+    # 呼び出し側予算 1500000ms を申告すると、サーバー側の実効 pass timeout は
+    # 1500 - 60（PR コンテキスト取得）- 30（レスポンス余裕）= 1410 秒にクランプされる。
+    # job 上限は最悪経路から逆算する。--retry-max-time 600 は「新しい retry を開始できる
+    # 期間」の制限であり、その直前に始まった転送はさらに --max-time 1500 秒まで走るため、
+    # curl 1 呼び出しの上限は 600 + 1500 = 2100 秒。schema 検証失敗時は独立した HTTP
+    # リクエストとして最大 3 回（初回 + retry 2 回）走り、各回が同じ予算を申告し直すので
+    # 3 * 2100 = 6300 秒。これにマージ可能通知の待機（最大 300 秒）と checkout /
+    # payload 生成 / JSON 検証 / verdict 提出の余裕を加えて 120 分とする。
+    # timeout-minutes を下げる場合は schema retry 回数か --retry-max-time / --max-time を
+    # 同時に見直すこと（job timeout で切られるとレビュー結果ごと失われる）。
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -237,6 +248,7 @@ jobs:
               repository: $repo,
               pr_number: $pr_number,
               pr_url: $pr_url,
+              caller_http_budget_ms: 1500000,
               head_sha: $head_sha,
               output_contract: {
                 type: "json_object_only",
@@ -435,7 +447,7 @@ jobs:
               --retry-delay 20 \
               --retry-max-time 600 \
               --retry-connrefused \
-              --max-time 720 \
+              --max-time 1500 \
               --data @/tmp/codex-review-request.rendered.json)
             CURL_RC=$?
             set -e
