@@ -56,15 +56,16 @@ jobs:
     runs-on: ubuntu-latest
     # effort=max のレビューは 1 pass で 10 分を超えることがある（実測 496〜630 秒超）。
     # 呼び出し側予算 1500000ms を申告すると、サーバー側の実効 pass timeout は
-    # 1500 - 60（PR コンテキスト取得）- 30（レスポンス余裕）= 1410 秒にクランプされ、
-    # curl 1 呼び出しは予算いっぱいで 1500 秒。schema 検証失敗時は最大 3 回
-    # （初回 + retry 2 回）呼び直すが、schema 不正はサーバーが応答を返した後に判明するので
-    # 2 回目以降が初回と同じフル予算を使うことはない。初回フル 1500 秒 + 追加 2 回で
-    # 60 分程度を見込み、マージ可能通知の待機（最大 300 秒）と checkout / payload 生成 /
-    # JSON 検証 / verdict 提出を加えて 80 分とする。
-    # 全 3 回がフル予算を使い切る病的経路（接続断が続き --retry-max-time 600 の retry 窓を
-    # 毎回使い切る等）はこの上限を超えるが、その場合は job timeout で fail-closed する。
-    timeout-minutes: 80
+    # 1500 - 60（PR コンテキスト取得）- 30（レスポンス余裕）= 1410 秒にクランプされる。
+    # job 上限は最悪経路から逆算する。--retry-max-time 600 は「新しい retry を開始できる
+    # 期間」の制限であり、その直前に始まった転送はさらに --max-time 1500 秒まで走るため、
+    # curl 1 呼び出しの上限は 600 + 1500 = 2100 秒。schema 検証失敗時は独立した HTTP
+    # リクエストとして最大 3 回（初回 + retry 2 回）走り、各回が同じ予算を申告し直すので
+    # 3 * 2100 = 6300 秒。これにマージ可能通知の待機（最大 300 秒）と checkout /
+    # payload 生成 / JSON 検証 / verdict 提出の余裕を加えて 120 分とする。
+    # timeout-minutes を下げる場合は schema retry 回数か --retry-max-time / --max-time を
+    # 同時に見直すこと（job timeout で切られるとレビュー結果ごと失われる）。
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
