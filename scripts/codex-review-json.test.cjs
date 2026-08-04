@@ -909,8 +909,9 @@ test('render escapes triple backticks in finding.root_cause', (t) => {
 });
 
 test('render escapes heading markers in finding.title', (t) => {
+  // 改行を挟んだ見出し偽装が最も危険（行頭 `## ` になりうる）ため、それを入力にする。
   const finding = blockingFinding({
-    title: '## 偽装見出し で構造を破壊',
+    title: '通常タイトル\n## 偽装見出し で構造を破壊',
   });
   const checklist = baseChecklist();
   checklist[2] = { ...checklist[2], status: 'finding', finding_ids: [finding.id] };
@@ -924,13 +925,33 @@ test('render escapes heading markers in finding.title', (t) => {
   const result = runScript('render', filePath);
 
   assert.equal(result.status, 0);
-  // 行頭 `## ` で始まる偽装見出しは出力されない
-  // (#### ...severity... 偽装見出し ... のレンダ行はあるが、その中の `##` は行頭ではないので問題なし)
-  // → 「行頭」`## ` の偽装パターンが残らないことを確認
-  const titleLine = result.stdout.split('\n').find((l) => l.includes('偽装見出し'));
+
+  // sanitizeMarkdownHeading の契約は 2 つ。どちらか片方でも欠けると偽装見出しが通る。
+  //   1. 行頭の `#` を `\#` へエスケープする
+  //   2. 見出しは 1 行に収める（改行を空白へ畳む）
+  // 旧テストは「偽装見出し を含む行が /^## / でない」ことしか見ておらず、
+  // レンダラーが行頭に `#### F-001 ...` を付ける以上、無害化が無くても必ず通る
+  // 空振り assertion だった。ここでは無害化そのものを検証する。
+  const lines = result.stdout.split('\n');
+
+  // 1. 出力のどの行も `## 偽装見出し` で始まらない（見出し偽装が成立していない）
+  assert.ok(
+    lines.every((l) => !/^#{1,6}\s+偽装見出し/.test(l)),
+    `偽装見出しが行頭の見出しとして出力された: ${JSON.stringify(lines.filter((l) => /偽装見出し/.test(l)))}`,
+  );
+
+  // 2. title 由来の `##` はエスケープされて残る
+  const titleLine = lines.find((l) => l.includes('偽装見出し'));
   assert.ok(titleLine, 'title 行が見当たらない');
-  // 「## 偽装」が title 行頭になっていないこと (sanitize で `\## ` になっているか sanitize 元の `## ` が消えているか)
-  assert.doesNotMatch(titleLine, /^## /);
+  assert.match(titleLine, /\\## 偽装見出し/);
+
+  // 3. title 内の改行は畳まれ、title は 1 行に収まる
+  //    (改行が残ると 2 行目が行頭 `## ` になり 1 が破られる)
+  assert.match(titleLine, /^#### /);
+  assert.ok(
+    titleLine.includes('通常タイトル') && titleLine.includes('偽装見出し'),
+    `title が複数行に分割された: ${titleLine}`,
+  );
 });
 
 test('render escapes list markers in finding.required_fix', (t) => {
