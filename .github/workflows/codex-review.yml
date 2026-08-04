@@ -1039,3 +1039,76 @@ jobs:
           curl -sS -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' \
             --data "$(jq -n --arg t "$TEXT" '{text:$t}')" \
             || echo "::warning::Slack 通知失敗"
+
+      # BEGIN:managed:codex_review_infra_failure_gate
+      - name: Classify and surface webhook infra failure
+        # webhook 呼び出し step は continue-on-error で握られている。これは infra 障害時
+        # でも後続の fail-closed（infra failure review の投稿・stale bot approval の
+        # dismiss）を完走させるための意図的な設計だが、副作用として job が success で
+        # 終わり、502 や通信断が run 一覧からも Slack 未設定リポからも見えなくなる。
+        #
+        # 本 step は fail-closed の投稿がすべて終わった最後に置き、失敗を分類して
+        # step summary に残したうえで job を赤くする。ゲート強制力は従来どおり bot の
+        # CHANGES_REQUESTED review が担い（冒頭「ブランチ保護運用の前提」を参照）、
+        # 本 job は required status check ではないため赤化しても merge は block しない。
+        # 目的は「壊れていることが見えること」であり、merge の可否は変えない。
+        #
+        # schema_ok は空文字を「判定不能」として扱い発火条件から外す。本 region は
+        # 全配布先で同一のため、schema_ok を GITHUB_OUTPUT に書かない世代の workflow
+        # （配布対象 48 リポ中 10 リポ）にも同じ式が入る。空文字を弾かないと
+        # `!= '1'` が常に真になり、レビューが正常に通った PR でも job が赤くなる。
+        # それらのリポでは schema 不正の可視化だけが効かない状態になるが、
+        # 通信・HTTP 由来の失敗は curl_rc / http_status 側で従来どおり検出できる。
+        if: >-
+          always() &&
+          steps.applicable.outputs.applicable == 'true' &&
+          steps.oversize_gate.outputs.oversize != 'true' &&
+          (steps.codex_review.outputs.curl_rc != '0' ||
+           steps.codex_review.outputs.http_status != '200' ||
+           (steps.codex_review.outputs.schema_ok != '' &&
+            steps.codex_review.outputs.schema_ok != '1'))
+        env:
+          CURL_RC: ${{ steps.codex_review.outputs.curl_rc }}
+          HTTP_STATUS: ${{ steps.codex_review.outputs.http_status }}
+          SCHEMA_OK: ${{ steps.codex_review.outputs.schema_ok }}
+        run: |
+          # curl exit code と HTTP status を突き合わせて障害を分類する。分類なしに
+          # 「webhook に失敗」とだけ記録すると、呼び出し側の予算切れ・到達不能・
+          # サーバー側 codex 失敗・認証/payload 不正が区別できず、時間予算を変えて
+          # 直ったのか別の失敗へ移っただけなのか判定できない。
+          case "${CURL_RC:-unknown}" in
+            0)
+              case "${HTTP_STATUS:-000}" in
+                # HTTP は成功しているのに schema 検証が SCHEMA_RETRY_MAX 回とも通らなかった経路。
+                # レビュー本体は成立しておらず F-JSON-CONTRACT に倒れているため、infra 障害と
+                # 同じく run 一覧から見えるようにする（分類は分けて原因を取り違えないようにする）。
+                200) CLASS="invalid_response_schema"; HINT="webhook は 200 を返したが応答が JSON 契約を満たさず schema retry を使い切った。reviewer の出力ブレが継続していないか、cjs と prompt の世代が揃っているかを確認する" ;;
+                502) CLASS="server_codex_failure"; HINT="サーバー側で codex 実行が失敗（多くは pass timeout 到達）。webhook の journal で error_code を確認する" ;;
+                401) CLASS="unauthorized"; HINT="Bearer token 不一致、または webhook の ALLOWED_REPOSITORIES 未登録" ;;
+                400) CLASS="invalid_payload"; HINT="payload が webhook の検証に不合格。pr_url / repository / pr_number の整合を確認する" ;;
+                413) CLASS="payload_too_large"; HINT="payload が上限超過。oversize gate の閾値と webhook 側上限の整合を確認する" ;;
+                403) CLASS="forbidden"; HINT="エンドポイントが無効化されているか、リポジトリが許可されていない" ;;
+                *)   CLASS="unexpected_http_status"; HINT="想定外の HTTP status。webhook 側のログを確認する" ;;
+              esac
+              ;;
+            28) CLASS="caller_timeout"; HINT="curl --max-time に到達。呼び出し側の時間予算がレビュー所要時間に対して不足している" ;;
+            # 56 は転送中の受信失敗。2026-08-04 に Tailscale Funnel の DERP 接続が落ちた際、
+            # 到達不能でありながら 6/7/35 ではなく 56 が観測されたため到達不能系に含める。
+            6|7|35|56) CLASS="unreachable"; HINT="DNS / 接続 / TLS / 転送中の切断。Tailscale Funnel（tailscale status の Self.Online と netcheck の DERP latency）と webhook サービスの稼働を確認する" ;;
+            *) CLASS="transport_error"; HINT="curl がエラー終了。exit code を curl のマニュアルで確認する" ;;
+          esac
+          {
+            echo "## Codex Review infra failure"
+            echo
+            echo "| 項目 | 値 |"
+            echo "| --- | --- |"
+            echo "| 分類 | \`$CLASS\` |"
+            echo "| curl_rc | \`${CURL_RC:-unknown}\` |"
+            echo "| http_status | \`${HTTP_STATUS:-unknown}\` |"
+            echo "| schema_ok | \`${SCHEMA_OK:-unknown}\` |"
+            echo
+            echo "$HINT"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Codex Review infra failure ($CLASS, curl_rc=${CURL_RC:-unknown}, http_status=${HTTP_STATUS:-unknown}) — $HINT"
+          exit 1
+      # END:managed:codex_review_infra_failure_gate
