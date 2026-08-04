@@ -1055,14 +1055,22 @@ jobs:
         #
         # schema_ok は空文字を「判定不能」として扱い発火条件から外す。本 region は
         # 全配布先で同一のため、schema_ok を GITHUB_OUTPUT に書かない世代の workflow
-        # （配布対象 48 リポ中 10 リポ）にも同じ式が入る。空文字を弾かないと
-        # `!= '1'` が常に真になり、レビューが正常に通った PR でも job が赤くなる。
-        # それらのリポでは schema 不正の可視化だけが効かない状態になるが、
-        # 通信・HTTP 由来の失敗は curl_rc / http_status 側で従来どおり検出できる。
+        # にも同じ式が入る（2026-08-04 時点で managed marker を持つ配布対象 48 リポ
+        # のうち 10 リポ。webhook の ALLOWED_REPOSITORIES 72 件とは母集団が異なる）。
+        # 空文字を弾かないと `!= '1'` が常に真になり、レビューが正常に通った PR でも
+        # job が赤くなる。それらのリポでは schema 不正の可視化だけが効かない状態に
+        # なるが、通信・HTTP 由来の失敗は curl_rc / http_status 側で検出できる。
+        #
+        # cancelled() と codex_review の outcome も見る。上流 step の失敗で
+        # codex_review が skipped になった場合や run が中断された場合、outputs は
+        # 空文字になる。これを弾かないと「curl が実行されていない」状態を
+        # transport_error として記録し、障害の切り分けを誤らせる。
         if: >-
-          always() &&
+          always() && !cancelled() &&
           steps.applicable.outputs.applicable == 'true' &&
           steps.oversize_gate.outputs.oversize != 'true' &&
+          (steps.codex_review.outcome == 'success' ||
+           steps.codex_review.outcome == 'failure') &&
           (steps.codex_review.outputs.curl_rc != '0' ||
            steps.codex_review.outputs.http_status != '200' ||
            (steps.codex_review.outputs.schema_ok != '' &&
@@ -1082,20 +1090,57 @@ jobs:
                 # HTTP は成功しているのに schema 検証が SCHEMA_RETRY_MAX 回とも通らなかった経路。
                 # レビュー本体は成立しておらず F-JSON-CONTRACT に倒れているため、infra 障害と
                 # 同じく run 一覧から見えるようにする（分類は分けて原因を取り違えないようにする）。
-                200) CLASS="invalid_response_schema"; HINT="webhook は 200 を返したが応答が JSON 契約を満たさず schema retry を使い切った。reviewer の出力ブレが継続していないか、cjs と prompt の世代が揃っているかを確認する" ;;
-                502) CLASS="server_codex_failure"; HINT="サーバー側で codex 実行が失敗（多くは pass timeout 到達）。webhook の journal で error_code を確認する" ;;
-                401) CLASS="unauthorized"; HINT="Bearer token 不一致、または webhook の ALLOWED_REPOSITORIES 未登録" ;;
-                400) CLASS="invalid_payload"; HINT="payload が webhook の検証に不合格。pr_url / repository / pr_number の整合を確認する" ;;
-                413) CLASS="payload_too_large"; HINT="payload が上限超過。oversize gate の閾値と webhook 側上限の整合を確認する" ;;
-                403) CLASS="forbidden"; HINT="エンドポイントが無効化されているか、リポジトリが許可されていない" ;;
-                *)   CLASS="unexpected_http_status"; HINT="想定外の HTTP status。webhook 側のログを確認する" ;;
+                200)
+                  CLASS="invalid_response_schema"
+                  HINT="webhook は 200 を返したが応答が JSON 契約を満たさず schema retry を使い切った。cjs と prompt の世代が揃っているかを確認する"
+                  ;;
+                502)
+                  CLASS="server_codex_failure"
+                  HINT="サーバー側で codex 実行が失敗（多くは pass timeout 到達）。webhook の journal で error_code を確認する"
+                  ;;
+                401)
+                  CLASS="unauthorized"
+                  HINT="Bearer token 不一致、または webhook の ALLOWED_REPOSITORIES 未登録"
+                  ;;
+                400)
+                  CLASS="invalid_payload"
+                  HINT="payload が webhook の検証に不合格。pr_url / repository / pr_number の整合を確認する"
+                  ;;
+                413)
+                  CLASS="payload_too_large"
+                  HINT="payload が上限超過。oversize gate の閾値と webhook 側上限の整合を確認する"
+                  ;;
+                403)
+                  CLASS="forbidden"
+                  HINT="エンドポイントが無効化されているか、リポジトリが許可されていない"
+                  ;;
+                *)
+                  CLASS="unexpected_http_status"
+                  HINT="想定外の HTTP status。webhook 側のログを確認する"
+                  ;;
               esac
               ;;
-            28) CLASS="caller_timeout"; HINT="curl --max-time に到達。呼び出し側の時間予算がレビュー所要時間に対して不足している" ;;
+            28)
+              CLASS="caller_timeout"
+              HINT="curl --max-time に到達。呼び出し側の時間予算がレビュー所要時間に対して不足している"
+              ;;
             # 56 は転送中の受信失敗。2026-08-04 に Tailscale Funnel の DERP 接続が落ちた際、
             # 到達不能でありながら 6/7/35 ではなく 56 が観測されたため到達不能系に含める。
-            6|7|35|56) CLASS="unreachable"; HINT="DNS / 接続 / TLS / 転送中の切断。Tailscale Funnel（tailscale status の Self.Online と netcheck の DERP latency）と webhook サービスの稼働を確認する" ;;
-            *) CLASS="transport_error"; HINT="curl がエラー終了。exit code を curl のマニュアルで確認する" ;;
+            6|7|35|56)
+              CLASS="unreachable"
+              HINT="DNS / 接続 / TLS / 転送中の切断。tailscale status の Self.Online と netcheck の DERP latency、webhook サービスの稼働を確認する"
+              ;;
+            # curl が一度も走っていない状態。if 条件の outcome 判定で通常は到達しないが、
+            # 到達した場合に transport_error と記録すると「curl がエラー終了した」と
+            # 誤読させるため分けておく。
+            unknown)
+              CLASS="not_invoked"
+              HINT="webhook 呼び出し step が実行されていない。上流 step の失敗で skip されていないかを run のログで確認する"
+              ;;
+            *)
+              CLASS="transport_error"
+              HINT="curl がエラー終了。exit code を curl のマニュアルで確認する"
+              ;;
           esac
           {
             echo "## Codex Review infra failure"
