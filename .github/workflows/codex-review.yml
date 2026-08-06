@@ -923,9 +923,22 @@ jobs:
           # コードを動かすことになり危険。validator (codex-review-json.cjs) と同様、
           # base ブランチ (trusted) のコピーを取得してそれを実行する。
           # base に無い場合 (初回配布前など) は記録を skip する (fail-soft)。
+          # base の解決は remote-tracking ref を優先し、無ければ自分で fetch する。
+          # origin/<base> の有無は checkout の fetch-depth 次第で、その設定は本 region
+          # の外 (per-repo) にある。ref 頼みにすると region の外の設定変更で記録が
+          # 黙って落ちるため、ここで自己完結させる。
           TRUSTED_COST_SCRIPT="${RUNNER_TEMP}/trusted-ai_review_cost.py"
-          if ! git show "origin/${GITHUB_BASE_REF}:scripts/ai_review_cost.py" > "$TRUSTED_COST_SCRIPT" 2>/dev/null; then
-            echo "::warning::scripts/ai_review_cost.py not found on origin/${GITHUB_BASE_REF} — cost recording skipped"
+          COST_BASE_REV="origin/${GITHUB_BASE_REF}"
+          if ! git rev-parse --verify --quiet "$COST_BASE_REV" > /dev/null; then
+            if ! git fetch --no-tags --depth=1 origin "${GITHUB_BASE_REF}"; then
+              echo "::warning::base ref fetch failed: ${GITHUB_BASE_REF} — cost recording skipped"
+              echo "record_exists=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            COST_BASE_REV="FETCH_HEAD"
+          fi
+          if ! git show "${COST_BASE_REV}:scripts/ai_review_cost.py" > "$TRUSTED_COST_SCRIPT" 2>/dev/null; then
+            echo "::warning::scripts/ai_review_cost.py not found on ${GITHUB_BASE_REF} — cost recording skipped"
             echo "record_exists=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -946,7 +959,7 @@ jobs:
 
       - name: Upload AI review cost record
         if: always() && steps.record_cost.outputs.record_exists == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           # artifact 名には run_attempt も含める。upload-artifact@v4 は同名
           # artifact の再アップロードを拒否するため、同一 run_id の再実行
