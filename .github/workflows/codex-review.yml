@@ -296,6 +296,7 @@ jobs:
                   "checklist には required_checklist_names の exact name を必ず 1 件ずつ含める (末尾「を確認する」も含めた完全一致。短縮・言い換え不可)",
                   "追加の観点を入れたくなった場合は新しい checklist item を作らず、最も近い required 項目の note にその観点を併記する",
                   "対象外の項目も省略せず status=not_applicable と note で理由を書く",
+                  "no_findings_json_example は全 checklist 項目が適用可能だった場合の形。対象外の項目があるときは、その項目だけ status=not_applicable と理由の note に置き換える (指摘が無くても対象外項目を ok にしない)",
                   "status=finding の項目は未スキップの finding id を必ず finding_ids に入れる",
                   "status=skipped の項目は skipped=true の finding id を必ず finding_ids に入れる",
                   "status=ok / not_applicable の項目は finding_ids を必ず空 array `[]` にする (finding を参照しない)",
