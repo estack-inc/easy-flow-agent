@@ -226,10 +226,10 @@ jobs:
           JSON
           cat > /tmp/codex-review-checklists.json <<'JSON'
           [
-            "[A] 要件充足・影響範囲: PR description の要件が全て実装されている / シグネチャ変更時に全呼び出し元が更新されている / インターフェース変更時に全実装が更新されている / 新機能にテストがある",
-            "[B] コード品質 (CLAUDE.md 参照): TypeScript strict モード準拠 / ESM import パスに `.js` 拡張子 / JSON 永続化互換 (Set 不使用) / Vitest テストあり / パッケージ間依存が妥当",
-            "[C] セキュリティ: console.log / debugger が残っていない / 機密情報がハードコードされていない / 入力値のバリデーションが適切",
-            "[D] GitHub Actions 品質 (yml 変更時): 構文が正しい / secrets 参照が適切 / パーミッション設定が最小権限"
+            "要件充足・影響範囲: PR description の要件が全て実装されている / シグネチャ変更時に全呼び出し元が更新されている / インターフェース変更時に全実装が更新されている / 新機能にテストがある",
+            "コード品質 (CLAUDE.md 参照): TypeScript strict モード準拠 / ESM import パスに `.js` 拡張子 / JSON 永続化互換 (Set 不使用) / Vitest テストあり / パッケージ間依存が妥当",
+            "セキュリティ: console.log / debugger が残っていない / 機密情報がハードコードされていない / 入力値のバリデーションが適切",
+            "GitHub Actions 品質 (yml 変更時): 構文が正しい / secrets 参照が適切 / パーミッション設定が最小権限"
           ]
           JSON
           jq -c '[.[] | split(":")[0] | gsub("^\\s+|\\s+$"; "")]' /tmp/codex-review-checklists.json > /tmp/codex-review-required-checklist-names.json
