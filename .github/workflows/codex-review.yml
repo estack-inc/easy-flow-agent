@@ -675,9 +675,9 @@ jobs:
       - name: Render webhook infra failure review
         id: review_infra_failure
         if: >-
-          always()&&
-          steps.applicable.outputs.applicable == 'true'&&
-          steps.oversize_gate.outputs.oversize != 'true'&&
+          always() &&
+          steps.applicable.outputs.applicable == 'true' &&
+          steps.oversize_gate.outputs.oversize != 'true' &&
           (steps.codex_review.outputs.curl_rc != '0' || steps.codex_review.outputs.http_status != '200')
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -716,8 +716,8 @@ jobs:
       - name: Re-check applicability before posting
         id: recheck
         if: >-
-          always()&&
-          steps.applicable.outputs.applicable == 'true'&&
+          always() &&
+          steps.applicable.outputs.applicable == 'true' &&
           (steps.review_json.outputs.verdict != '' || steps.review_infra_failure.outputs.verdict != '' || steps.oversize_gate.outputs.verdict != '')
         env:
           GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN || github.token }}
