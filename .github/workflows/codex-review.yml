@@ -34,7 +34,7 @@
 name: Codex Code Review
 
 on:
-  pull_request:
+  pull_request_target:
     # 以下のイベント遷移でも cleanup step が走るように types を拡張する。
     #   - converted_to_draft: ready → draft（bot APPROVED が残ると stale になるため dismiss する）
     #   - labeled / unlabeled: ラベル付与・解除で適用可否が反転するため再評価する
