@@ -129,7 +129,11 @@ jobs:
         id: oversize_gate
         if: steps.applicable.outputs.applicable == 'true'
         env:
-          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          # diff のサイズを測るだけなので REPO_ACCESS_TOKEN 固有の権限は要らない。
+          # フォールバックを置くことで、secret 未設定のリポ (オンボード直後など)
+          # でも gate が働く。両方で取れなかった場合だけ下の fail-closed 分岐へ
+          # 進むので、fail-closed の保証は落ちない。
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN || github.token }}
           REPO: ${{ github.repository }}
           PR_NUM: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -677,8 +681,8 @@ jobs:
         if: >-
           always() &&
           steps.applicable.outputs.applicable == 'true' &&
-          (steps.codex_review.outputs.curl_rc != '0' ||
-           steps.codex_review.outputs.http_status != '200')
+          steps.oversize_gate.outputs.oversize != 'true' &&
+          (steps.codex_review.outputs.curl_rc != '0' || steps.codex_review.outputs.http_status != '200')
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           CODEX_REVIEW_COMMENT_MARKER: '<!-- codex-reviewer-bot:v1 sha=${{ github.event.pull_request.head.sha }} -->'
@@ -718,8 +722,7 @@ jobs:
         if: >-
           always() &&
           steps.applicable.outputs.applicable == 'true' &&
-          (steps.review_json.outputs.verdict != '' ||
-           steps.review_infra_failure.outputs.verdict != '')
+          (steps.review_json.outputs.verdict != '' || steps.review_infra_failure.outputs.verdict != '' || steps.oversize_gate.outputs.verdict != '')
         env:
           GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN || github.token }}
           REPO: ${{ github.repository }}
