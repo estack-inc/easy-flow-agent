@@ -125,6 +125,107 @@ jobs:
           echo "is_fork=$IS_FORK" >> "$GITHUB_OUTPUT"
           echo "applicable=$APPLICABLE is_fork=$IS_FORK reason=$REASON_JOINED"
 
+      - name: Escalate oversized diff to human review
+        id: oversize_gate
+        if: steps.applicable.outputs.applicable == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CODEX_REVIEW_COMMENT_MARKER: '<!-- codex-reviewer-bot:v1 sha=${{ github.event.pull_request.head.sha }} -->'
+          # webhook server.js の clipContext (PR_CONTEXT_MAX_CHARS) と同じ 240000 文字
+          # (UTF-16 code unit)。この上限を超える diff は切り詰めると不完全レビューになるため、
+          # 機械レビューせず人間へエスカレーションする (webhook をスキップ)。workflow と webhook で
+          # 同一単位・同一閾値で測ることで、webhook 側に過大 diff が渡らず clipContext の切り詰めも
+          # 発火しない。
+          MAX_DIFF_CHARS: '240000'
+        run: |
+          # diff 全文を取得し、JS String.length (UTF-16 code unit) で測る。webhook server.js の
+          # clipContext は text.length で判定するため同じ単位に揃える (wc -c のバイト数では
+          # 日本語 diff が約 1/3 の文字数で弾かれて閾値の意味がずれる)。
+          set +e
+          gh pr diff "$PR_NUM" --repo "$REPO" --patch > /tmp/oversize-diff.patch
+          GH_DIFF_RC=$?
+          set -e
+          if [ "$GH_DIFF_RC" -ne 0 ]; then
+            # サイズを確認できていない。ここで webhook へ委譲すると、gate が防ごうと
+            # している事象がそのまま起きうる: 本 step の gh は Actions の
+            # REPO_ACCESS_TOKEN、webhook 側は別ホストの別トークンで独立に diff を
+            # 取得するため、こちらだけ失敗して webhook が成功する状況が起こる
+            # (レート制限・トークン失効など)。その diff が上限超過なら clipContext が
+            # 切り詰め、未確認部分を含んだまま approved が付きうる。
+            #
+            # canonical は verdict の正しさに関わる取得失敗を fail-closed で扱う
+            # (recheck の PR 情報 / trusted cjs / base fetch はいずれも exit 1)。
+            # gate も同じ原則に揃え、bridge を抑止して人間レビューへ倒す。
+            #
+            # 「上限超過」とは報告しない。原因が違えば対処も違う (PR を分割すべきか、
+            # インフラ側を直すべきか) ため、サイズ不明として区別する。
+            {
+              echo "$CODEX_REVIEW_COMMENT_MARKER"
+              echo
+              echo "### 変更の概要"
+              echo "diff を取得できずレビュー対象のサイズを確認できなかったため、機械レビューを行わず人間レビューへエスカレーションします。"
+              echo
+              echo "### レビュー結果"
+              echo "- 判定: ❌ Changes Requested"
+              echo "- 対象 SHA: \`$PR_HEAD_SHA\`"
+              echo
+              echo "### 指摘事項"
+              echo
+              echo "#### F-DIFF-SIZE-UNKNOWN 🟡 要修正 diff を取得できずサイズを確認できなかった"
+              echo
+              echo "**根本原因**"
+              echo "\`gh pr diff\` が rc=${GH_DIFF_RC} で失敗し、diff のサイズを計測できませんでした。サイズ不明のまま webhook へ渡すと、上限 ${MAX_DIFF_CHARS} 文字を超える diff が切り詰められ、未確認部分を含んだままレビューが成立する可能性があります。"
+              echo
+              echo "**必要な修正**"
+              echo "GitHub API の一時障害・レート制限・トークン失効が考えられます。再実行してください。継続する場合は REPO_ACCESS_TOKEN の有効性を確認してください。"
+              echo
+              echo "**確認済みの範囲**"
+              echo "- diff の取得を試行し、失敗を検出しました (サイズは未計測)。"
+            } > /tmp/review-comment.md
+            echo "oversize=true" >> "$GITHUB_OUTPUT"
+            echo "verdict=changes_requested" >> "$GITHUB_OUTPUT"
+            echo "::error::gh pr diff failed in oversize gate (rc=$GH_DIFF_RC) — サイズ不明のため fail-closed"
+            exit 0
+          fi
+          DIFF_CHARS=$(node -e 'console.log(require("fs").readFileSync("/tmp/oversize-diff.patch","utf8").length)')
+          echo "diff_chars=$DIFF_CHARS (limit=$MAX_DIFF_CHARS)"
+          if [ "$DIFF_CHARS" -le "$MAX_DIFF_CHARS" ]; then
+            echo "oversize=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # 上限超過: webhook を呼ばず人間レビュー依頼の changes_requested を投稿する。既存の
+          # F-CODEX-REVIEW-INFRA / F-JSON-CONTRACT と同じ Markdown 構造で /tmp/review-comment.md を
+          # 生成し、後続の Submit review verdict が --request-changes として投稿する。
+          {
+            echo "$CODEX_REVIEW_COMMENT_MARKER"
+            echo
+            echo "### 変更の概要"
+            echo "diff が ${DIFF_CHARS} 文字で自動レビュー上限 ${MAX_DIFF_CHARS} 文字を超えたため、機械レビューを行わず人間レビューへエスカレーションします。"
+            echo
+            echo "### レビュー結果"
+            echo "- 判定: ❌ Changes Requested"
+            echo "- 対象 SHA: \`$PR_HEAD_SHA\`"
+            echo
+            echo "### 指摘事項"
+            echo
+            echo "#### F-DIFF-TOO-LARGE 🟡 要修正 diff が自動レビュー上限を超過"
+            echo
+            echo "**根本原因**"
+            echo "PR の diff が ${DIFF_CHARS} 文字で、codex に安全に渡せる上限 ${MAX_DIFF_CHARS} 文字 (webhook PR_CONTEXT_MAX_CHARS と同単位) を超えています。切り詰めて部分レビューすると未確認の変更を看過するため、機械レビューを実施しません。"
+            echo
+            echo "**必要な修正**"
+            echo "レビュー担当者による手動レビューを実施してください。可能であれば PR を分割すると自動レビュー対象に戻せます。"
+            echo
+            echo "**確認済みの範囲**"
+            echo "- diff サイズを UTF-16 code unit で計測し、上限 ${MAX_DIFF_CHARS} 文字と比較しました。"
+          } > /tmp/review-comment.md
+          echo "oversize=true" >> "$GITHUB_OUTPUT"
+          echo "verdict=changes_requested" >> "$GITHUB_OUTPUT"
+          echo "::notice::diff oversize (${DIFF_CHARS} > ${MAX_DIFF_CHARS}) — escalated to human review, webhook skipped"
+
       - name: Dismiss stale bot approval (PR became not applicable)
         id: dismiss_stale
         if: steps.applicable.outputs.applicable == 'false'
@@ -168,7 +269,7 @@ jobs:
 
       - name: Codex Review via connector bridge
         id: codex_review
-        if: steps.applicable.outputs.applicable == 'true'
+        if: steps.applicable.outputs.applicable == 'true' && steps.oversize_gate.outputs.oversize != 'true'
         continue-on-error: true
         env:
           REVIEW_WEBHOOK_URL: ${{ secrets.CODEX_REVIEW_WEBHOOK_URL }}
@@ -732,13 +833,14 @@ jobs:
           steps.applicable.outputs.applicable == 'true' &&
           steps.recheck.outputs.still_applicable == 'true' &&
           (steps.review_json.outputs.verdict != '' ||
-           steps.review_infra_failure.outputs.verdict != '')
+           steps.review_infra_failure.outputs.verdict != '' ||
+           steps.oversize_gate.outputs.verdict != '')
         env:
           GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN || github.token }}
           REPO: ${{ github.repository }}
           PR_NUM: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          VERDICT: ${{ steps.review_json.outputs.verdict || steps.review_infra_failure.outputs.verdict }}
+          VERDICT: ${{ steps.review_json.outputs.verdict || steps.review_infra_failure.outputs.verdict || steps.oversize_gate.outputs.verdict }}
         run: |
           set +e
           PR_JSON=$(gh api "repos/$REPO/pulls/$PR_NUM" \
