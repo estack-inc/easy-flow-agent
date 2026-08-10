@@ -149,7 +149,12 @@ jobs:
           # clipContext は text.length で判定するため同じ単位に揃える (wc -c のバイト数では
           # 日本語 diff が約 1/3 の文字数で弾かれて閾値の意味がずれる)。
           set +e
-          gh pr diff "$PR_NUM" --repo "$REPO" --patch > /tmp/oversize-diff.patch
+          #
+          # --patch を付けない。--patch はコミットごとの diff を連結するため、
+          # コミット数に比例して膨らむ (実測: 27 コミットの PR で 144KB → 300KB)。
+          # webhook がレビューするのは PR の最終差分なので、--patch なしの出力
+          # (GitHub API の application/vnd.github.v3.diff と一致) で測る。
+          gh pr diff "$PR_NUM" --repo "$REPO" > /tmp/oversize-diff.patch
           GH_DIFF_RC=$?
           set -e
           if [ "$GH_DIFF_RC" -ne 0 ]; then
