@@ -254,9 +254,106 @@ function normalizeChecklistName(name) {
 // 握りつぶさない）。
 function canonicalizeFindingId(id) {
   if (typeof id !== 'string') return id;
-  const m = id.trim().match(/^F-?0*([0-9]+)$/);
-  if (!m) return id;
-  return `F-${m[1].padStart(3, '0')}`;
+  const trimmed = id.trim();
+  // F 接頭のゼロ詰め / ハイフン揺れ
+  const m = trimmed.match(/^F-?0*([0-9]+)$/);
+  if (m) return `F-${m[1].padStart(3, '0')}`;
+  // SEC-001 / BUG-12 のような意味のあるプレフィックス。
+  // reviewer は指摘の性質を id に込めたがるが、契約は F-NNN 固定。
+  // 弾くと指摘そのものが F-JSON-CONTRACT に化けて内容が人間に届かない
+  // (2026-08-11 に 1 日 3 回発生し、critical/blocking の指摘が失われた)。
+  // 番号は温存する。複数 finding の対応が崩れるため潰さない。
+  const p = trimmed.match(/^[A-Z]{2,12}-0*([0-9]+)$/);
+  if (p) return `F-${p[1].padStart(3, '0')}`;
+  return id;
+}
+
+/**
+ * findings 全体の id を canonical へ寄せる。単体変換だけだと
+ * SEC-001 と BUG-001 が同じ F-001 に潰れ、checklist の参照が片方に
+ * 寄って指摘が消える。衝突したら空き番号へずらす。
+ *
+ * 返り値は「元 id → 新 id」の対応表。checklist.finding_ids の
+ * 張り替えに使う。
+ */
+/**
+ * remap の検索キー。prefix は保持しつつ、空白・ゼロ詰め・F 接頭の
+ * ハイフン揺れを吸収する。
+ *
+ * checklist 側の表記が findings と揺れる（findings が SEC-001 で
+ * checklist が SEC-1 など）。元文字列の完全一致でしか引けないと、
+ * 衝突後の割り当てに追従できず参照が失われる。
+ */
+function findingIdKey(id) {
+  if (typeof id !== 'string') return id;
+  const s = id.trim();
+  const m = s.match(/^([A-Za-z]+)-?0*([0-9]+)$/);
+  if (!m) return s.toUpperCase();
+  return `${m[1].toUpperCase()}-${m[2]}`;
+}
+
+function canonicalizeFindingIds(findings) {
+  const remap = new Map();
+  if (!Array.isArray(findings)) return remap;
+
+  const entries = [];
+  for (const f of findings) {
+    if (!isPlainObject(f) || typeof f.id !== 'string') continue;
+    entries.push({ finding: f, original: f.id, want: canonicalizeFindingId(f.id) });
+  }
+
+  // 1 パス目: 各 finding の希望番号を集め、番号ごとに代表を 1 件だけ確定する。
+  // 逐次割り当てだと、先に来た衝突分が後続 finding の希望番号を奪う
+  // (SEC-001 / BUG-001 / PERF-002 で BUG-001 が F-002 を取ってしまう)。
+  // 変換不要なもの (既に canonical) を優先して代表にする。
+  const claimed = new Map();
+  for (const e of entries) {
+    if (e.want === e.original && !claimed.has(e.want)) claimed.set(e.want, e);
+  }
+  for (const e of entries) {
+    if (!claimed.has(e.want)) claimed.set(e.want, e);
+  }
+
+  const taken = new Set(claimed.keys());
+
+  // 2 パス目: 代表になれなかった余剰分だけを、誰も要求していない番号へ回す。
+  for (const e of entries) {
+    let canonical = e.want;
+    if (claimed.get(canonical) !== e) {
+      // 3 桁の範囲 (F-001..F-999) 内で空きを探す。単純に加算すると
+      // F-999 の次が F-1000 になり、契約違反で指摘全体が失われる。
+      const base = Number.parseInt(canonical.slice(2), 10);
+      const startNum = Number.isNaN(base) || base < 1 || base > 999 ? 1 : base;
+      let candidate = null;
+      for (let i = 1; i <= 999; i += 1) {
+        const n = ((startNum - 1 + i) % 999) + 1;
+        const c = `F-${String(n).padStart(3, '0')}`;
+        if (!taken.has(c)) {
+          candidate = c;
+          break;
+        }
+      }
+      if (candidate === null) {
+        // 999 件すべて埋まっている。現実には起こらないが、黙って
+        // 契約違反の id を作るより原文のまま validator に落とさせる。
+        continue;
+      }
+      canonical = candidate;
+      taken.add(canonical);
+    }
+    // 元 id → canonical 群を保持する。1 対 1 の Map では同じ元 id が
+    // 複数あるとき後勝ちになり、checklist の参照が片方へ潰れて指摘が消える。
+    //
+    // id が変わらなかった代表も必ず記録する。記録しないと、同じ id が
+    // 2 件あるケース (両方 F-001) で remap は後者だけを持ち、checklist が
+    // 後者へのみ展開されて代表への参照が失われる。
+    const key = findingIdKey(e.original);
+    const list = remap.get(key) || [];
+    if (!list.includes(canonical)) list.push(canonical);
+    remap.set(key, list);
+    e.finding.id = canonical;
+  }
+  return remap;
 }
 
 /**
@@ -304,17 +401,7 @@ function normalizeReviewJson(review, requiredChecklistNames) {
 
   // (5) finding.id のゼロ詰め canonical 化。findings と checklist の参照を
   // 一括で揃えるため、最初に旧 id → 新 id の対応表を作る。
-  const findingIdRemap = new Map();
-  if (Array.isArray(review.findings)) {
-    review.findings.forEach((finding) => {
-      if (!isPlainObject(finding) || typeof finding.id !== 'string') return;
-      const canonical = canonicalizeFindingId(finding.id);
-      if (canonical !== finding.id) {
-        findingIdRemap.set(finding.id, canonical);
-        finding.id = canonical;
-      }
-    });
-  }
+  const findingIdRemap = canonicalizeFindingIds(review.findings);
 
   // (1)(2) findings 内の checked_scope / evidence 形状補正、
   // および confidence / false_positive_risk の enum 寄せ。
@@ -358,12 +445,24 @@ function normalizeReviewJson(review, requiredChecklistNames) {
       if (item.finding_ids === undefined) {
         item.finding_ids = [];
       }
-      // finding_ids の各要素もゼロ詰め canonical 化（findings 側と整合させる）
+      // finding_ids も canonical 化して findings 側と整合させる。
+      // 1 つの元 id が複数の finding に割り当てられた場合は全部へ展開する
+      // （どれか 1 つに潰すと、その checklist 項目から他の指摘が消える）。
       if (Array.isArray(item.finding_ids)) {
-        item.finding_ids = item.finding_ids.map((id) => {
-          if (typeof id !== 'string') return id;
-          return findingIdRemap.get(id) || canonicalizeFindingId(id);
-        });
+        const expanded = [];
+        for (const id of item.finding_ids) {
+          if (typeof id !== 'string') {
+            expanded.push(id);
+            continue;
+          }
+          const mapped = findingIdRemap.get(findingIdKey(id));
+          if (mapped && mapped.length) {
+            expanded.push(...mapped);
+          } else {
+            expanded.push(canonicalizeFindingId(id));
+          }
+        }
+        item.finding_ids = [...new Set(expanded)];
       }
       if (typeof item.name !== 'string') return;
       // 既に exact match ならそのまま
