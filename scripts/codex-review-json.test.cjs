@@ -696,6 +696,333 @@ for (const { raw, expected } of FINDING_ID_NORMALIZATION_CASES) {
   });
 }
 
+// 2026-08-11 実観測: reviewer が `SEC-001` のように意味のあるプレフィックスを
+// 付けて返し、F-JSON-CONTRACT に倒れて critical / blocking の指摘が丸ごと
+// 失われた（1 日で 3 回）。reviewer は同じ入力に同じ id を付けるため、
+// 単純な retry では再現する。
+//
+// prefix を F- へ寄せ、findings と checklist の参照を同時に張り替える。
+// 番号は元の値を保つ（複数 finding の対応が崩れないように）。
+const FINDING_ID_PREFIX_CASES = [
+  { raw: 'SEC-001', expected: 'F-001' },
+  { raw: 'SEC-1', expected: 'F-001' },
+  { raw: 'BUG-012', expected: 'F-012' },
+  { raw: 'PERF-2', expected: 'F-002' },
+  { raw: 'ISSUE-003', expected: 'F-003' },
+];
+
+for (const { raw, expected } of FINDING_ID_PREFIX_CASES) {
+  test(`validate canonicalizes prefixed finding id "${raw}" -> "${expected}"`, (t) => {
+    const review = changesRequestedReview();
+    review.findings[0].id = raw;
+    review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = [raw];
+    const filePath = withTempJson(t, review);
+    const result = runScript('validate', filePath);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 (id "${raw}" canonicalized to "${expected}"), got ${result.status}\nstderr=${result.stderr}`,
+    );
+
+    const rendered = runScript('render', filePath);
+    assert.equal(rendered.status, 0);
+    assert.match(rendered.stdout, new RegExp(`\\b${expected}\\b`));
+    // 元の prefix 付き表記は残らない
+    assert.doesNotMatch(rendered.stdout, new RegExp(`\\b${raw}\\b`));
+  });
+}
+
+test('prefixed finding ids keep their distinct numbers across multiple findings', (t) => {
+  // 複数 finding を一括で寄せるとき、番号を潰して衝突させない。
+  const review = changesRequestedReview();
+  const second = JSON.parse(JSON.stringify(review.findings[0]));
+  second.id = 'PERF-002';
+  second.title = '二件目の指摘';
+  review.findings[0].id = 'SEC-001';
+  review.findings.push(second);
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = ['SEC-001', 'PERF-002'];
+  const filePath = withTempJson(t, review);
+  const result = runScript('validate', filePath);
+
+  assert.equal(result.status, 0, `stderr=${result.stderr}`);
+  const rendered = runScript('render', filePath);
+  assert.match(rendered.stdout, /\bF-001\b/);
+  assert.match(rendered.stdout, /\bF-002\b/);
+});
+
+test('prefix canonicalization does not collide two findings onto the same id', (t) => {
+  // SEC-001 と BUG-001 のように別 prefix で同番号が来たら、後者をずらして
+  // 衝突を避ける。潰すと checklist の参照が片方に寄って指摘が消える。
+  const review = changesRequestedReview();
+  const second = JSON.parse(JSON.stringify(review.findings[0]));
+  second.id = 'BUG-001';
+  second.title = '別カテゴリの同番号';
+  review.findings[0].id = 'SEC-001';
+  review.findings.push(second);
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = ['SEC-001', 'BUG-001'];
+  const filePath = withTempJson(t, review);
+  const result = runScript('validate', filePath);
+
+  assert.equal(result.status, 0, `stderr=${result.stderr}`);
+  const rendered = runScript('render', filePath);
+  // 2 件が別 id として残る（どちらかが消えていない）
+  assert.match(rendered.stdout, /\bF-001\b/);
+  assert.match(rendered.stdout, /\bF-002\b/);
+  assert.match(rendered.stdout, /別カテゴリの同番号/);
+});
+
+test('collision resolution does not steal a number another finding needs', (t) => {
+  // SEC-001 / BUG-001 / PERF-002 の順で来たとき、BUG-001 が先に F-002 を
+  // 取ると PERF-002 が本来の番号を失う。全 finding の希望番号を先に
+  // 押さえてから、余った衝突分だけを空き番号へ回す。
+  const review = changesRequestedReview();
+  const mk = (id, title) => {
+    const f = JSON.parse(JSON.stringify(review.findings[0]));
+    f.id = id;
+    f.title = title;
+    return f;
+  };
+  review.findings = [mk('SEC-001', 'セキュリティ'), mk('BUG-001', 'バグ'), mk('PERF-002', '性能')];
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = ['SEC-001', 'BUG-001', 'PERF-002'];
+  const filePath = withTempJson(t, review);
+  assert.equal(runScript('validate', filePath).status, 0);
+
+  const rendered = runScript('render', filePath);
+  assert.equal(rendered.status, 0);
+  const byTitle = {};
+  for (const m of rendered.stdout.matchAll(/^#### (F-[0-9]{3}) [^\n]*?(セキュリティ|バグ|性能)/gm)) {
+    byTitle[m[2]] = m[1];
+  }
+  assert.equal(byTitle['セキュリティ'], 'F-001', `セキュリティ: ${JSON.stringify(byTitle)}`);
+  assert.equal(byTitle['性能'], 'F-002', `性能が番号を奪われた: ${JSON.stringify(byTitle)}`);
+  assert.equal(byTitle['バグ'], 'F-003', `バグ: ${JSON.stringify(byTitle)}`);
+  // checklist の参照も 3 件そろって張り替わる
+  for (const id of ['F-001', 'F-002', 'F-003']) {
+    assert.match(rendered.stdout, new RegExp(`\\b${id}\\b`));
+  }
+});
+
+test('ceiling wrap-around does not steal a number another finding needs', (t) => {
+  // SEC-999 / BUG-999 / PERF-001 の順。回り込みで F-001 を取ると
+  // PERF-001 が押し出される。
+  const review = changesRequestedReview();
+  const mk = (id, title) => {
+    const f = JSON.parse(JSON.stringify(review.findings[0]));
+    f.id = id;
+    f.title = title;
+    return f;
+  };
+  review.findings = [mk('SEC-999', '上限A'), mk('BUG-999', '上限B'), mk('PERF-001', '先頭')];
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = ['SEC-999', 'BUG-999', 'PERF-001'];
+  const filePath = withTempJson(t, review);
+  assert.equal(runScript('validate', filePath).status, 0);
+
+  const rendered = runScript('render', filePath);
+  const byTitle = {};
+  for (const m of rendered.stdout.matchAll(/^#### (F-[0-9]{3}) [^\n]*?(上限A|上限B|先頭)/gm)) {
+    byTitle[m[2]] = m[1];
+  }
+  assert.equal(byTitle['上限A'], 'F-999', `上限A: ${JSON.stringify(byTitle)}`);
+  assert.equal(byTitle['先頭'], 'F-001', `先頭が番号を奪われた: ${JSON.stringify(byTitle)}`);
+  const ids = Object.values(byTitle);
+  assert.equal(new Set(ids).size, 3, `id が衝突している: ${JSON.stringify(byTitle)}`);
+  for (const id of ids) assert.match(id, /^F-[0-9]{3}$/);
+});
+
+test('an already-canonical id keeps its number when a prefixed id wants the same', (t) => {
+  // SEC-001 が先に来ても、元から正しい F-001 を改番しない。
+  // 正しく書かれている側を動かすと、reviewer 本文中の id 参照とずれる。
+  const review = changesRequestedReview();
+  const mk = (id, title) => {
+    const f = JSON.parse(JSON.stringify(review.findings[0]));
+    f.id = id;
+    f.title = title;
+    return f;
+  };
+  review.findings = [mk('SEC-001', '別prefix'), mk('F-001', '元から正規')];
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = ['SEC-001', 'F-001'];
+  const filePath = withTempJson(t, review);
+  assert.equal(runScript('validate', filePath).status, 0);
+
+  const rendered = runScript('render', filePath);
+  const byTitle = {};
+  for (const m of rendered.stdout.matchAll(/^#### (F-[0-9]{3}) [^\n]*?(別prefix|元から正規)/gm)) {
+    byTitle[m[2]] = m[1];
+  }
+  assert.equal(byTitle['元から正規'], 'F-001',
+    `元から正規な id が改番された: ${JSON.stringify(byTitle)}`);
+  assert.equal(byTitle['別prefix'], 'F-002', `別prefix: ${JSON.stringify(byTitle)}`);
+});
+
+test('duplicate original ids keep both references in the checklist', (t) => {
+  // reviewer が同じ id を 2 回使うことがある。元 id → canonical を 1 対 1 の
+  // Map で持つと後勝ちになり、checklist の参照が片方へ潰れて指摘が消える。
+  const review = changesRequestedReview();
+  const mk = (id, title) => {
+    const f = JSON.parse(JSON.stringify(review.findings[0]));
+    f.id = id;
+    f.title = title;
+    return f;
+  };
+  review.findings = [mk('SEC-001', '一件目'), mk('SEC-001', '二件目')];
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = ['SEC-001'];
+  const filePath = withTempJson(t, review);
+  assert.equal(runScript('validate', filePath).status, 0, '検証に失敗した');
+
+  const rendered = runScript('render', filePath);
+  assert.equal(rendered.status, 0);
+  const heads = [...rendered.stdout.matchAll(/^#### (F-[0-9]{3})/gm)].map((m) => m[1]);
+  assert.equal(new Set(heads).size, 2, `2 件が別 id になっていない: ${heads}`);
+  assert.match(rendered.stdout, /一件目/);
+  assert.match(rendered.stdout, /二件目/);
+
+  // checklist サマリー表の行に両方の id が載る（片方が失われない）
+  const row = rendered.stdout.split('\n').find((l) => l.startsWith('|') && l.includes('指摘あり'));
+  assert.ok(row, 'checklist サマリー行が見つからない');
+  for (const id of heads) {
+    assert.ok(row.includes(id), `checklist 行に ${id} が無い: ${row}`);
+  }
+});
+
+test('duplicate canonical ids keep the representative in the checklist', (t) => {
+  // 2 件とも F-001。代表は id が変わらないので remap に載らず、
+  // checklist が後者 (F-002) だけに展開されると先頭への参照が消える。
+  const review = changesRequestedReview();
+  const mk = (id, title) => {
+    const f = JSON.parse(JSON.stringify(review.findings[0]));
+    f.id = id;
+    f.title = title;
+    return f;
+  };
+  review.findings = [mk('F-001', '代表'), mk('F-001', '重複')];
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = ['F-001'];
+  const filePath = withTempJson(t, review);
+  assert.equal(runScript('validate', filePath).status, 0, '検証に失敗した');
+
+  const rendered = runScript('render', filePath);
+  const heads = [...rendered.stdout.matchAll(/^#### (F-[0-9]{3})/gm)].map((m) => m[1]);
+  assert.deepEqual(heads.sort(), ['F-001', 'F-002'], `見出し: ${heads}`);
+  assert.match(rendered.stdout, /代表/);
+  assert.match(rendered.stdout, /重複/);
+
+  const row = rendered.stdout.split('\n').find((l) => l.startsWith('|') && l.includes('指摘あり'));
+  assert.ok(row, 'checklist サマリー行が見つからない');
+  assert.ok(row.includes('F-001'), `代表への参照が失われた: ${row}`);
+  assert.ok(row.includes('F-002'), `重複分への参照が無い: ${row}`);
+});
+
+test('remap key keeps the prefix so different prefixes do not merge', (t) => {
+  // SEC-1 と BUG-1 を同じキーに潰すと、各 checklist 行が相手側の
+  // 割り当てまで拾ってしまう。prefix を落とさないことを固定する。
+  const review = changesRequestedReview();
+  const mk = (id, title) => {
+    const f = JSON.parse(JSON.stringify(review.findings[0]));
+    f.id = id;
+    f.title = title;
+    return f;
+  };
+  review.findings = [mk('SEC-001', 'セキュリティ'), mk('BUG-001', 'バグ')];
+  // 別々の checklist 項目が、それぞれ表記ゆれした id を参照する
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].status = 'finding';
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = ['SEC-1'];
+  review.checklist[0].status = 'finding';
+  review.checklist[0].note = 'バグの指摘';
+  review.checklist[0].finding_ids = ['BUG-1'];
+  const filePath = withTempJson(t, review);
+  assert.equal(runScript('validate', filePath).status, 0, '検証に失敗した');
+
+  const rendered = runScript('render', filePath);
+  const rows = rendered.stdout.split('\n').filter((l) => l.startsWith('|') && l.includes('指摘あり'));
+  assert.equal(rows.length, 2, `指摘あり行が 2 つでない: ${rows.length}`);
+  const secRow = rows.find((r) => r.includes(CHECKLIST_NAMES[WORKFLOW_CHECKLIST_INDEX].slice(0, 12)));
+  const bugRow = rows.find((r) => r.includes(CHECKLIST_NAMES[0].slice(0, 12)));
+  assert.ok(secRow && bugRow, `行を特定できない: ${rows}`);
+  // 各行が自分の id だけを持つ（prefix を無視すると両方混入する）
+  assert.ok(secRow.includes('F-001') && !secRow.includes('F-002'), `SEC 行: ${secRow}`);
+  assert.ok(bugRow.includes('F-002') && !bugRow.includes('F-001'), `BUG 行: ${bugRow}`);
+});
+
+const CHECKLIST_ID_VARIANT_CASES = [
+  { checklist: ['SEC-1', 'BUG-1'], label: 'ゼロ詰めなし' },
+  { checklist: ['SEC-001', 'BUG-001'], label: '完全一致' },
+  { checklist: [' SEC-001 ', ' BUG-001 '], label: '前後空白' },
+];
+
+for (const { checklist, label } of CHECKLIST_ID_VARIANT_CASES) {
+  test(`checklist ids follow collision reassignment (${label})`, (t) => {
+    // checklist 側の表記が findings と揺れていても、衝突後の割り当てに
+    // 追従する。元文字列の完全一致でしか remap を引かないと、SEC-1 と
+    // BUG-1 が両方 F-001 へ潰れて F-002 への参照が消える。
+    const review = changesRequestedReview();
+    const mk = (id, title) => {
+      const f = JSON.parse(JSON.stringify(review.findings[0]));
+      f.id = id;
+      f.title = title;
+      return f;
+    };
+    review.findings = [mk('SEC-001', 'セキュリティ'), mk('BUG-001', 'バグ')];
+    review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = checklist;
+    const filePath = withTempJson(t, review);
+    assert.equal(runScript('validate', filePath).status, 0, `検証に失敗: ${label}`);
+
+    const rendered = runScript('render', filePath);
+    const heads = [...rendered.stdout.matchAll(/^#### (F-[0-9]{3})/gm)].map((m) => m[1]);
+    assert.deepEqual(heads.sort(), ['F-001', 'F-002'], `見出し: ${heads}`);
+
+    const row = rendered.stdout.split('\n').find((l) => l.startsWith('|') && l.includes('指摘あり'));
+    assert.ok(row, 'checklist サマリー行が見つからない');
+    for (const id of ['F-001', 'F-002']) {
+      assert.ok(row.includes(id), `${label}: checklist 行に ${id} が無い: ${row}`);
+    }
+  });
+}
+
+test('collision at the 3-digit ceiling stays within the F-NNN contract', (t) => {
+  // SEC-999 と BUG-999 が同時に来ると、単純な加算では F-1000 になり
+  // F-NNN 契約 (3 桁) に再び違反して指摘全体が失われる。空き番号へ
+  // 回り込ませ、2 件とも 3 桁 id として残す。
+  const review = changesRequestedReview();
+  const second = JSON.parse(JSON.stringify(review.findings[0]));
+  second.id = 'BUG-999';
+  second.title = '上限での衝突';
+  review.findings[0].id = 'SEC-999';
+  review.findings.push(second);
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = ['SEC-999', 'BUG-999'];
+  const filePath = withTempJson(t, review);
+  const result = runScript('validate', filePath);
+
+  assert.equal(result.status, 0, `stderr=${result.stderr}`);
+
+  const rendered = runScript('render', filePath);
+  assert.equal(rendered.status, 0);
+
+  // render 出力に現れる finding id が 3 桁契約に収まり、2 件が別 id で残る
+  const ids = [...rendered.stdout.matchAll(/^#### (F-\S+)/gm)].map((m) => m[1]);
+  assert.equal(ids.length, 2, `finding が 2 件描画されていない: ${ids}`);
+  for (const id of ids) {
+    assert.match(id, /^F-[0-9]{3}$/, `契約外の id: ${id}`);
+  }
+  assert.equal(new Set(ids).size, ids.length, `id が衝突している: ${ids}`);
+  assert.doesNotMatch(rendered.stdout, /F-1000/);
+  assert.match(rendered.stdout, /上限での衝突/);
+});
+
+test('workflow-generated ids like F-DIFF-SIZE-UNKNOWN are NOT coerced to F-001', (t) => {
+  // workflow が生成する F-JSON-CONTRACT / F-CODEX-REVIEW-INFRA /
+  // F-DIFF-SIZE-UNKNOWN は数値 id ではない。prefix 正規化がこれらを
+  // F-001 に潰すと、reviewer 由来でない id が finding として通ってしまう。
+  // 正規化されず、従来どおり reject されることを固定する。
+  for (const id of ['F-JSON-CONTRACT', 'F-CODEX-REVIEW-INFRA', 'F-DIFF-SIZE-UNKNOWN']) {
+    const review = changesRequestedReview();
+    review.findings[0].id = id;
+    review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = [id];
+    const filePath = withTempJson(t, review);
+    const result = runScript('validate', filePath);
+    assert.equal(result.status, 1, `${id} が通ってしまった`);
+  }
+});
+
 test('validate does NOT over-correct a genuinely malformed finding id (F-1a stays rejected)', (t) => {
   // 表記ゆれ（ハイフン/ゼロ詰め）ではない真に不正な id は補正対象外。
   // 数字以外を含む `F-1a` は canonicalizeFindingId にマッチせず原文のまま残り、
