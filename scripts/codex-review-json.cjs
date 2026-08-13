@@ -97,7 +97,18 @@ function assertFindingId(value, path, errors) {
     return false;
   }
   if (!FINDING_ID_PATTERN.test(value)) {
-    errors.push(`${path} は F-001 のような形式である必要があります。`);
+    // `SEC-001` のように「finding id らしい形」だが F-NNN でないものは、
+    // 正規化が対応する finding を見つけられなかった参照切れである
+    // 可能性が高い。単なる形式エラーとして返すと、reviewer が再試行で
+    // 「形を F-NNN に直す」方向へ進み、無関係な finding を指す id を
+    // 作ってしまう。原因を名指しする。
+    if (/^[A-Za-z]{2,12}-[0-9]+$/.test(String(value).trim())) {
+      errors.push(`${path} "${value}" に対応する finding がありません。`
+        + ' findings 側に同じ id の項目を追加するか、参照を実在する'
+        + ' finding の id に直してください。');
+    } else {
+      errors.push(`${path} は F-001 のような形式である必要があります。`);
+    }
     return false;
   }
   return true;
@@ -458,8 +469,17 @@ function normalizeReviewJson(review, requiredChecklistNames) {
           const mapped = findingIdRemap.get(findingIdKey(id));
           if (mapped && mapped.length) {
             expanded.push(...mapped);
-          } else {
+          } else if (/^f-?[0-9]+$/i.test(id.trim())) {
+            // 対応する finding が無いが prefix は既に F。`F-1` → `F-001` の
+            // ゼロ詰め補正だけを行う。
             expanded.push(canonicalizeFindingId(id));
+          } else {
+            // 参照切れ。ここで canonical 化すると `SEC-001` が `F-001` へ化け、
+            // たまたま同番の無関係な finding（例: BUG-001 由来の F-001）を
+            // 指してしまう。validator の「findings に存在しません」検査も
+            // すり抜け、人間には正しい根拠に見える誤った引用が残る。
+            // 原文のまま落として validator に失格させる。
+            expanded.push(id);
           }
         }
         item.finding_ids = [...new Set(expanded)];
