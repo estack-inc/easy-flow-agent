@@ -1608,3 +1608,74 @@ test('codex-review-json.cjs does not hardcode umito-spec specific checklist name
     'umito-spec 固有のチェックリスト名がソースに埋め込まれています',
   );
 });
+
+test('validate rejects a checklist finding_ids entry that matches no finding', (t) => {
+  // 実観測: reviewer が prefix 付き id (`SEC-001`) で存在しない finding を
+  // 参照すると、正規化が `F-001` へ寄せてしまい、たまたま同番の無関係な
+  // finding (BUG-001 由来の F-001) を指す。validator の存在検査もすり抜け、
+  // 人間には正しい根拠に見える誤った引用が残ったまま合格していた。
+  const review = changesRequestedReview();
+  review.findings[0].id = 'BUG-001';
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = ['SEC-001'];
+
+  const result = runScript('validate', withTempJson(t, review));
+  assert.equal(result.status, 1, '参照切れを合格にしています');
+  assert.match(result.stderr, /"SEC-001" に対応する finding がありません/);
+});
+
+test('validate keeps resolving prefixed ids that do have a matching finding', (t) => {
+  // 反証: prefix 付きでも finding 側に対応があれば従来どおり解決する。
+  // 上のテストが「prefix 付きを一律に弾く」実装でも通ってしまうため、
+  // 正当な prefix 付き参照が壊れていないことを別に固定する。
+  const review = changesRequestedReview();
+  review.findings[0].id = 'SEC-001';
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = ['SEC-1'];
+
+  const result = runScript('validate', withTempJson(t, review));
+  assert.equal(result.status, 0, result.stderr);
+
+  const rendered = runScript('render', withTempJson(t, review));
+  assert.equal(rendered.status, 0, rendered.stderr);
+  assert.match(rendered.stdout, /`F-001`/);
+});
+
+test('validate still zero-pads F-prefixed ids with no matching finding entry', (t) => {
+  // 反証: `F-1` → `F-001` のゼロ詰め補正は参照切れ扱いにしない。
+  // prefix が既に F なら、対応表に無くても canonical 化してよい。
+  const review = changesRequestedReview();
+  review.findings[0].id = 'F-001';
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = ['F-1'];
+
+  const result = runScript('validate', withTempJson(t, review));
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('validate reports a plain format error for findings[].id itself', (t) => {
+  // 参照切れ診断は checklist の参照専用。findings[].id 自身に出すと
+  // 「自分を findings に追加せよ」という無意味な指示になる。
+  // 小文字の `sec-001` は canonicalizeFindingId が変換しないためここへ落ちる。
+  const review = changesRequestedReview();
+  review.findings[0].id = 'sec-001';
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = ['F-001'];
+
+  const result = runScript('validate', withTempJson(t, review));
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /\$\.findings\[0\]\.id は F-001 のような形式/);
+  assert.doesNotMatch(
+    result.stderr,
+    /\$\.findings\[0\]\.id "sec-001" に対応する finding がありません/,
+    'finding 定義自身に参照切れ診断を出しています',
+  );
+});
+
+test('validate reports a type error (not TypeError) for non-string finding_ids', (t) => {
+  // 参照切れ判定の追加で非文字列が正規化中に落ちないことを固定する。
+  const review = changesRequestedReview();
+  review.checklist[WORKFLOW_CHECKLIST_INDEX].finding_ids = [42, null, 'F-001'];
+
+  const result = runScript('validate', withTempJson(t, review));
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /finding_ids\[0\] は string である必要があります/);
+  assert.match(result.stderr, /finding_ids\[1\] は string である必要があります/);
+  assert.doesNotMatch(result.stderr, /TypeError/, '正規化中に例外が出ています');
+});

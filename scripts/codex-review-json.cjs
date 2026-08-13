@@ -89,7 +89,7 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function assertFindingId(value, path, errors) {
+function assertFindingId(value, path, errors, options = {}) {
   // finding.id / finding_ids[] のような id 文字列専用の assert。
   // renderMarkdown では `#### F-001 ...` のように見出しに埋め込まれるため、
   // 形式を F-NNN に強制して任意文字列の注入を防ぐ。
@@ -97,7 +97,24 @@ function assertFindingId(value, path, errors) {
     return false;
   }
   if (!FINDING_ID_PATTERN.test(value)) {
-    errors.push(`${path} は F-001 のような形式である必要があります。`);
+    // `SEC-001` のように「finding id らしい形」だが F-NNN でないものは、
+    // 正規化が対応する finding を見つけられなかった参照切れである
+    // 可能性が高い。単なる形式エラーとして返すと、reviewer が再試行で
+    // 「形を F-NNN に直す」方向へ進み、無関係な finding を指す id を
+    // 作ってしまう。原因を名指しする。
+    //
+    // ただし参照側 (checklist[].finding_ids[]) に限る。findings[].id 自身は
+    // 「対応する finding」が自分なので、この文言だと「自分を findings に
+    // 追加せよ」という無意味な指示になる（実観測: 小文字の `sec-001` は
+    // canonicalizeFindingId が変換せずここへ落ちる）。
+    if (options.isReference
+        && /^[A-Za-z]{2,12}-[0-9]+$/.test(String(value).trim())) {
+      errors.push(`${path} "${value}" に対応する finding がありません。`
+        + ' findings 側に同じ id の項目を追加するか、参照を実在する'
+        + ' finding の id に直してください。');
+    } else {
+      errors.push(`${path} は F-001 のような形式である必要があります。`);
+    }
     return false;
   }
   return true;
@@ -458,8 +475,17 @@ function normalizeReviewJson(review, requiredChecklistNames) {
           const mapped = findingIdRemap.get(findingIdKey(id));
           if (mapped && mapped.length) {
             expanded.push(...mapped);
-          } else {
+          } else if (/^f-?[0-9]+$/i.test(id.trim())) {
+            // 対応する finding が無いが prefix は既に F。`F-1` → `F-001` の
+            // ゼロ詰め補正だけを行う。
             expanded.push(canonicalizeFindingId(id));
+          } else {
+            // 参照切れ。ここで canonical 化すると `SEC-001` が `F-001` へ化け、
+            // たまたま同番の無関係な finding（例: BUG-001 由来の F-001）を
+            // 指してしまう。validator の「findings に存在しません」検査も
+            // すり抜け、人間には正しい根拠に見える誤った引用が残る。
+            // 原文のまま落として validator に失格させる。
+            expanded.push(id);
           }
         }
         item.finding_ids = [...new Set(expanded)];
@@ -744,7 +770,8 @@ function validateReviewJson(review) {
         errors.push(`${base}.finding_ids は array である必要があります。`);
       } else {
         item.finding_ids.forEach((id, idIndex) => {
-          if (assertFindingId(id, `${base}.finding_ids[${idIndex}]`, errors)) {
+          if (assertFindingId(id, `${base}.finding_ids[${idIndex}]`, errors,
+            { isReference: true })) {
             if (!findingIds.has(id)) {
               errors.push(`${base}.finding_ids[${idIndex}] "${id}" は findings に存在しません。`);
             } else {
