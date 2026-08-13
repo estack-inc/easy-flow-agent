@@ -113,6 +113,9 @@ jobs:
                   specs/*.md|specs/**/*.md) SHOULD_REVIEW=true ;;
                   .github/workflows/*.yml|.github/workflows/*.yaml) SHOULD_REVIEW=true ;;
                   CLAUDE.md) SHOULD_REVIEW=true ;;
+                  scripts/codex-review-json.cjs) SHOULD_REVIEW=true ;;
+                  scripts/ai_review_cost.py) SHOULD_REVIEW=true ;;
+                  scripts/codex-review-json.test.cjs) SHOULD_REVIEW=true ;;
                 esac
               done
               if [ "$SHOULD_REVIEW" = "false" ]; then APPLICABLE=false; REASONS+=("no reviewable files"); fi
