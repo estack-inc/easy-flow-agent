@@ -394,9 +394,17 @@ jobs:
                 # この BEGIN/END で囲まれた jq filter 領域を配布対象 10 リポに同期する。
                 # 各 repo の repository_context / checklists / summary は
                 # マーカーの外 (--arg / --slurpfile 部分) に置くこと。
+                # 尺度は契約 (output_format の critical / major / minor) と 1 対 1 に
+                # 対応させる。minor を尺度に書かないと使いどころが定義されず、
+                # reviewer は major へ寄せるしかなくなる。major は blocking なので、
+                # 「あると良い提案」が verdict を changes_requested にしてしまう。
+                # 本 region は全配布先で同一文面になるため、その verdict が実際に
+                # マージを止めるかどうか (投稿方式とブランチ保護で決まる) は書かない。
                 severity: [
-                  "🔴 重大: セキュリティ脆弱性、データ損失リスク、要件未充足",
-                  "🟡 要修正: コード品質問題、整合性エラー、推奨事項、スタイル提案"
+                  "🔴 重大 (critical): セキュリティ脆弱性、データ損失リスク、要件未充足",
+                  "🟡 要修正 (major): 誤動作・データ不整合・契約違反を実際に引き起こす欠陥。整合性エラーはこの結果を伴う場合のみ major",
+                  "ℹ️ 補足 (minor): 推奨事項、スタイル提案、可読性・保守性の改善、代替案の提示",
+                  "major と minor は「その指摘が実際の誤動作・データ不整合・契約違反を引き起こすか」で分ける。引き起こす具体的な failure mode (入力・状態・経路) を示せない指摘は minor にする。major は verdict を changes_requested にするため、境界が曖昧な指摘を major に寄せない (その verdict がマージを止めるかは配布先の運用による)"
                 ],
                 skip_policy: "PR body に `## AIレビュースキップ理由` がある場合、🟡 指摘の対応する理由を照合し、合理的なら 🟡 (スキップ済) として verdict に影響させない",
                 verdict_rules: [
@@ -1173,10 +1181,13 @@ jobs:
         # 終わり、502 や通信断が run 一覧からも Slack 未設定リポからも見えなくなる。
         #
         # 本 step は fail-closed の投稿がすべて終わった最後に置き、失敗を分類して
-        # step summary に残したうえで job を赤くする。ゲート強制力は従来どおり bot の
-        # CHANGES_REQUESTED review が担い（冒頭「ブランチ保護運用の前提」を参照）、
-        # 本 job は required status check ではないため赤化しても merge は block しない。
-        # 目的は「壊れていることが見えること」であり、merge の可否は変えない。
+        # step summary に残したうえで job を赤くする。目的は「壊れていることが
+        # 見えること」。
+        #
+        # 赤化が merge に影響するかは配布先のブランチ保護しだいで、本 workflow は
+        # 決められない。本 job を required status check にしている配布先では、
+        # infra 障害による赤化がそのまま merge を止める。本 region は全配布先で
+        # 同一文面になるため、ここで特定の運用を前提にした記述はしない。
         #
         # schema_ok は空文字を「判定不能」として扱い発火条件から外す。本 region は
         # 全配布先で同一のため、schema_ok を GITHUB_OUTPUT に書かない世代の workflow
