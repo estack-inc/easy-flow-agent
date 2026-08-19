@@ -73,6 +73,10 @@ jobs:
     # 切り分けが要る場面で区別できなくなる）。
     outputs:
       applicable: ${{ steps.applicable.outputs.applicable }}
+      # 投稿直前の再判定。ここが false だと Submit review verdict は意図的に
+      # skip され verdict が空になる。gate がこれを「判定不能」と取り違えると、
+      # レビュー対象外へ変わった PR を止めてしまう。
+      still_applicable: ${{ steps.recheck.outputs.still_applicable }}
       submitted_verdict: ${{ steps.submit_verdict.outputs.submitted_verdict }}
     # END:managed:codex_review_verdict_gate_outputs
     steps:
@@ -1332,7 +1336,16 @@ jobs:
           fi
           REVIEW_RESULT=$(printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[0].value.result // ""')
           APPLICABLE=$(printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[0].value.outputs.applicable // ""')
+          STILL_APPLICABLE=$(printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[0].value.outputs.still_applicable // ""')
           VERDICT=$(printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[0].value.outputs.submitted_verdict // ""')
+
+          # 投稿直前の再判定で対象外になった場合、verdict は意図的に空になる。
+          # 「投稿前に落ちた」ケースと区別できないと、対象外の PR を止めてしまう。
+          # 明示的な false のときだけ通す（空・想定外値は下の分岐で block）。
+          if [ "$STILL_APPLICABLE" = "false" ]; then
+            echo "再判定でレビュー対象外になったため gate は通過します"
+            exit 0
+          fi
 
           # レビュー対象外の PR を詰まらせない。applicability は review job 側の
           # 単一の判定を使い、ここで再実装しない（二重定義は drift の元になる）。
