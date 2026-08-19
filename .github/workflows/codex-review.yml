@@ -67,6 +67,18 @@ jobs:
     # 同時に見直すこと（job timeout で切られるとレビュー結果ごと失われる）。
     timeout-minutes: 120
 
+    # BEGIN:managed:codex_review_verdict_gate_outputs
+    # verdict-gate job が判定に使う。この job 自体の緑／赤は「インフラが動いたか」を
+    # 表し続け、「指摘があったか」は gate 側で表現する（両者を同じ色に混ぜると、
+    # 切り分けが要る場面で区別できなくなる）。
+    outputs:
+      applicable: ${{ steps.applicable.outputs.applicable }}
+      # 投稿直前の再判定。ここが false だと Submit review verdict は意図的に
+      # skip され verdict が空になる。gate がこれを「判定不能」と取り違えると、
+      # レビュー対象外へ変わった PR を止めてしまう。
+      still_applicable: ${{ steps.recheck.outputs.still_applicable }}
+      submitted_verdict: ${{ steps.submit_verdict.outputs.submitted_verdict }}
+    # END:managed:codex_review_verdict_gate_outputs
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -1293,3 +1305,90 @@ jobs:
           echo "::error::Codex Review infra failure ($CLASS, curl_rc=${CURL_RC:-unknown}, http_status=${HTTP_STATUS:-unknown}) — $HINT"
           exit 1
       # END:managed:codex_review_infra_failure_gate
+
+  # 判定に強制力を与える専用 check（#521 選択肢 A）。required にするかは
+  # リポジトリごとのオーナー判断。指定しない限り表示されるだけで挙動は変わらない。
+  verdict-gate:
+    # needs: は webhook を呼ぶ job 名を指す。job 名は per-repo で変わるため
+    # この 1 行だけ managed region の外に置く。
+    needs: review
+    # BEGIN:managed:codex_review_verdict_gate
+    # review が skip / 失敗した場合も必ず結論を出す。required check は「報告されない」
+    # と pending のまま滞留してマージを止めるため、どの経路でも報告する契約にする。
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Gate on the latest bot verdict
+        env:
+          # 依存 job の結果と output を、job 名を書かずに受け取る。配布先の 2 リポでは
+          # この job が codex-review という名前で、needs.review と書くと値が取れず
+          # gate が常に失敗する。region は apply で canonical へ戻るため per-repo の
+          # 書き換えでは解決できない。needs は 1 件だけなので JSON から取り出す。
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          # needs が 1 件であることを確認してから読む。0 件・複数件は配線ミスなので
+          # 判定せず block する（gate が黙って素通りする状態を作らない）。
+          NEEDS_COUNT=$(printf '%s' "$NEEDS_JSON" | jq 'length')
+          if [ "$NEEDS_COUNT" != "1" ]; then
+            echo "::error::verdict-gate の needs が 1 件ではありません (${NEEDS_COUNT} 件)。配線を確認してください。"
+            exit 1
+          fi
+          REVIEW_RESULT=$(printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[0].value.result // ""')
+          APPLICABLE=$(printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[0].value.outputs.applicable // ""')
+          STILL_APPLICABLE=$(printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[0].value.outputs.still_applicable // ""')
+          VERDICT=$(printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[0].value.outputs.submitted_verdict // ""')
+
+          # 投稿直前の再判定で対象外になった場合、verdict は意図的に空になる。
+          # 「投稿前に落ちた」ケースと区別できないと、対象外の PR を止めてしまう。
+          # 明示的な false のときだけ通す（空・想定外値は下の分岐で block）。
+          if [ "$STILL_APPLICABLE" = "false" ]; then
+            echo "再判定でレビュー対象外になったため gate は通過します"
+            exit 0
+          fi
+
+          # レビュー対象外の PR を詰まらせない。applicability は review job 側の
+          # 単一の判定を使い、ここで再実装しない（二重定義は drift の元になる）。
+          #
+          # 通過させるのは明示的な false のときだけにする。「true でなければ対象外」と
+          # 読むと、review job が applicability の判定より前に落ちて job output が
+          # 空文字になった場合（checkout 失敗など）まで対象外として通過し、レビューが
+          # 一度も走っていない PR を required check が緑で通してしまう。
+          case "$APPLICABLE" in
+            false)
+              echo "レビュー対象外の PR のため gate は通過します"
+              exit 0
+              ;;
+            true)
+              : # 判定の評価へ進む
+              ;;
+            *)
+              echo "::error::レビューの適用判定を取得できませんでした (applicable=\"$APPLICABLE\", review job=$REVIEW_RESULT)。レビューが完了していないため gate は通過させません。"
+              exit 1
+              ;;
+          esac
+
+          case "$VERDICT" in
+            approved)
+              echo "最新の判定は approved です"
+              exit 0
+              ;;
+            changes_requested)
+              # oversize (F-DIFF-TOO-LARGE) と infra 障害もここに来る。いずれも
+              # 「機械が問題なしと確認できていない」状態なので同じく止める。
+              # 未レビューのままマージされた umito-spec#32 が本 gate の直接の動機。
+              echo "::error::codex-review の判定が changes_requested です。指摘に対応するか、対応しない理由を PR body の \`## AIレビュースキップ理由\` に記載してください。"
+              exit 1
+              ;;
+            "")
+              # 判定が無い。review job が途中で落ちたか、投稿前に失敗している。
+              # 判定不能を通過させると gate の意味が無くなるため fail-closed。
+              echo "::error::codex-review の判定を取得できませんでした (review job=$REVIEW_RESULT)。レビューが完了していないため gate は通過させません。"
+              exit 1
+              ;;
+            *)
+              echo "::error::想定外の判定値です: $VERDICT"
+              exit 1
+              ;;
+          esac
+      # END:managed:codex_review_verdict_gate
