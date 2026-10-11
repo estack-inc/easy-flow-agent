@@ -8,12 +8,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > 対象: `estack-inc` 配下の全リポジトリ（`openclaw-templates` / `openclaw-clients` を含む）
 > 対象外: 外部 org の `openclaw/openclaw`（上流リポジトリ。本ベースラインの管理範囲外）
-> 目的: AI レビュアー（codex-review.yml）の指摘 80% を実装段階で潰す
+> 目的: AI レビュアーの指摘 80% を実装段階で潰す
 > 同期元: [easy-flow リポジトリの `docs/operations/claude-md-template/common.md`](https://github.com/estack-inc/easy-flow/blob/main/docs/operations/claude-md-template/common.md)
 
 ### 背景
 
-PR #203（openclaw-templates）で AI レビュー 20 ラウンドが発生した。指摘 80% は事前にガードレールがあれば回避可能だった既知パターン（機密情報ハードコード、`|| true` 握りつぶし、`set -euo pipefail` 罠、ファイル間整合性、スコープクリープ）。このベースラインは AI レビュアーが頻出する 6 カテゴリ（セキュリティ／シェル／Dockerfile／GitHub Actions／ファイル間整合性／テスト・E2E）を網羅する。各リポジトリの `codex-review.yml` の具体的なカテゴリ名・体系は異なる場合があるため、リポジトリ側 `CLAUDE.md` で必要に応じて補足する。
+PR #203（openclaw-templates）で AI レビュー 20 ラウンドが発生した。指摘 80% は事前にガードレールがあれば回避可能だった既知パターン（機密情報ハードコード、`|| true` 握りつぶし、`set -euo pipefail` 罠、ファイル間整合性、スコープクリープ）。このベースラインは AI レビュアーが頻出する 6 カテゴリ（セキュリティ／シェル／Dockerfile／GitHub Actions／ファイル間整合性／テスト・E2E）を網羅する。リポジトリ固有の観点は、リポジトリ側 `CLAUDE.md` で必要に応じて補足する。
 
 ### 絶対禁止事項（全カテゴリ共通）
 
@@ -91,7 +91,6 @@ PR #203（openclaw-templates）で AI レビュー 20 ラウンドが発生し�
 
 表記ルール: `リポジトリ内` は本 repo 内の相対パス、`Easy Flow Wiki` は `estack-inc/easy-flow` repo 配下の資料で URL を直接記載する。
 
-- AI レビュー設定 (リポジトリ内): `.github/workflows/codex-review.yml`
 - 共通テンプレ管理 (Easy Flow Wiki): https://github.com/estack-inc/easy-flow/tree/main/docs/operations/claude-md-template
 - リポジトリ別指示書 (Easy Flow Wiki): https://github.com/estack-inc/easy-flow/tree/main/docs/operations/claude-md-improvement-instructions
 
